@@ -3,194 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>اختبار الكيمياء المتقدم | تحليل المعادلات</title>
+    <title>تدريب على قراءة المعادلة الكيميائية</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Tajawal', sans-serif; }
-        .transition-all { transition: all 0.3s ease; }
+        .explanation-box { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); max-height: 0; opacity: 0; overflow: hidden; }
+        .explanation-box.show { max-height: 500px; opacity: 1; margin-top: 1.5rem; }
+        .option-btn.correct { border-color: #10b981; background-color: #ecfdf5; color: #065f46; }
+        .option-btn.wrong { border-color: #ef4444; background-color: #fef2f2; color: #991b1b; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col items-center py-10 px-4">
 
     <header class="max-w-3xl w-full text-center mb-10">
-        <h1 class="text-3xl font-bold text-slate-800 mb-2">اختبار الكيمياء المتقدم</h1>
-        <p class="text-slate-600 font-medium">تحليل المعلومات المستخلصة من المعادلة الكيميائية الموزونة</p>
-        <div class="h-1 w-20 bg-blue-500 mx-auto mt-4 rounded-full"></div>
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">تدريب على قراءة المعادلة الكيميائية</h1>
+        <p class="text-slate-600 font-medium italic">حلل، فكر، ثم استنتج</p>
+        <div class="h-1.5 w-24 bg-blue-600 mx-auto mt-4 rounded-full shadow-sm"></div>
     </header>
 
-    <main id="quiz-container" class="max-w-3xl w-full bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+    <main id="quiz-container" class="max-w-3xl w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100 relative">
         <div class="mb-8">
-            <div class="flex justify-between text-sm text-slate-500 mb-2">
-                <span>السؤال <span id="current-question-num">1</span> من 10</span>
+            <div class="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                <span>السؤال <span id="current-question-num">1</span> / 10</span>
                 <span id="progress-percent">10%</span>
             </div>
             <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div id="progress-bar" class="bg-blue-500 h-full transition-all duration-500" style="width: 10%;"></div>
+                <div id="progress-bar" class="bg-blue-600 h-full transition-all duration-700 ease-out" style="width: 10%;"></div>
             </div>
         </div>
 
         <div id="question-content">
             <h2 id="question-text" class="text-xl font-bold text-slate-800 mb-6 leading-relaxed">
-                جاري تحميل السؤال...
+                جاري التحميل...
             </h2>
-            <div id="options-container" class="space-y-3">
+            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 </div>
         </div>
 
-        <div class="mt-8 flex justify-between items-center border-t pt-6">
-            <button id="next-btn" onclick="nextQuestion()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+        <div id="explanation-container" class="explanation-box p-5 rounded-xl border-r-4 border-blue-500 bg-blue-50">
+            <div class="flex items-center gap-2 mb-2">
+                <span id="feedback-icon"></span>
+                <span id="feedback-title" class="font-bold text-lg"></span>
+            </div>
+            <p id="explanation-text" class="text-slate-700 leading-relaxed"></p>
+        </div>
+
+        <div class="mt-8 flex justify-end items-center border-t pt-6">
+            <button id="next-btn" onclick="nextQuestion()" class="hidden bg-slate-800 hover:bg-black text-white px-10 py-3 rounded-xl font-bold transition-all transform hover:scale-105 active:scale-95 shadow-lg">
                 السؤال التالي
             </button>
         </div>
     </main>
 
-    <div id="results-container" class="hidden max-w-2xl w-full bg-white rounded-2xl shadow-xl p-10 text-center border border-slate-100">
-        <div class="mb-6">
-            <div class="inline-flex items-center justify-center w-20 h-20 bg-green-100 text-green-600 rounded-full mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-            </div>
-            <h2 class="text-3xl font-bold text-slate-800">اكتمل الاختبار!</h2>
-            <p class="text-slate-600 mt-2">نتيجتك النهائية هي:</p>
-        </div>
-        <div class="text-6xl font-black text-blue-600 mb-8"><span id="final-score">0</span>/10</div>
-        <button onclick="location.reload()" class="bg-slate-800 hover:bg-slate-900 text-white px-10 py-3 rounded-xl font-bold transition-all">
-            إعادة المحاولة
+    <div id="results-container" class="hidden max-w-xl w-full bg-white rounded-2xl shadow-2xl p-10 text-center border border-slate-100">
+        <h2 class="text-3xl font-bold text-slate-800 mb-2">انتهى التدريب!</h2>
+        <p class="text-slate-500 mb-8">لقد أنجزت عملاً رائعاً في تحليل التفاعلات الكيميائية</p>
+        <div class="text-7xl font-black text-blue-600 mb-10"><span id="final-score">0</span><span class="text-2xl text-slate-300">/10</span></div>
+        <button onclick="location.reload()" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-4 rounded-xl font-bold text-lg transition-all shadow-lg">
+            إعادة التدريب
         </button>
     </div>
 
     <script>
         const quizData = [
             {
-                q: "في تفاعل تكوين الأمونيا، إذا قمنا بمضاعفة كمية غاز النيتروجين المستخدمة مع بقاء الهيدروجين كافياً، كيف ستتغير النسبة المولية بين N₂ و H₂ في المعادلة الموزونة؟",
-                options: ["تظل النسبة ثابتة عند 1:3", "تتضاعف لتصبح 2:3", "تقل النسبة للنصف لتصبح 0.5:3", "تتغير النسبة الكتلية فقط"],
-                correct: 0
+                q: "إذا قمنا بمضاعفة كمية غاز النيتروجين المضافة مع بقاء الهيدروجين كافياً، كيف تتأثر النسبة المولية في المعادلة الموزونة؟",
+                options: ["تظل ثابتة عند 1:3", "تتضاعف لتصبح 2:3", "تتغير النسبة الكتلية فقط", "تقل النسبة للنصف"],
+                correct: 0,
+                explanation: "المعاملات في المعادلة الموزونة تمثل 'وصفة' التفاعل الكيميائي الثابتة. زيادة الكميات المضافة لا تغير هذه النسب الأساسية."
             },
             {
-                q: "بالنظر إلى النسبة الكتلية بين النيتروجين والهيدروجين (28g : 6g)، إذا تفاعل 14g من النيتروجين تماماً، فما هي كتلة الأمونيا الناتجة بناءً على قانون حفظ الكتلة؟",
+                q: "عند تفاعل 14g من النيتروجين تماماً، ما هي كتلة الأمونيا الناتجة؟",
                 options: ["17 جرام", "34 جرام", "20 جرام", "7 جرام"],
-                correct: 0
+                correct: 0,
+                explanation: "بناءً على المعادلة: 28g نيتروجين تنتج 34g أمونيا. وبما أن 14g هي نصف الـ 28g، فإن الناتج سيكون نصف الـ 34g أي 17g."
             },
             {
-                q: "عند تحول المتفاعلات بالكامل إلى نواتج في هذا التفاعل، ماذا يحدث للعدد الإجمالي للجزيئات في الوعاء؟",
-                options: ["يقل العدد الإجمالي للجزيئات بمقدار النصف", "يزداد العدد الإجمالي للجزيئات", "يظل عدد الجزيئات ثابتاً", "يتضاعف عدد الجزيئات"],
-                correct: 0
+                q: "ماذا يحدث للعدد الإجمالي للجزيئات عند تحول المتفاعلات بالكامل لنواتج؟",
+                options: ["يقل بمقدار النصف", "يزداد الضعف", "يظل ثابتاً", "يتلاشى"],
+                correct: 0,
+                explanation: "نجمع معاملات المتفاعلات (1+3=4) والناتج (2). تحولنا من 4 جزيئات إلى جزيئين، أي نقصان للنصف."
             },
             {
-                q: "بناءً على البيانات الكتلية، ما هي النسبة الكتلية المبسطة للهيدروجين إلى الأمونيا الناتجة؟",
+                q: "ما هي النسبة الكتلية المبسطة للهيدروجين إلى الأمونيا الناتجة؟",
                 options: ["3 : 17", "1 : 3", "6 : 28", "2 : 3"],
-                correct: 0
+                correct: 0,
+                explanation: "الكتلة في المعادلة هي 6g هيدروجين : 34g أمونيا. بالقسمة على 2، تصبح النسبة المبسطة 3 : 17."
             },
             {
-                q: "أي من الخصائص التالية للمواد المتفاعلة والناتجة يمكن استنتاجها مباشرة من الرمز (g) الملحق بالصيغ الكيميائية؟",
-                options: ["الحالة الفيزيائية للمواد", "الكتلة المولية لكل مادة", "سرعة التفاعل الكيميائي", "لون الغازات المتكونة"],
-                correct: 0
+                q: "ما المعلومة التي يوفرها الرمز (g) المكتوب بجانب المواد؟",
+                options: ["الحالة الفيزيائية", "الكتلة المولية", "سرعة التفاعل", "درجة الحرارة"],
+                correct: 0,
+                explanation: "الرموز الصغيرة (s, l, g, aq) تصف حالة المادة الفيزيائية (صلب، سائل، غاز، محلول مائي)."
             },
             {
-                q: "إذا كان لدينا 6 مولات من غاز الهيدروجين، فكم مولاً من غاز النيتروجين نحتاج للتفاعل معه تماماً لإنتاج الأمونيا؟",
-                options: ["2 مول", "6 مولات", "3 مولات", "12 مول"],
-                correct: 0
+                q: "كم مولاً من النيتروجين نحتاج للتفاعل مع 6 مولات من الهيدروجين؟",
+                options: ["2 مول", "6 مولات", "3 مولات", "1 مول"],
+                correct: 0,
+                explanation: "النسبة هي 1 نيتروجين : 3 هيدروجين. لذا نحتاج (6 / 3) = 2 مول من النيتروجين."
             },
             {
-                q: "لماذا تختلف النسبة بين أعداد الجزيئات (1:3) عن النسبة بين الكتل (28:6) لنفس المواد المتفاعلة؟",
-                options: ["لأن الجزيئات المختلفة لها كتل مولية مختلفة", "لأن قانون حفظ الكتلة لا ينطبق على الجزيئات", "بسبب خطأ في موازنة المعادلة", "لأن النيتروجين غاز خامل"],
-                correct: 0
+                q: "لماذا تختلف النسبة العددية للجزيئات (1:3) عن النسبة الكتلية (28:6)؟",
+                options: ["بسبب اختلاف الكتل المولية", "بسبب خطأ في الموازنة", "لأن الغازات تتمدد", "بسبب الضغط"],
+                correct: 0,
+                explanation: "جزيئات المواد المختلفة لها كتل مختلفة؛ جزيء النيتروجين أثقل بكثير من جزيء الهيدروجين رغم كونهما يشغلان نفس حيز المول."
             },
             {
-                q: "إذا بدأنا التفاعل بـ 10 جزيئات من N₂ و 30 جزيئاً من H₂، كم جزيئاً من NH₃ سينتج؟",
-                options: ["20 جزيء", "10 جزيئات", "40 جزيء", "30 جزيء"],
-                correct: 0
+                q: "إذا بدأنا بـ 10 جزيئات N2 و 30 جزيئاً H2، كم جزيئاً من NH3 سينتج؟",
+                options: ["20 جزيء", "10 جزيئات", "40 جزيء", "60 جزيء"],
+                correct: 0,
+                explanation: "النسبة بين N2 و NH3 هي 1 : 2. إذاً 10 جزيئات تنتج ضعفها من الأمونيا."
             },
             {
-                q: "ما هي المعلومة التي لا يمكننا الحصول عليها مباشرة من المعادلة الكيميائية الموزونة وحدها؟",
-                options: ["الزمن المستغرق لاكتمال التفاعل", "النسبة المولية بين المتفاعلات", "الحالة الفيزيائية للنواتج", "النسبة الكتلية بين المواد"],
-                correct: 0
+                q: "أي معلومة 'لا' توفرها المعادلة الكيميائية الموزونة؟",
+                options: ["سرعة التفاعل", "نسبة المولات", "حالة المادة", "حفظ الكتلة"],
+                correct: 0,
+                explanation: "المعادلة الموزونة تخبرنا 'ماذا' و 'بكم' يتفاعل، لكنها لا تذكر 'متى' أو 'ما هي سرعة' حدوث ذلك."
             },
             {
-                q: "إذا كانت كتلة النواتج الكلية 68g، فما هي كتل المتفاعلات الداخلة في التفاعل على التوالي (N₂, H₂)?",
-                options: ["56g نيتروجين و 12g هيدروجين", "28g نيتروجين و 40g هيدروجين", "34g نيتروجين و 34g هيدروجين", "60g نيتروجين و 8g هيدروجين"],
-                correct: 0
+                q: "إذا أنتج التفاعل 68g من الأمونيا، فكم كانت كتلة النيتروجين المتفاعل؟",
+                options: ["56g", "28g", "34g", "14g"],
+                correct: 0,
+                explanation: "إنتاج 34g يتطلب 28g نيتروجين. وبما أن 68g هي الضعف، نحتاج ضعف كمية النيتروجين (28 × 2 = 56g)."
             }
         ];
 
-        let currentQuestion = 0;
+        let currentQ = 0;
         let score = 0;
-        let selectedOption = null;
-
-        const questionText = document.getElementById('question-text');
-        const optionsContainer = document.getElementById('options-container');
-        const nextBtn = document.getElementById('next-btn');
-        const currentQuestionNum = document.getElementById('current-question-num');
-        const progressBar = document.getElementById('progress-bar');
-        const progressPercent = document.getElementById('progress-percent');
+        let answered = false;
 
         function loadQuestion() {
-            selectedOption = null;
-            nextBtn.disabled = true;
-            const qData = quizData[currentQuestion];
+            answered = false;
+            document.getElementById('next-btn').classList.add('hidden');
+            document.getElementById('explanation-container').classList.remove('show');
             
-            questionText.innerText = qData.q;
-            currentQuestionNum.innerText = currentQuestion + 1;
+            const q = quizData[currentQ];
+            document.getElementById('question-text').innerText = q.q;
+            document.getElementById('current-question-num').innerText = currentQ + 1;
             
-            // Update Progress
-            const progress = ((currentQuestion + 1) / quizData.length) * 100;
-            progressBar.style.width = `${progress}%`;
-            progressPercent.innerText = `${Math.round(progress)}%`;
+            const progress = ((currentQ + 1) / quizData.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+            document.getElementById('progress-percent').innerText = `${Math.round(progress)}%`;
 
-            optionsContainer.innerHTML = '';
-            qData.options.forEach((option, index) => {
-                const button = document.createElement('button');
-                button.className = "w-full text-right p-4 rounded-xl border-2 border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all font-medium text-slate-700 flex items-center justify-between group";
-                button.innerHTML = `
-                    <span>${option}</span>
-                    <div class="w-5 h-5 rounded-full border-2 border-slate-200 group-hover:border-blue-400"></div>
-                `;
-                button.onclick = () => selectOption(index, button);
-                optionsContainer.appendChild(button);
-            });
+            const optionsHTML = q.options.map((opt, i) => `
+                <button onclick="handleAnswer(${i}, this)" class="option-btn w-full text-right p-4 rounded-xl border-2 border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-all font-medium text-slate-700">
+                    ${opt}
+                </button>
+            `).join('');
+            document.getElementById('options-container').innerHTML = optionsHTML;
         }
 
-        function selectOption(index, element) {
-            selectedOption = index;
-            nextBtn.disabled = false;
+        function handleAnswer(idx, btn) {
+            if (answered) return;
+            answered = true;
             
-            // Clear previous selection
-            const buttons = optionsContainer.querySelectorAll('button');
-            buttons.forEach(btn => {
-                btn.classList.remove('border-blue-500', 'bg-blue-50');
-                btn.classList.add('border-slate-100');
-                btn.querySelector('div').classList.replace('bg-blue-500', 'bg-transparent');
-            });
+            const correctIdx = quizData[currentQ].correct;
+            const buttons = document.querySelectorAll('.option-btn');
+            
+            if (idx === correctIdx) {
+                btn.classList.add('correct');
+                score++;
+                showFeedback(true);
+            } else {
+                btn.classList.add('wrong');
+                buttons[correctIdx].classList.add('correct');
+                showFeedback(false);
+            }
+            
+            document.getElementById('next-btn').classList.remove('hidden');
+        }
 
-            // Mark current selection
-            element.classList.replace('border-slate-100', 'border-blue-500');
-            element.classList.add('bg-blue-50');
-            element.querySelector('div').classList.add('bg-blue-500', 'border-blue-500');
+        function showFeedback(isCorrect) {
+            const container = document.getElementById('explanation-container');
+            const title = document.getElementById('feedback-title');
+            const icon = document.getElementById('feedback-icon');
+            const text = document.getElementById('explanation-text');
+
+            if (isCorrect) {
+                container.classList.replace('border-blue-500', 'border-green-500');
+                container.classList.replace('bg-blue-50', 'bg-green-50');
+                title.innerText = "إجابة صحيحة!";
+                title.className = "font-bold text-lg text-green-700";
+                icon.innerHTML = '<svg class="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>';
+            } else {
+                container.classList.replace('border-blue-500', 'border-red-500');
+                container.classList.replace('bg-blue-50', 'bg-red-50');
+                title.innerText = "تحتاج لمراجعة:";
+                title.className = "font-bold text-lg text-red-700";
+                icon.innerHTML = '<svg class="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
+            }
+            
+            text.innerText = quizData[currentQ].explanation;
+            container.classList.add('show');
         }
 
         function nextQuestion() {
-            if (selectedOption === quizData[currentQuestion].correct) {
-                score++;
-            }
-
-            currentQuestion++;
-
-            if (currentQuestion < quizData.length) {
+            currentQ++;
+            if (currentQ < quizData.length) {
+                // Reset container styles before loading next
+                const container = document.getElementById('explanation-container');
+                container.className = "explanation-box p-5 rounded-xl border-r-4 border-blue-500 bg-blue-50";
                 loadQuestion();
             } else {
-                showResults();
+                document.getElementById('quiz-container').classList.add('hidden');
+                document.getElementById('results-container').classList.remove('hidden');
+                document.getElementById('final-score').innerText = score;
             }
         }
 
-        function showResults() {
-            document.getElementById('quiz-container').classList.add('hidden');
-            document.getElementById('results-container').classList.remove('hidden');
-            document.getElementById('final-score').innerText = score;
-        }
-
-        // Initial Load
         loadQuestion();
     </script>
 </body>
