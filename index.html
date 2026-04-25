@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اختبار الكيمياء المتقدم | تحليل المعادلات</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Tajawal', sans-serif; }
+        .transition-all { transition: all 0.3s ease; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen flex flex-col items-center py-10 px-4">
+
+    <header class="max-w-3xl w-full text-center mb-10">
+        <h1 class="text-3xl font-bold text-slate-800 mb-2">اختبار الكيمياء المتقدم</h1>
+        <p class="text-slate-600 font-medium">تحليل المعلومات المستخلصة من المعادلة الكيميائية الموزونة</p>
+        <div class="h-1 w-20 bg-blue-500 mx-auto mt-4 rounded-full"></div>
+    </header>
+
+    <main id="quiz-container" class="max-w-3xl w-full bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+        <div class="mb-8">
+            <div class="flex justify-between text-sm text-slate-500 mb-2">
+                <span>السؤال <span id="current-question-num">1</span> من 10</span>
+                <span id="progress-percent">10%</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div id="progress-bar" class="bg-blue-500 h-full transition-all duration-500" style="width: 10%;"></div>
+            </div>
+        </div>
+
+        <div id="question-content">
+            <h2 id="question-text" class="text-xl font-bold text-slate-800 mb-6 leading-relaxed">
+                جاري تحميل السؤال...
+            </h2>
+            <div id="options-container" class="space-y-3">
+                </div>
+        </div>
+
+        <div class="mt-8 flex justify-between items-center border-t pt-6">
+            <button id="next-btn" onclick="nextQuestion()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                السؤال التالي
+            </button>
+        </div>
+    </main>
+
+    <div id="results-container" class="hidden max-w-2xl w-full bg-white rounded-2xl shadow-xl p-10 text-center border border-slate-100">
+        <div class="mb-6">
+            <div class="inline-flex items-center justify-center w-20 h-20 bg-green-100 text-green-600 rounded-full mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 class="text-3xl font-bold text-slate-800">اكتمل الاختبار!</h2>
+            <p class="text-slate-600 mt-2">نتيجتك النهائية هي:</p>
+        </div>
+        <div class="text-6xl font-black text-blue-600 mb-8"><span id="final-score">0</span>/10</div>
+        <button onclick="location.reload()" class="bg-slate-800 hover:bg-slate-900 text-white px-10 py-3 rounded-xl font-bold transition-all">
+            إعادة المحاولة
+        </button>
+    </div>
+
+    <script>
+        const quizData = [
+            {
+                q: "في تفاعل تكوين الأمونيا، إذا قمنا بمضاعفة كمية غاز النيتروجين المستخدمة مع بقاء الهيدروجين كافياً، كيف ستتغير النسبة المولية بين N₂ و H₂ في المعادلة الموزونة؟",
+                options: ["تظل النسبة ثابتة عند 1:3", "تتضاعف لتصبح 2:3", "تقل النسبة للنصف لتصبح 0.5:3", "تتغير النسبة الكتلية فقط"],
+                correct: 0
+            },
+            {
+                q: "بالنظر إلى النسبة الكتلية بين النيتروجين والهيدروجين (28g : 6g)، إذا تفاعل 14g من النيتروجين تماماً، فما هي كتلة الأمونيا الناتجة بناءً على قانون حفظ الكتلة؟",
+                options: ["17 جرام", "34 جرام", "20 جرام", "7 جرام"],
+                correct: 0
+            },
+            {
+                q: "عند تحول المتفاعلات بالكامل إلى نواتج في هذا التفاعل، ماذا يحدث للعدد الإجمالي للجزيئات في الوعاء؟",
+                options: ["يقل العدد الإجمالي للجزيئات بمقدار النصف", "يزداد العدد الإجمالي للجزيئات", "يظل عدد الجزيئات ثابتاً", "يتضاعف عدد الجزيئات"],
+                correct: 0
+            },
+            {
+                q: "بناءً على البيانات الكتلية، ما هي النسبة الكتلية المبسطة للهيدروجين إلى الأمونيا الناتجة؟",
+                options: ["3 : 17", "1 : 3", "6 : 28", "2 : 3"],
+                correct: 0
+            },
+            {
+                q: "أي من الخصائص التالية للمواد المتفاعلة والناتجة يمكن استنتاجها مباشرة من الرمز (g) الملحق بالصيغ الكيميائية؟",
+                options: ["الحالة الفيزيائية للمواد", "الكتلة المولية لكل مادة", "سرعة التفاعل الكيميائي", "لون الغازات المتكونة"],
+                correct: 0
+            },
+            {
+                q: "إذا كان لدينا 6 مولات من غاز الهيدروجين، فكم مولاً من غاز النيتروجين نحتاج للتفاعل معه تماماً لإنتاج الأمونيا؟",
+                options: ["2 مول", "6 مولات", "3 مولات", "12 مول"],
+                correct: 0
+            },
+            {
+                q: "لماذا تختلف النسبة بين أعداد الجزيئات (1:3) عن النسبة بين الكتل (28:6) لنفس المواد المتفاعلة؟",
+                options: ["لأن الجزيئات المختلفة لها كتل مولية مختلفة", "لأن قانون حفظ الكتلة لا ينطبق على الجزيئات", "بسبب خطأ في موازنة المعادلة", "لأن النيتروجين غاز خامل"],
+                correct: 0
+            },
+            {
+                q: "إذا بدأنا التفاعل بـ 10 جزيئات من N₂ و 30 جزيئاً من H₂، كم جزيئاً من NH₃ سينتج؟",
+                options: ["20 جزيء", "10 جزيئات", "40 جزيء", "30 جزيء"],
+                correct: 0
+            },
+            {
+                q: "ما هي المعلومة التي لا يمكننا الحصول عليها مباشرة من المعادلة الكيميائية الموزونة وحدها؟",
+                options: ["الزمن المستغرق لاكتمال التفاعل", "النسبة المولية بين المتفاعلات", "الحالة الفيزيائية للنواتج", "النسبة الكتلية بين المواد"],
+                correct: 0
+            },
+            {
+                q: "إذا كانت كتلة النواتج الكلية 68g، فما هي كتل المتفاعلات الداخلة في التفاعل على التوالي (N₂, H₂)?",
+                options: ["56g نيتروجين و 12g هيدروجين", "28g نيتروجين و 40g هيدروجين", "34g نيتروجين و 34g هيدروجين", "60g نيتروجين و 8g هيدروجين"],
+                correct: 0
+            }
+        ];
+
+        let currentQuestion = 0;
+        let score = 0;
+        let selectedOption = null;
+
+        const questionText = document.getElementById('question-text');
+        const optionsContainer = document.getElementById('options-container');
+        const nextBtn = document.getElementById('next-btn');
+        const currentQuestionNum = document.getElementById('current-question-num');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+
+        function loadQuestion() {
+            selectedOption = null;
+            nextBtn.disabled = true;
+            const qData = quizData[currentQuestion];
+            
+            questionText.innerText = qData.q;
+            currentQuestionNum.innerText = currentQuestion + 1;
+            
+            // Update Progress
+            const progress = ((currentQuestion + 1) / quizData.length) * 100;
+            progressBar.style.width = `${progress}%`;
+            progressPercent.innerText = `${Math.round(progress)}%`;
+
+            optionsContainer.innerHTML = '';
+            qData.options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.className = "w-full text-right p-4 rounded-xl border-2 border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all font-medium text-slate-700 flex items-center justify-between group";
+                button.innerHTML = `
+                    <span>${option}</span>
+                    <div class="w-5 h-5 rounded-full border-2 border-slate-200 group-hover:border-blue-400"></div>
+                `;
+                button.onclick = () => selectOption(index, button);
+                optionsContainer.appendChild(button);
+            });
+        }
+
+        function selectOption(index, element) {
+            selectedOption = index;
+            nextBtn.disabled = false;
+            
+            // Clear previous selection
+            const buttons = optionsContainer.querySelectorAll('button');
+            buttons.forEach(btn => {
+                btn.classList.remove('border-blue-500', 'bg-blue-50');
+                btn.classList.add('border-slate-100');
+                btn.querySelector('div').classList.replace('bg-blue-500', 'bg-transparent');
+            });
+
+            // Mark current selection
+            element.classList.replace('border-slate-100', 'border-blue-500');
+            element.classList.add('bg-blue-50');
+            element.querySelector('div').classList.add('bg-blue-500', 'border-blue-500');
+        }
+
+        function nextQuestion() {
+            if (selectedOption === quizData[currentQuestion].correct) {
+                score++;
+            }
+
+            currentQuestion++;
+
+            if (currentQuestion < quizData.length) {
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+
+        function showResults() {
+            document.getElementById('quiz-container').classList.add('hidden');
+            document.getElementById('results-container').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+        }
+
+        // Initial Load
+        loadQuestion();
+    </script>
+</body>
+</html>
