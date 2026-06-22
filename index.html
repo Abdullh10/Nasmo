@@ -1653,7 +1653,7 @@ function bindTeacherSession(){
 }
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
-let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null };
+let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false };
 function csvEscape(v){
   v = String(v==null?'':v);
   return /[",\n]/.test(v) ? ('"' + v.replace(/"/g,'""') + '"') : v;
@@ -1686,14 +1686,16 @@ function downloadTextFile(filename, text, mime){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
 }
-async function importTeachersFromCsv(text){
-  const rows = parseCsv(text);
-  if (!rows.length){ toast('الملف فارغ.'); return; }
-  let dataRows = rows;
-  const first = (rows[0][0]||'').trim();
-  if (first === 'الاسم' || first.toLowerCase() === 'name'){ dataRows = rows.slice(1); }
-  if (!dataRows.length){ toast('لا توجد بيانات معلمين في الملف.'); return; }
-
+function parseFlexibleRows(text){
+  text = String(text||'').replace(/^﻿/, '');
+  const delim = text.indexOf('\t') > -1 ? '\t' : ',';
+  if (delim === '\t'){
+    return text.split(/\r\n|\n|\r/).map(function(line){ return line.split('\t').map(function(c){ return c.trim(); }); })
+      .filter(function(r){ return r.some(function(c){ return c.trim()!==''; }); });
+  }
+  return parseCsv(text);
+}
+async function importTeacherRows(dataRows){
   const existingUsers = await DB.listUsers({});
   const existingUsernames = existingUsers.map(function(u){ return u.username; });
   const created = [];
@@ -1713,11 +1715,29 @@ async function importTeachersFromCsv(text){
       created.push({ full_name:fullName, username:candidate, password:password });
     }catch(e){ /* تجاوز السجل المتعارض والمتابعة للسجل التالي */ }
   }
-  if (!created.length){ toast('لم يتم استيراد أي معلم، يرجى مراجعة تنسيق الملف.'); return; }
+  if (!created.length){ toast('لم يتم استيراد أي معلم، يرجى مراجعة تنسيق البيانات.'); return; }
   toast('تم استيراد '+created.length+' معلمًا بنجاح. سيتم تنزيل بيانات الدخول الخاصة بهم.');
   const credRows = [['الاسم','اسم المستخدم','كلمة المرور']].concat(created.map(function(c){ return [c.full_name, c.username, c.password]; }));
   downloadTextFile('بيانات_دخول_المعلمين_المستوردين.csv', toCsv(credRows));
   render(); bindAdminUsers();
+}
+async function importTeachersFromCsv(text){
+  const rows = parseCsv(text);
+  if (!rows.length){ toast('الملف فارغ.'); return; }
+  let dataRows = rows;
+  const first = (rows[0][0]||'').trim();
+  if (first === 'الاسم' || first.toLowerCase() === 'name'){ dataRows = rows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات معلمين في الملف.'); return; }
+  await importTeacherRows(dataRows);
+}
+async function importTeachersFromPaste(text){
+  const rows = parseFlexibleRows(text);
+  if (!rows.length){ toast('لم تُلصق أي بيانات.'); return; }
+  let dataRows = rows;
+  const first = (rows[0][0]||'').trim();
+  if (first === 'الاسم' || first.toLowerCase() === 'name'){ dataRows = rows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات معلمين في النص الملصق.'); return; }
+  await importTeacherRows(dataRows);
 }
 async function screenAdminUsers(){
   const users = await DB.listUsers({});
@@ -1741,6 +1761,7 @@ async function screenAdminUsers(){
   }).join('');
 
   const modal = AdminUI.modalOpen ? userModal(users, communities) : '';
+  const pasteModal = AdminUI.pasteOpen ? pasteImportModal() : '';
 
   return (
     '<div class="section-head"><h2>المستخدمون</h2>' +
@@ -1748,15 +1769,31 @@ async function screenAdminUsers(){
         '<button class="btn btn-ghost btn-sm" data-action="downloadTeacherTemplate">تنزيل نموذج Excel للمعلمين</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="triggerTeacherImport">رفع ملف المعلمين</button>' +
         '<input type="file" id="teacherImportInput" accept=".csv" style="display:none;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="openPasteImport">لصق بيانات المعلمين</button>' +
         '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم المعلم والتخصص ورقم الجوال، ثم ارفعه لإنشاء حسابات المعلمين دفعة واحدة. بعد الاستيراد، وزّعهم على المجتمعات المهنية من خلال تعديل كل حساب.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم المعلم والتخصص ورقم الجوال، ثم ارفعه لإنشاء حسابات المعلمين دفعة واحدة. إذا تعذّر رفع الملف، استخدم "لصق بيانات المعلمين" للصق البيانات نصًا مباشرة. بعد الاستيراد، وزّعهم على المجتمعات المهنية من خلال تعديل كل حساب.</p>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
-    modal
+    modal + pasteModal
+  );
+}
+function pasteImportModal(){
+  return (
+    '<div class="modal-bg" data-action="closeModalBg2">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>لصق بيانات المعلمين</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات هنا مباشرة من Excel (سطر لكل معلم، الأعمدة بالترتيب: الاسم، ثم التخصص، ثم رقم الجوال). يمكن أن يكون السطر الأول عناوين الأعمدة، وسيتم تجاهله تلقائيًا.</p>' +
+        '<div class="field"><textarea class="input" id="pasteImportText" rows="10" placeholder="مثال:&#10;أحمد العتيبي	رياضيات	0501234567&#10;سارة الغامدي	لغة عربية	0559876543" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="confirmPasteImport">استيراد</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeModalBg2">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
   );
 }
 function userModal(users, communities){
@@ -1844,6 +1881,18 @@ function bindAdminUsers(){
     const reader = new FileReader();
     reader.onload = async function(){ await importTeachersFromCsv(String(reader.result)); };
     reader.readAsText(file, 'UTF-8');
+  });
+
+  const pasteBtn = document.querySelector('[data-action="openPasteImport"]');
+  if (pasteBtn) pasteBtn.addEventListener('click', function(){ AdminUI.pasteOpen = true; render(); bindAdminUsers(); });
+  const pasteCloseEls = document.querySelectorAll('[data-action="closeModalBg2"]');
+  pasteCloseEls.forEach(function(el){ el.addEventListener('click', function(){ AdminUI.pasteOpen = false; render(); bindAdminUsers(); }); });
+  const pasteConfirmBtn = document.querySelector('[data-action="confirmPasteImport"]');
+  if (pasteConfirmBtn) pasteConfirmBtn.addEventListener('click', async function(){
+    const text = document.getElementById('pasteImportText').value;
+    if (!text || !text.trim()){ toast('يرجى لصق البيانات أولًا.'); return; }
+    await importTeachersFromPaste(text);
+    AdminUI.pasteOpen = false; render(); bindAdminUsers();
   });
 }
 
