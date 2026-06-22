@@ -1653,7 +1653,7 @@ function bindTeacherSession(){
 }
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
-let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false };
+let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[] };
 function csvEscape(v){
   v = String(v==null?'':v);
   return /[",\n]/.test(v) ? ('"' + v.replace(/"/g,'""') + '"') : v;
@@ -1742,11 +1742,16 @@ async function importTeachersFromPaste(text){
 async function screenAdminUsers(){
   const users = await DB.listUsers({});
   const communities = await DB.listCommunities({});
+  AdminUI.selectedIds = AdminUI.selectedIds.filter(function(id){ return users.some(function(u){ return u.id===id; }) && id!==State.user.id; });
+  const selectableUsers = users.filter(function(u){ return u.id!==State.user.id; });
+  const allSelected = selectableUsers.length>0 && selectableUsers.every(function(u){ return AdminUI.selectedIds.indexOf(u.id)>-1; });
   const rows = users.map(function(u){
     const canDelete = u.id !== State.user.id;
     const comm = u.community_id ? communities.find(function(c){ return c.id===u.community_id; }) : null;
+    const checked = AdminUI.selectedIds.indexOf(u.id)>-1;
     return (
       '<tr>' +
+        '<td>'+(canDelete?'<input type="checkbox" class="userSelectChk" data-id="'+u.id+'" '+(checked?'checked':'')+'>':'')+'</td>' +
         '<td><b>'+esc(u.full_name)+'</b></td>' +
         '<td class="mono">'+esc(u.username)+'</td>' +
         '<td><span class="badge approved">'+esc(ROLE_LABEL[u.role]||u.role)+'</span></td>' +
@@ -1763,6 +1768,19 @@ async function screenAdminUsers(){
   const modal = AdminUI.modalOpen ? userModal(users, communities) : '';
   const pasteModal = AdminUI.pasteOpen ? pasteImportModal() : '';
 
+  const bulkBar = AdminUI.selectedIds.length>0 ? (
+    '<div class="bulk-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card-2,#f4f6f8);border:1px solid var(--border,#e2e6ea);border-radius:10px;padding:10px 12px;margin-bottom:12px;">' +
+      '<b>المحدد: '+AdminUI.selectedIds.length+'</b>' +
+      '<select class="input" id="bulkCommunitySelect" style="max-width:240px;">' +
+        '<option value="">— بدون مجتمع —</option>' +
+        communities.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+' — '+esc(c.school)+'</option>'; }).join('') +
+      '</select>' +
+      '<button class="btn btn-ghost btn-sm" data-action="bulkAssignCommunity">إسناد للمجتمع المحدد</button>' +
+      '<button class="btn btn-danger btn-sm" data-action="bulkDeleteUsers">حذف المحددين</button>' +
+      '<button class="btn btn-ghost btn-sm" data-action="bulkClearSelection">إلغاء التحديد</button>' +
+    '</div>'
+  ) : '';
+
   return (
     '<div class="section-head"><h2>المستخدمون</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
@@ -1773,10 +1791,11 @@ async function screenAdminUsers(){
         '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم المعلم والتخصص ورقم الجوال، ثم ارفعه لإنشاء حسابات المعلمين دفعة واحدة. إذا تعذّر رفع الملف، استخدم "لصق بيانات المعلمين" للصق البيانات نصًا مباشرة. بعد الاستيراد، وزّعهم على المجتمعات المهنية من خلال تعديل كل حساب.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم المعلم والتخصص ورقم الجوال، ثم ارفعه لإنشاء حسابات المعلمين دفعة واحدة. إذا تعذّر رفع الملف، استخدم "لصق بيانات المعلمين" للصق البيانات نصًا مباشرة. بعد الاستيراد، حدد المعلمين بعلامة ✓ في أول عمود وأسندهم لمجتمع مهني بزر واحد، أو حدّد عدة حسابات لحذفها دفعة واحدة.</p>' +
+    bulkBar +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
+      '<thead><tr><th><input type="checkbox" id="userSelectAllChk" '+(allSelected?'checked':'')+'></th><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal + pasteModal
   );
@@ -1893,6 +1912,45 @@ function bindAdminUsers(){
     if (!text || !text.trim()){ toast('يرجى لصق البيانات أولًا.'); return; }
     await importTeachersFromPaste(text);
     AdminUI.pasteOpen = false; render(); bindAdminUsers();
+  });
+
+  document.querySelectorAll('.userSelectChk').forEach(function(el){
+    el.addEventListener('change', function(){
+      const id = el.getAttribute('data-id');
+      const idx = AdminUI.selectedIds.indexOf(id);
+      if (el.checked && idx===-1) AdminUI.selectedIds.push(id);
+      else if (!el.checked && idx>-1) AdminUI.selectedIds.splice(idx,1);
+      render(); bindAdminUsers();
+    });
+  });
+  const selectAllChk = document.getElementById('userSelectAllChk');
+  if (selectAllChk) selectAllChk.addEventListener('change', function(){
+    const ids = Array.prototype.map.call(document.querySelectorAll('.userSelectChk'), function(el){ return el.getAttribute('data-id'); });
+    AdminUI.selectedIds = selectAllChk.checked ? ids : [];
+    render(); bindAdminUsers();
+  });
+  const bulkClearBtn = document.querySelector('[data-action="bulkClearSelection"]');
+  if (bulkClearBtn) bulkClearBtn.addEventListener('click', function(){ AdminUI.selectedIds = []; render(); bindAdminUsers(); });
+  const bulkAssignBtn = document.querySelector('[data-action="bulkAssignCommunity"]');
+  if (bulkAssignBtn) bulkAssignBtn.addEventListener('click', async function(){
+    const communityId = document.getElementById('bulkCommunitySelect').value || null;
+    const ids = AdminUI.selectedIds.slice();
+    try{
+      for (let i=0;i<ids.length;i++){ await DB.updateUser(ids[i], { community_id: communityId }); }
+      toast('تم إسناد '+ids.length+' مستخدمًا إلى المجتمع المحدد.');
+      AdminUI.selectedIds = []; render(); bindAdminUsers();
+    }catch(e){ toast(e.message); }
+  });
+  const bulkDeleteBtn = document.querySelector('[data-action="bulkDeleteUsers"]');
+  if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
+    const ids = AdminUI.selectedIds.slice();
+    if (!ids.length) return;
+    if (!confirm('هل تريد حذف '+ids.length+' مستخدمًا المحددين؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    try{
+      for (let i=0;i<ids.length;i++){ await DB.deleteUser(ids[i]); }
+      toast('تم حذف '+ids.length+' مستخدمًا.');
+      AdminUI.selectedIds = []; render(); bindAdminUsers();
+    }catch(e){ toast(e.message); }
   });
 }
 
