@@ -300,6 +300,15 @@ const CONFIG = {
 
 /* SQL_SCHEMA (نفّذها في SQL Editor داخل Supabase عند التفعيل):
 
+create table communities (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  name text not null,
+  meeting_day text,
+  meeting_time text,
+  created_at timestamptz default now()
+);
+
 create table profiles (
   id uuid primary key default gen_random_uuid(),
   username text unique not null,
@@ -307,6 +316,8 @@ create table profiles (
   full_name text not null,
   role text not null check (role in ('coordinator','principal','teacher','admin')),
   school text not null,
+  community_id uuid references communities(id),
+  specialty text,
   created_at timestamptz default now()
 );
 
@@ -371,6 +382,7 @@ const LS_USERS = "dtd_users_v1";
 const LS_SUBS  = "dtd_submissions_v1";
 const LS_SETTINGS  = "dtd_settings_v1";
 const LS_INDSTATUS = "dtd_indicator_status_v1";
+const LS_COMMUNITIES = "dtd_communities_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -382,11 +394,17 @@ function fmtDateTime(iso){
 }
 
 function localSeed(){
+  if (!localStorage.getItem(LS_COMMUNITIES)) {
+    const community = { id: uid(), school:'مدرسة العلا الثانوية', name:'إثراء', meeting_day:'الاثنين', meeting_time:'الحصة الثالثة (9:10 - 10:00)', created_at: nowIso() };
+    localStorage.setItem(LS_COMMUNITIES, JSON.stringify([community]));
+  }
   if (!localStorage.getItem(LS_USERS)) {
+    const communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]');
+    const community = communities[0];
     const users = [
-      { id: uid(), username:'coordinator', password:'1234', full_name:'أ. منسق المجتمع المهني', role:'coordinator', school:'مدرسة العلا الثانوية' },
+      { id: uid(), username:'coordinator', password:'1234', full_name:'أ. منسق المجتمع المهني', role:'coordinator', school:'مدرسة العلا الثانوية', community_id: community?community.id:null, specialty:'' },
       { id: uid(), username:'principal',   password:'1234', full_name:'مدير مدرسة العلا الثانوية', role:'principal',   school:'مدرسة العلا الثانوية' },
-      { id: uid(), username:'teacher',     password:'1234', full_name:'أ. خالد الأحمد', role:'teacher', school:'مدرسة العلا الثانوية' },
+      { id: uid(), username:'teacher',     password:'1234', full_name:'أ. خالد الأحمد', role:'teacher', school:'مدرسة العلا الثانوية', community_id: community?community.id:null, specialty:'كيمياء' },
       { id: uid(), username:'admin',       password:'1234', full_name:'مدير نظام المنصة', role:'admin', school:'مدرسة العلا الثانوية' }
     ];
     localStorage.setItem(LS_USERS, JSON.stringify(users));
@@ -566,6 +584,49 @@ const DB = {
     all[school][indicatorId] = Object.assign({}, all[school][indicatorId], patch);
     localStorage.setItem(LS_INDSTATUS, JSON.stringify(all));
     return all[school][indicatorId];
+  },
+  async listCommunities(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'communities?order=created_at.asc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      const rows = await remoteFetch(path);
+      return rows || [];
+    }
+    let communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]');
+    if (filter.school) communities = communities.filter(function(c){ return c.school===filter.school; });
+    return communities;
+  },
+  async createCommunity(obj){
+    obj.id = uid(); obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('communities', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]');
+    communities.push(obj);
+    localStorage.setItem(LS_COMMUNITIES, JSON.stringify(communities));
+    return obj;
+  },
+  async updateCommunity(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('communities?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]');
+    const idx = communities.findIndex(function(c){ return c.id===id; });
+    if (idx>-1){ communities[idx] = Object.assign({}, communities[idx], patch); localStorage.setItem(LS_COMMUNITIES, JSON.stringify(communities)); return communities[idx]; }
+    return null;
+  },
+  async deleteCommunity(id){
+    if (isRemote()){
+      await remoteFetch('communities?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]');
+    communities = communities.filter(function(c){ return c.id!==id; });
+    localStorage.setItem(LS_COMMUNITIES, JSON.stringify(communities));
+    return true;
   }
 };
 
@@ -646,7 +707,7 @@ function indicatorPeriodLabel(ind){
 }
 
 /* ---------------------- الحالة العامة والتوجيه ---------------------- */
-const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms' };
+const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms', adminTab:'users' };
 
 function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); }
 function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
@@ -880,9 +941,24 @@ function dashTabsHtml(){
     '</div>'
   );
 }
+function adminTabsHtml(){
+  return (
+    '<div class="tabs no-print" style="margin-bottom:20px;">' +
+      '<button class="tab '+(State.adminTab==='users'?'active':'')+'" data-action="adminTab" data-tab="users">المستخدمون</button>' +
+      '<button class="tab '+(State.adminTab==='communities'?'active':'')+'" data-action="adminTab" data-tab="communities">المجتمعات المهنية</button>' +
+    '</div>'
+  );
+}
 async function screenDashboard(){
   if (State.user.role==='teacher') return screenTeacherTasks();
-  if (State.user.role==='admin') return screenAdminUsers();
+  if (State.user.role==='admin'){
+    return (
+      '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
+      '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين، والمجتمعات المهنية</div>' +
+      adminTabsHtml() +
+      (State.adminTab==='communities' ? await screenAdminCommunities() : await screenAdminUsers())
+    );
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -963,7 +1039,7 @@ async function screenDashboard(){
 function bindDashboard(){
   document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
   if (State.user.role==='teacher') bindTeacherTasks();
-  else if (State.user.role==='admin') bindAdminUsers();
+  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else bindAdminUsers(); }
   else if (State.dashTab==='indicators') bindIndicators();
 }
 
@@ -1077,17 +1153,20 @@ function bindTeacherSession(){
 }
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
-let AdminUI = { modalOpen:false, editingId:null };
+let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null };
 async function screenAdminUsers(){
   const users = await DB.listUsers({});
+  const communities = await DB.listCommunities({});
   const rows = users.map(function(u){
     const canDelete = u.id !== State.user.id;
+    const comm = u.community_id ? communities.find(function(c){ return c.id===u.community_id; }) : null;
     return (
       '<tr>' +
         '<td><b>'+esc(u.full_name)+'</b></td>' +
         '<td class="mono">'+esc(u.username)+'</td>' +
         '<td><span class="badge approved">'+esc(ROLE_LABEL[u.role]||u.role)+'</span></td>' +
         '<td>'+esc(u.school)+'</td>' +
+        '<td>'+(comm?esc(comm.name):'<span style="color:var(--muted);">—</span>')+'</td>' +
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="editUser" data-id="'+u.id+'">تعديل</button>' +
           (canDelete ? '<button class="btn btn-danger btn-sm" data-action="deleteUser" data-id="'+u.id+'">حذف</button>' : '') +
@@ -1096,21 +1175,20 @@ async function screenAdminUsers(){
     );
   }).join('');
 
-  const modal = AdminUI.modalOpen ? userModal(users) : '';
+  const modal = AdminUI.modalOpen ? userModal(users, communities) : '';
 
   return (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين</div>' +
     '<div class="section-head"><h2>المستخدمون</h2><button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button></div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="5">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
+      '<thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal
   );
 }
-function userModal(users){
+function userModal(users, communities){
   const editing = AdminUI.editingId ? users.find(function(u){ return u.id===AdminUI.editingId; }) : null;
+  const selectedCommunity = editing ? (editing.community_id||'') : (AdminUI.presetCommunityId||'');
   return (
     '<div class="modal-bg" data-action="closeModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
@@ -1122,6 +1200,11 @@ function userModal(users){
           ['coordinator','principal','teacher','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
         '</select></div>' +
         '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'"></div>' +
+        '<div class="field"><label>المجتمع المهني (اختياري)</label><select class="input" id="umCommunity">' +
+          '<option value="">— بدون مجتمع —</option>' +
+          communities.map(function(c){ return '<option value="'+c.id+'" '+(selectedCommunity===c.id?'selected':'')+'>'+esc(c.name)+' — '+esc(c.school)+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>التخصص (اختياري)</label><input class="input" id="umSpecialty" value="'+esc(editing?editing.specialty||'':'')+'"></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="saveUser" data-id="'+(editing?editing.id:'')+'">حفظ</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeModal">إلغاء</button>' +
@@ -1132,9 +1215,9 @@ function userModal(users){
 }
 function bindAdminUsers(){
   const addBtn = document.querySelector('[data-action="addUser"]');
-  if (addBtn) addBtn.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=null; render(); bindAdminUsers(); });
+  if (addBtn) addBtn.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers(); });
   document.querySelectorAll('[data-action="editUser"]').forEach(function(el){
-    el.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=el.getAttribute('data-id'); render(); bindAdminUsers(); });
+    el.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=el.getAttribute('data-id'); AdminUI.presetCommunityId=null; render(); bindAdminUsers(); });
   });
   document.querySelectorAll('[data-action="deleteUser"]').forEach(function(el){
     el.addEventListener('click', async function(){
@@ -1144,9 +1227,9 @@ function bindAdminUsers(){
     });
   });
   const closeBtn = document.querySelector('[data-action="closeModal"]');
-  if (closeBtn) closeBtn.addEventListener('click', function(){ AdminUI.modalOpen=false; render(); bindAdminUsers(); });
+  if (closeBtn) closeBtn.addEventListener('click', function(){ AdminUI.modalOpen=false; AdminUI.presetCommunityId=null; render(); bindAdminUsers(); });
   const bg = document.querySelector('[data-action="closeModalBg"]');
-  if (bg) bg.addEventListener('click', function(){ AdminUI.modalOpen=false; render(); bindAdminUsers(); });
+  if (bg) bg.addEventListener('click', function(){ AdminUI.modalOpen=false; AdminUI.presetCommunityId=null; render(); bindAdminUsers(); });
   const saveBtn = document.querySelector('[data-action="saveUser"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const fullName = document.getElementById('umFullName').value.trim();
@@ -1154,19 +1237,144 @@ function bindAdminUsers(){
     const password = document.getElementById('umPassword').value.trim();
     const role = document.getElementById('umRole').value;
     const school = document.getElementById('umSchool').value.trim();
+    const communityId = document.getElementById('umCommunity').value;
+    const specialty = document.getElementById('umSpecialty').value.trim();
     if (!fullName || !username || !school || (!AdminUI.editingId && !password)){ toast('يرجى تعبئة جميع الحقول المطلوبة.'); return; }
     try{
       if (AdminUI.editingId){
-        const patch = { full_name:fullName, role:role, school:school };
+        const patch = { full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty };
         if (password) patch.password = password;
         await DB.updateUser(AdminUI.editingId, patch);
         toast('تم تحديث بيانات المستخدم.');
       } else {
-        await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school });
+        await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty });
         toast('تمت إضافة المستخدم بنجاح.');
       }
-      AdminUI.modalOpen=false; AdminUI.editingId=null; render(); bindAdminUsers();
+      AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers();
     }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- لوحة مدير النظام: إدارة المجتمعات المهنية ----- */
+let CommUI = { modalOpen:false, editingId:null };
+async function screenAdminCommunities(){
+  const communities = await DB.listCommunities({});
+  const users = await DB.listUsers({});
+
+  const cards = communities.map(function(c){
+    const members = users.filter(function(u){ return u.community_id===c.id; });
+    const leader = members.find(function(u){ return u.role==='coordinator'; });
+    const others = members.filter(function(u){ return u.role!=='coordinator'; });
+
+    const leaderBlock = leader
+      ? ('<div class="ind-row">' +
+           '<div class="ind-main"><div class="lbl">قائد المجتمع: '+esc(leader.full_name)+'</div>' +
+             '<div class="sub">اسم المستخدم: <span class="mono">'+esc(leader.username)+'</span></div></div>' +
+           '<div class="ind-side"><button class="btn btn-ghost btn-sm" data-action="exportLeaderCreds" data-id="'+leader.id+'">تصدير بيانات الدخول</button></div>' +
+         '</div>')
+      : ('<div class="ind-row">' +
+           '<div class="ind-main"><div class="lbl">لا يوجد قائد معيَّن لهذا المجتمع.</div></div>' +
+           '<div class="ind-side"><button class="btn btn-primary btn-sm" data-action="addLeaderForCommunity" data-id="'+c.id+'">+ تعيين قائد (إنشاء حساب)</button></div>' +
+         '</div>');
+
+    const memberRows = others.length
+      ? others.map(function(u){ return '<div class="sub" style="padding:3px 0;">'+esc(u.full_name)+(u.specialty?(' — '+esc(u.specialty)):'')+'</div>'; }).join('')
+      : '<div class="sub" style="padding:3px 0;color:var(--muted);">لا يوجد معلمون مُسندون لهذا المجتمع بعد.</div>';
+
+    return (
+      '<div class="program-card">' +
+        '<div class="ph">' +
+          '<h3>'+esc(c.name)+' <span style="color:var(--muted);font-weight:400;font-size:12px;">('+esc(c.school)+')</span></h3>' +
+          '<p>'+(c.meeting_day?('يوم الاجتماع: '+esc(c.meeting_day)+(c.meeting_time?(' — '+esc(c.meeting_time)):'')):'لم يُحدَّد وقت الاجتماع.')+'</p>' +
+        '</div>' +
+        leaderBlock +
+        '<div class="ind-row"><div class="ind-main"><div class="lbl">الأعضاء ('+others.length+')</div>'+memberRows+'</div></div>' +
+        '<div class="ind-row" style="justify-content:flex-end;">' +
+          '<button class="btn btn-ghost btn-sm" data-action="editCommunity" data-id="'+c.id+'">تعديل</button>' +
+          '<button class="btn btn-danger btn-sm" data-action="deleteCommunity" data-id="'+c.id+'">حذف</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+
+  const modal = CommUI.modalOpen ? communityModal(communities) : '';
+
+  return (
+    '<div class="section-head"><h2>المجتمعات المهنية</h2><button class="btn btn-primary" data-action="addCommunity">+ إضافة مجتمع</button></div>' +
+    (cards || '<p style="color:var(--muted);font-size:13.5px;">لا توجد مجتمعات مهنية بعد. أضف أول مجتمع للبدء بتوزيع المعلمين وتعيين قائده.</p>') +
+    modal
+  );
+}
+function communityModal(communities){
+  const editing = CommUI.editingId ? communities.find(function(c){ return c.id===CommUI.editingId; }) : null;
+  return (
+    '<div class="modal-bg" data-action="closeCommModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>'+(editing?'تعديل مجتمع مهني':'إضافة مجتمع مهني جديد')+'</h3>' +
+        '<div class="field"><label>اسم المجتمع</label><input class="input" id="cmName" value="'+esc(editing?editing.name:'')+'" placeholder="مثال: إثراء"></div>' +
+        '<div class="field"><label>المدرسة</label><input class="input" id="cmSchool" value="'+esc(editing?editing.school:State.user.school)+'"></div>' +
+        '<div class="field"><label>يوم الاجتماع الأسبوعي</label><input class="input" id="cmDay" value="'+esc(editing?editing.meeting_day||'':'')+'" placeholder="مثال: الاثنين"></div>' +
+        '<div class="field"><label>وقت الاجتماع الأسبوعي</label><input class="input" id="cmTime" value="'+esc(editing?editing.meeting_time||'':'')+'" placeholder="مثال: الحصة الثالثة (9:10 - 10:00)"></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveCommunity" data-id="'+(editing?editing.id:'')+'">حفظ</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeCommModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindAdminCommunities(){
+  const addBtn = document.querySelector('[data-action="addCommunity"]');
+  if (addBtn) addBtn.addEventListener('click', function(){ CommUI.modalOpen=true; CommUI.editingId=null; render(); bindAdminCommunities(); });
+  document.querySelectorAll('[data-action="editCommunity"]').forEach(function(el){
+    el.addEventListener('click', function(){ CommUI.modalOpen=true; CommUI.editingId=el.getAttribute('data-id'); render(); bindAdminCommunities(); });
+  });
+  document.querySelectorAll('[data-action="deleteCommunity"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذا المجتمع المهني؟ سيبقى الأعضاء بدون مجتمع.')) return;
+      try{ await DB.deleteCommunity(el.getAttribute('data-id')); toast('تم حذف المجتمع.'); render(); bindAdminCommunities(); }
+      catch(e){ toast(e.message); }
+    });
+  });
+  const closeBtn = document.querySelector('[data-action="closeCommModal"]');
+  if (closeBtn) closeBtn.addEventListener('click', function(){ CommUI.modalOpen=false; render(); bindAdminCommunities(); });
+  const bg = document.querySelector('[data-action="closeCommModalBg"]');
+  if (bg) bg.addEventListener('click', function(){ CommUI.modalOpen=false; render(); bindAdminCommunities(); });
+  const saveBtn = document.querySelector('[data-action="saveCommunity"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const name = document.getElementById('cmName').value.trim();
+    const school = document.getElementById('cmSchool').value.trim();
+    const day = document.getElementById('cmDay').value.trim();
+    const time = document.getElementById('cmTime').value.trim();
+    if (!name || !school){ toast('يرجى إدخال اسم المجتمع والمدرسة.'); return; }
+    try{
+      if (CommUI.editingId){
+        await DB.updateCommunity(CommUI.editingId, { name:name, school:school, meeting_day:day, meeting_time:time });
+        toast('تم تحديث المجتمع.');
+      } else {
+        await DB.createCommunity({ name:name, school:school, meeting_day:day, meeting_time:time });
+        toast('تمت إضافة المجتمع بنجاح.');
+      }
+      CommUI.modalOpen=false; CommUI.editingId=null; render(); bindAdminCommunities();
+    }catch(e){ toast(e.message); }
+  });
+  document.querySelectorAll('[data-action="addLeaderForCommunity"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      State.adminTab='users'; AdminUI.modalOpen=true; AdminUI.editingId=null; AdminUI.presetCommunityId=el.getAttribute('data-id');
+      render(); bindAdminUsers();
+    });
+  });
+  document.querySelectorAll('[data-action="exportLeaderCreds"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const users = await DB.listUsers({});
+      const u = users.find(function(x){ return x.id===el.getAttribute('data-id'); });
+      if (!u) return;
+      const text = 'اسم المستخدم: '+u.username+' / كلمة المرور: '+u.password;
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        try{ await navigator.clipboard.writeText(text); toast('تم نسخ بيانات الدخول.'); return; }catch(e){}
+      }
+      alert(text);
+    });
   });
 }
 
@@ -1744,6 +1952,7 @@ function bindGlobalAction(el){
   else if (action==='openView'){ el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); }); }
   else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
   else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
+  else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); go('dashboard'); }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
