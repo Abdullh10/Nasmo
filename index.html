@@ -391,6 +391,24 @@ create table submissions (
   updated_at timestamptz default now()
 );
 
+create table tasks (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  community_id uuid references communities(id),
+  created_by uuid references profiles(id),
+  created_by_name text,
+  assigned_to uuid references profiles(id),
+  assigned_to_name text,
+  title text not null,
+  description text,
+  due_date date,
+  status text not null default 'pending' check (status in ('pending','done')),
+  teacher_notes text,
+  evidence_files jsonb default '[]'::jsonb,
+  completed_at timestamptz,
+  created_at timestamptz default now()
+);
+
 create table app_settings (
   school text primary key,
   semester_start date,
@@ -429,6 +447,7 @@ alter table submissions enable row level security;
 alter table app_settings enable row level security;
 alter table indicator_status enable row level security;
 alter table site_settings enable row level security;
+alter table tasks enable row level security;
 
 create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
 create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
@@ -450,6 +469,12 @@ create policy "indicator_status_all" on indicator_status for all using ( school 
 
 create policy "site_settings_select" on site_settings for select using ( true );
 create policy "site_settings_write" on site_settings for all using ( my_role() = 'admin' ) with check ( my_role() = 'admin' );
+
+create policy "tasks_all" on tasks for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+-- ميزة "المهام" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا
+-- من قبل، نفّذ فقط الجزء الخاص بجدول tasks وسياسته أعلاه (create table tasks...
+-- و alter table tasks... و create policy "tasks_all"...) في SQL Editor مرة واحدة.
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -538,6 +563,7 @@ const LS_INDSTATUS = "dtd_indicator_status_v1";
 const LS_COMMUNITIES = "dtd_communities_v1";
 const LS_NOTIFICATIONS = "dtd_notifications_v1";
 const LS_SITE_SETTINGS = "dtd_site_settings_v1";
+const LS_TASKS = "dtd_tasks_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -918,13 +944,56 @@ const DB = {
     if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(list)); return list[idx]; }
     return null;
   },
+  async listTasks(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'tasks?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      const rows = await remoteFetch(path);
+      return rows || [];
+    }
+    let list = JSON.parse(localStorage.getItem(LS_TASKS) || '[]');
+    if (filter.school) list = list.filter(function(t){ return t.school===filter.school; });
+    return list.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  },
+  async getTask(id){
+    if (isRemote()){
+      const rows = await remoteFetch('tasks?id=eq.' + encodeURIComponent(id));
+      return (rows && rows[0]) || null;
+    }
+    const list = JSON.parse(localStorage.getItem(LS_TASKS) || '[]');
+    return list.find(function(t){ return t.id===id; }) || null;
+  },
+  async createTask(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('tasks', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem(LS_TASKS) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_TASKS, JSON.stringify(list));
+    return obj;
+  },
+  async updateTask(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('tasks?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_TASKS) || '[]');
+    const idx = list.findIndex(function(t){ return t.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_TASKS, JSON.stringify(list)); return list[idx]; }
+    return null;
+  },
   async exportFullBackup(){
     if (isRemote()){
-      const [profiles, communities, submissions, notifications, appSettings, indicatorStatus, siteSettings] = await Promise.all([
+      const [profiles, communities, submissions, notifications, tasks, appSettings, indicatorStatus, siteSettings] = await Promise.all([
         remoteFetch('profiles?order=created_at.desc'),
         remoteFetch('communities?order=created_at.asc'),
         remoteFetch('submissions?order=created_at.desc'),
         remoteFetch('notifications?order=created_at.desc'),
+        remoteFetch('tasks?order=created_at.desc'),
         remoteFetch('app_settings'),
         remoteFetch('indicator_status'),
         remoteFetch('site_settings')
@@ -933,7 +1002,7 @@ const DB = {
         version: 1, exported_at: nowIso(),
         data: {
           profiles: profiles||[], communities: communities||[], submissions: submissions||[],
-          notifications: notifications||[], app_settings: appSettings||[], indicator_status: indicatorStatus||[],
+          notifications: notifications||[], tasks: tasks||[], app_settings: appSettings||[], indicator_status: indicatorStatus||[],
           site_settings: siteSettings||[]
         }
       };
@@ -945,6 +1014,7 @@ const DB = {
         communities: JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]'),
         submissions: JSON.parse(localStorage.getItem(LS_SUBS) || '[]'),
         notifications: JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]'),
+        tasks: JSON.parse(localStorage.getItem(LS_TASKS) || '[]'),
         app_settings: JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'),
         indicator_status: JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}'),
         site_settings: JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}')
@@ -953,7 +1023,7 @@ const DB = {
   },
   async restoreFullBackup(backup){
     const data = (backup && backup.data) || {};
-    const report = { profiles:0, communities:0, submissions:0, notifications:0, app_settings:0, indicator_status:0, site_settings:0, errors: [] };
+    const report = { profiles:0, communities:0, submissions:0, notifications:0, tasks:0, app_settings:0, indicator_status:0, site_settings:0, errors: [] };
     if (isRemote()){
       const byId = async function(table, key, rows){
         for (const row of (rows||[])){
@@ -965,6 +1035,7 @@ const DB = {
       await byId('communities', 'communities', data.communities);
       await byId('submissions', 'submissions', data.submissions);
       await byId('notifications', 'notifications', data.notifications);
+      await byId('tasks', 'tasks', data.tasks);
       for (const row of (data.app_settings||[])){
         const r = await upsertByMatch('app_settings', 'school=eq.' + encodeURIComponent(row.school), row);
         if (r.ok) report.app_settings++; else report.errors.push('app_settings:' + row.school + ' ' + (r.error||''));
@@ -984,6 +1055,7 @@ const DB = {
     if (data.communities){ localStorage.setItem(LS_COMMUNITIES, JSON.stringify(data.communities)); report.communities = data.communities.length; }
     if (data.submissions){ localStorage.setItem(LS_SUBS, JSON.stringify(data.submissions)); report.submissions = data.submissions.length; }
     if (data.notifications){ localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(data.notifications)); report.notifications = data.notifications.length; }
+    if (data.tasks){ localStorage.setItem(LS_TASKS, JSON.stringify(data.tasks)); report.tasks = data.tasks.length; }
     if (data.app_settings){ localStorage.setItem(LS_SETTINGS, JSON.stringify(data.app_settings)); report.app_settings = Object.keys(data.app_settings).length; }
     if (data.indicator_status){ localStorage.setItem(LS_INDSTATUS, JSON.stringify(data.indicator_status)); report.indicator_status = Object.keys(data.indicator_status).length; }
     if (data.site_settings){ localStorage.setItem(LS_SITE_SETTINGS, JSON.stringify(data.site_settings)); report.site_settings = 1; }
@@ -1249,6 +1321,7 @@ async function render(){
       case 'view': renderShell(app, await screenView(State.params.id)); bindView(); break;
       case 'review': renderShell(app, await screenReview(State.params.id)); bindReview(); break;
       case 'teacherSession': renderShell(app, await screenTeacherSession(State.params.subId, State.params.idx)); bindTeacherSession(); break;
+      case 'taskDetail': renderShell(app, await screenTaskDetail(State.params.taskId, State.params.readonly)); bindTaskDetail(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
@@ -1438,6 +1511,7 @@ function dashTabsHtml(){
       '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
       '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
     '</div>'
   );
 }
@@ -1503,6 +1577,99 @@ function bindCommunityMembers(){
     });
   });
 }
+
+/* ----- لوحة منسق المجتمع المهني: إسناد مهام للمعلمين ----- */
+let TaskUI = { modalOpen:false };
+async function screenCoordinatorTasks(){
+  const communities = State.communitiesCache || [];
+  const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
+  const teachers = myCommunity
+    ? (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher' && u.community_id===myCommunity.id; })
+    : [];
+  const tasks = (await DB.listTasks({ school: State.user.school })).filter(function(t){ return t.created_by===State.user.id; });
+  const sorted = tasks.slice().sort(function(a,b){
+    return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(b.created_at) - new Date(a.created_at));
+  });
+
+  const rows = sorted.map(function(t){
+    const done = t.status==='done';
+    return (
+      '<tr>' +
+        '<td><b>'+esc(t.title)+'</b>'+(t.description?('<div style="color:var(--muted);font-size:12px;">'+esc(t.description)+'</div>'):'')+'</td>' +
+        '<td>'+esc(t.assigned_to_name||'')+'</td>' +
+        '<td>'+(t.due_date?fmtDate(t.due_date):'—')+'</td>' +
+        '<td><span class="badge '+(done?'approved':'pending')+'">'+(done?'مكتملة':'بانتظار التنفيذ')+'</span></td>' +
+        '<td class="row-actions"><button class="btn btn-ghost btn-sm" data-action="viewTask" data-id="'+t.id+'">عرض</button></td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const modal = TaskUI.modalOpen ? taskComposeModal(teachers) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>المهام المُكلَّفة للمعلمين</h2>' +
+      (myCommunity ? '<button class="btn btn-primary" data-action="newTask">+ مهمة جديدة</button>' : '') +
+    '</div>' +
+    (myCommunity ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>المهمة</th><th>المعلم</th><th>الموعد</th><th>الحالة</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="5">لا توجد مهام بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    modal
+  );
+}
+function taskComposeModal(teachers){
+  return (
+    '<div class="modal-bg" data-action="closeTaskModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>مهمة جديدة</h3>' +
+        '<div class="field"><label>المعلم المكلَّف</label><select class="input" id="tkTeacher">' +
+          (teachers.length ? teachers.map(function(t){ return '<option value="'+t.id+'">'+esc(t.full_name)+'</option>'; }).join('') : '<option value="">لا يوجد معلمون في مجتمعك</option>') +
+        '</select></div>' +
+        '<div class="field"><label>عنوان المهمة</label><input class="input" id="tkTitle" placeholder="مثال: تطبيق استراتيجية حل المشكلات"></div>' +
+        '<div class="field"><label>التفاصيل والشواهد المطلوبة</label><textarea class="input" id="tkDesc" rows="3" placeholder="صف المهمة والشواهد المطلوب رفعها..."></textarea></div>' +
+        '<div class="field"><label>الموعد النهائي (اختياري)</label><input class="input" type="date" id="tkDue"></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="sendTask">إرسال المهمة</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeTaskModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindCoordinatorTasks(){
+  const newBtn = document.querySelector('[data-action="newTask"]');
+  if (newBtn) newBtn.addEventListener('click', function(){ TaskUI.modalOpen = true; render(); bindCoordinatorTasks(); });
+  const closeModal = function(){ TaskUI.modalOpen = false; render(); bindCoordinatorTasks(); };
+  const closeBtn = document.querySelector('[data-action="closeTaskModal"]');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  const closeBg = document.querySelector('[data-action="closeTaskModalBg"]');
+  if (closeBg) closeBg.addEventListener('click', closeModal);
+  const sendBtn = document.querySelector('[data-action="sendTask"]');
+  if (sendBtn) sendBtn.addEventListener('click', async function(){
+    const teacherSel = document.getElementById('tkTeacher');
+    const teacherId = teacherSel.value;
+    if (!teacherId){ toast('لا يوجد معلم لإسناد المهمة له.'); return; }
+    const teacherName = teacherSel.options[teacherSel.selectedIndex].textContent;
+    const title = document.getElementById('tkTitle').value.trim();
+    const description = document.getElementById('tkDesc').value.trim();
+    const due = document.getElementById('tkDue').value;
+    if (!title){ toast('يرجى إدخال عنوان المهمة.'); return; }
+    try{
+      await DB.createTask({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
+      toast('تم إرسال المهمة إلى المعلم.');
+      TaskUI.modalOpen = false;
+      render(); bindCoordinatorTasks();
+    }catch(e){ toast(e.message); }
+  });
+  document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id'), readonly:true }); });
+  });
+}
+
 function adminTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
@@ -1627,6 +1794,9 @@ async function screenDashboard(){
   if (State.dashTab==='community' && State.user.role==='coordinator'){
     return await screenCommunityMembers();
   }
+  if (State.dashTab==='tasks' && State.user.role==='coordinator'){
+    return await screenCoordinatorTasks();
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -1709,22 +1879,23 @@ function bindDashboard(){
   if (State.user.role==='teacher') bindTeacherTasks();
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
+  else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='indicators') bindIndicators();
 }
 
-/* ----- لوحة المعلم: المتابعات المكلَّف بها ----- */
+/* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 async function screenTeacherTasks(){
   const subs = await DB.listSubmissions({ school: State.user.school });
-  const tasks = [];
+  const sessTasks = [];
   subs.forEach(function(s){
     if (s.form_type !== 'individualAgreement' || s.status==='draft') return;
     (s.payload.sessions||[]).forEach(function(sess, idx){
-      if (sess.teacher === State.user.full_name) tasks.push({ sub:s, idx:idx, sess:sess });
+      if (sess.teacher === State.user.full_name) sessTasks.push({ sub:s, idx:idx, sess:sess });
     });
   });
-  tasks.sort(function(a,b){ return (a.sess.sig?1:0) - (b.sess.sig?1:0); });
+  sessTasks.sort(function(a,b){ return (a.sess.sig?1:0) - (b.sess.sig?1:0); });
 
-  const cards = tasks.map(function(t){
+  const sessCards = sessTasks.map(function(t){
     const done = !!t.sess.sig;
     return (
       '<div class="task-card">' +
@@ -1735,16 +1906,38 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
+  const generalTasks = (await DB.listTasks({ school: State.user.school })).filter(function(t){ return t.assigned_to===State.user.id; });
+  generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(a.due_date||0) - new Date(b.due_date||0)); });
+
+  const taskCards = generalTasks.map(function(t){
+    const done = t.status==='done';
+    return (
+      '<div class="task-card">' +
+        '<div class="meta"><b>'+esc(t.title)+'</b>' +
+          (t.description ? '<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'+esc(t.description)+'</div>' : '') +
+          '<span>المُكلِّف: '+esc(t.created_by_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+' · '+(done?'<span style="color:var(--success);font-weight:700;">مكتملة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التنفيذ</span>')+'</span></div>' +
+        '<button class="btn '+(done?'btn-ghost':'btn-primary')+' btn-sm" data-action="openTaskDetail" data-id="'+t.id+'">'+(done?'تعديل التنفيذ':'تنفيذ المهمة ورفع الشواهد')+'</button>' +
+      '</div>'
+    );
+  }).join('');
+
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+' — متابعات أسبوعية مكلَّف بها ضمن اتفاقيات الخطة الفردية</div>' +
-    (cards || '<div class="table-wrap"><div style="padding:34px;text-align:center;color:var(--muted);">لا توجد متابعات مكلَّف بها حاليًا.</div></div>')
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    (taskCards ? ('<div class="block-title"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
+    (sessCards ? ('<div class="block-title" style="margin-top:'+(taskCards?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '') +
+    (!taskCards && !sessCards ? '<div class="table-wrap"><div style="padding:34px;text-align:center;color:var(--muted);">لا توجد مهام أو متابعات مكلَّف بها حاليًا.</div></div>' : '')
   );
 }
 function bindTeacherTasks(){
   document.querySelectorAll('[data-action="openTeacherSession"]').forEach(function(el){
     el.addEventListener('click', function(){
       go('teacherSession', { subId: el.getAttribute('data-sub'), idx: +el.getAttribute('data-idx') });
+    });
+  });
+  document.querySelectorAll('[data-action="openTaskDetail"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      go('taskDetail', { taskId: el.getAttribute('data-id') });
     });
   });
 }
@@ -1815,6 +2008,71 @@ function bindTeacherSession(){
     try{
       await DB.updateSubmission(TeacherSessionCache.sub.id, { payload: TeacherSessionCache.sub.payload });
       toast('تم حفظ الجلسة والشواهد بنجاح.');
+      go('dashboard');
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- شاشة المهمة: تنفيذ المعلم لمهمة مكلَّف بها ورفع الشواهد، أو عرض المنسق لها ----- */
+let TaskDetailCache = null;
+async function screenTaskDetail(taskId, readonly){
+  const t = await DB.getTask(taskId);
+  if (!TaskDetailCache || TaskDetailCache.id !== taskId){
+    TaskDetailCache = { id:t.id, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice() };
+  }
+  const isOwner = State.user.role==='teacher' && t.assigned_to===State.user.id;
+  const ro = !!readonly || !isOwner;
+  const files = TaskDetailCache.evidence_files.map(function(f, i){
+    return '<div class="evidence-thumb"><img src="'+f+'">' + (ro ? '' : '<button type="button" class="rmv-ev" data-action="rmvTaskEvidence" data-i="'+i+'">✕</button>') + '</div>';
+  }).join('');
+  return (
+    '<div class="sheet-wrap">' +
+      '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
+      '<div class="form-sheet">' +
+        '<div class="sheet-header"><div class="titles"><h1>'+esc(t.title)+'</h1>' +
+          '<div class="sub">المُكلِّف: '+esc(t.created_by_name||'')+' — المعلم: '+esc(t.assigned_to_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+'</div></div></div>' +
+        (t.description ? ('<p style="color:var(--muted);font-size:13.5px;margin:-4px 0 14px;">'+esc(t.description)+'</p>') : '') +
+        inputField('ملاحظات التنفيذ','teacher_notes', TaskDetailCache.teacher_notes, { type:'textarea', readonly: ro }) +
+        '<div class="block-title"><span class="dot"></span> الشواهد المرفوعة</div>' +
+        '<div class="evidence-grid">' + files +
+          (ro ? '' : '<label class="evidence-add">+<input type="file" id="taskEvidenceInput" accept="image/*" multiple style="display:none;"></label>') +
+        '</div>' +
+      '</div>' +
+      (ro ? '' :
+        '<div class="sheet-bar no-print" style="margin-top:16px;justify-content:flex-end;">' +
+          '<button class="btn btn-primary" data-action="completeTask">حفظ وتمييز المهمة كمكتملة</button>' +
+        '</div>'
+      ) +
+    '</div>'
+  );
+}
+function bindTaskDetail(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  const notesField = document.querySelector('[data-field="teacher_notes"]');
+  if (notesField) notesField.addEventListener('input', function(){ TaskDetailCache.teacher_notes = notesField.value; });
+  const evInput = document.getElementById('taskEvidenceInput');
+  if (evInput) evInput.addEventListener('change', function(e){
+    Array.from(e.target.files).forEach(function(file){
+      const reader = new FileReader();
+      reader.onload = function(){
+        TaskDetailCache.evidence_files.push(reader.result);
+        render(); bindTaskDetail();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('[data-action="rmvTaskEvidence"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      TaskDetailCache.evidence_files.splice(+el.getAttribute('data-i'), 1);
+      render(); bindTaskDetail();
+    });
+  });
+  const completeBtn = document.querySelector('[data-action="completeTask"]');
+  if (completeBtn) completeBtn.addEventListener('click', async function(){
+    if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); return; }
+    try{
+      await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso() });
+      toast('تم حفظ المهمة وتمييزها كمكتملة.');
       go('dashboard');
     }catch(e){ toast(e.message); }
   });
