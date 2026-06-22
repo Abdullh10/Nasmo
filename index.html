@@ -433,6 +433,24 @@ create table site_settings (
   academic_year text
 );
 
+create table plc_goals (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  community_id uuid references communities(id),
+  semester text not null,
+  title text not null,
+  measure_unit text,
+  baseline_value numeric,
+  target_value numeric,
+  current_value numeric,
+  due_date date,
+  status text not null default 'active' check (status in ('active','achieved','missed')),
+  created_by uuid references profiles(id),
+  created_by_name text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
 -- دوال مساعدة (security definer) لقراءة دور/مدرسة المستخدم الحالي من JWT دون تكرار سياسات profiles على نفسها:
 create or replace function my_role() returns text language sql security definer stable as $$
   select role from profiles where id = auth.uid()
@@ -449,6 +467,7 @@ alter table app_settings enable row level security;
 alter table indicator_status enable row level security;
 alter table site_settings enable row level security;
 alter table tasks enable row level security;
+alter table plc_goals enable row level security;
 
 create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
 create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
@@ -473,9 +492,15 @@ create policy "site_settings_write" on site_settings for all using ( my_role() =
 
 create policy "tasks_all" on tasks for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
+create policy "plc_goals_all" on plc_goals for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
 -- ميزة "المهام" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا
 -- من قبل، نفّذ فقط الجزء الخاص بجدول tasks وسياسته أعلاه (create table tasks...
 -- و alter table tasks... و create policy "tasks_all"...) في SQL Editor مرة واحدة.
+
+-- ميزة "خطط التحسين الفصلية" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase
+-- موجودًا من قبل، نفّذ فقط الجزء الخاص بجدول plc_goals وسياسته أعلاه (create table
+-- plc_goals... و alter table plc_goals... و create policy "plc_goals_all"...) في SQL Editor مرة واحدة.
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -565,6 +590,7 @@ const LS_COMMUNITIES = "dtd_communities_v1";
 const LS_NOTIFICATIONS = "dtd_notifications_v1";
 const LS_SITE_SETTINGS = "dtd_site_settings_v1";
 const LS_TASKS = "dtd_tasks_v1";
+const LS_GOALS = "dtd_goals_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -987,14 +1013,59 @@ const DB = {
     if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_TASKS, JSON.stringify(list)); return list[idx]; }
     return null;
   },
+  async listGoals(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'plc_goals?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      const rows = await remoteFetch(path);
+      return rows || [];
+    }
+    let list = JSON.parse(localStorage.getItem(LS_GOALS) || '[]');
+    if (filter.school) list = list.filter(function(g){ return g.school===filter.school; });
+    return list.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  },
+  async createGoal(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('plc_goals', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem(LS_GOALS) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_GOALS, JSON.stringify(list));
+    return obj;
+  },
+  async updateGoal(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('plc_goals?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_GOALS) || '[]');
+    const idx = list.findIndex(function(g){ return g.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_GOALS, JSON.stringify(list)); return list[idx]; }
+    return null;
+  },
+  async deleteGoal(id){
+    if (isRemote()){
+      await remoteFetch('plc_goals?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_GOALS) || '[]');
+    list = list.filter(function(g){ return g.id!==id; });
+    localStorage.setItem(LS_GOALS, JSON.stringify(list));
+    return true;
+  },
   async exportFullBackup(){
     if (isRemote()){
-      const [profiles, communities, submissions, notifications, tasks, appSettings, indicatorStatus, siteSettings] = await Promise.all([
+      const [profiles, communities, submissions, notifications, tasks, goals, appSettings, indicatorStatus, siteSettings] = await Promise.all([
         remoteFetch('profiles?order=created_at.desc'),
         remoteFetch('communities?order=created_at.asc'),
         remoteFetch('submissions?order=created_at.desc'),
         remoteFetch('notifications?order=created_at.desc'),
         remoteFetch('tasks?order=created_at.desc'),
+        remoteFetch('plc_goals?order=created_at.desc'),
         remoteFetch('app_settings'),
         remoteFetch('indicator_status'),
         remoteFetch('site_settings')
@@ -1003,7 +1074,7 @@ const DB = {
         version: 1, exported_at: nowIso(),
         data: {
           profiles: profiles||[], communities: communities||[], submissions: submissions||[],
-          notifications: notifications||[], tasks: tasks||[], app_settings: appSettings||[], indicator_status: indicatorStatus||[],
+          notifications: notifications||[], tasks: tasks||[], goals: goals||[], app_settings: appSettings||[], indicator_status: indicatorStatus||[],
           site_settings: siteSettings||[]
         }
       };
@@ -1016,6 +1087,7 @@ const DB = {
         submissions: JSON.parse(localStorage.getItem(LS_SUBS) || '[]'),
         notifications: JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]'),
         tasks: JSON.parse(localStorage.getItem(LS_TASKS) || '[]'),
+        goals: JSON.parse(localStorage.getItem(LS_GOALS) || '[]'),
         app_settings: JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'),
         indicator_status: JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}'),
         site_settings: JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}')
@@ -1024,7 +1096,7 @@ const DB = {
   },
   async restoreFullBackup(backup){
     const data = (backup && backup.data) || {};
-    const report = { profiles:0, communities:0, submissions:0, notifications:0, tasks:0, app_settings:0, indicator_status:0, site_settings:0, errors: [] };
+    const report = { profiles:0, communities:0, submissions:0, notifications:0, tasks:0, goals:0, app_settings:0, indicator_status:0, site_settings:0, errors: [] };
     if (isRemote()){
       const byId = async function(table, key, rows){
         for (const row of (rows||[])){
@@ -1037,6 +1109,7 @@ const DB = {
       await byId('submissions', 'submissions', data.submissions);
       await byId('notifications', 'notifications', data.notifications);
       await byId('tasks', 'tasks', data.tasks);
+      await byId('plc_goals', 'goals', data.goals);
       for (const row of (data.app_settings||[])){
         const r = await upsertByMatch('app_settings', 'school=eq.' + encodeURIComponent(row.school), row);
         if (r.ok) report.app_settings++; else report.errors.push('app_settings:' + row.school + ' ' + (r.error||''));
@@ -1057,6 +1130,7 @@ const DB = {
     if (data.submissions){ localStorage.setItem(LS_SUBS, JSON.stringify(data.submissions)); report.submissions = data.submissions.length; }
     if (data.notifications){ localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(data.notifications)); report.notifications = data.notifications.length; }
     if (data.tasks){ localStorage.setItem(LS_TASKS, JSON.stringify(data.tasks)); report.tasks = data.tasks.length; }
+    if (data.goals){ localStorage.setItem(LS_GOALS, JSON.stringify(data.goals)); report.goals = data.goals.length; }
     if (data.app_settings){ localStorage.setItem(LS_SETTINGS, JSON.stringify(data.app_settings)); report.app_settings = Object.keys(data.app_settings).length; }
     if (data.indicator_status){ localStorage.setItem(LS_INDSTATUS, JSON.stringify(data.indicator_status)); report.indicator_status = Object.keys(data.indicator_status).length; }
     if (data.site_settings){ localStorage.setItem(LS_SITE_SETTINGS, JSON.stringify(data.site_settings)); report.site_settings = 1; }
@@ -1073,8 +1147,28 @@ const FORM_DEFS = [
   { id:'individualAgreement', no:3, title:'اتفاقية الخطة العلاجية الفردية', desc:'اتفاقية مع ولي الأمر عند انتقال الطالب للخطة الفردية، مع متابعات أسبوعية متعددة المعلمين.', icon:'🤝', color:'#B45309', source:true },
   { id:'modelLesson', no:4, title:'الحصة النموذجية', desc:'توثيق حصة نموذجية لمجتمع تعلم مهني وإيجابيات الموقف التعليمي.', icon:'📝', color:'#7C3AED', source:true },
   { id:'plcMeetingMinutes', no:5, title:'محضر لقاء مجتمع التعلم المهني', desc:'محضر رسمي للاجتماعات: الحضور وجدول الأعمال والقرارات والمتابعات.', icon:'🗂️', color:'#0E5A82', source:false },
-  { id:'motivationInitiative', no:6, title:'توثيق مبادرة تحفيزية وقياس الأثر', desc:'توثيق مبادرات تحفيز المعلمين والمتعلمين ومؤشرات قياس الأثر.', icon:'🏆', color:'#B8860B', source:false }
+  { id:'motivationInitiative', no:6, title:'توثيق مبادرة تحفيزية وقياس الأثر', desc:'توثيق مبادرات تحفيز المعلمين والمتعلمين ومؤشرات قياس الأثر.', icon:'🏆', color:'#B8860B', source:false },
+  { id:'plcSelfEval', no:7, title:'التقييم الذاتي الفصلي لمجتمع التعلم', desc:'تقييم ذاتي لأداء المجتمع وفق معايير الرؤية المشتركة والفرق التعاونية والاستقصاء الجماعي والتوجه العملي والنتائج.', icon:'🧭', color:'#1F6F50', source:false },
+  { id:'peerObservation', no:8, title:'الزيارة الصفية التبادلية', desc:'توثيق ملاحظة معلم زميل لحصة معلم آخر، وأبرز نقاط القوة وفرص التحسين والمتابعة.', icon:'👀', color:'#9D174D', source:false }
 ];
+const SELF_EVAL_CRITERIA = [
+  { key:'vision', label:'رؤية ورسالة وقيم مشتركة', hint:'يتشارك أعضاء المجتمع رؤية واضحة لأهداف التعلم والتحسين.' },
+  { key:'teams', label:'فرق تعاونية فاعلة', hint:'يعمل الأعضاء بروح الفريق الواحد في التخطيط والتنفيذ والمساءلة الجماعية.' },
+  { key:'inquiry', label:'تعلم واستقصاء جماعي', hint:'يتبادل الأعضاء الخبرات والممارسات ويتعلمون من بعضهم بعضًا.' },
+  { key:'action', label:'توجه عملي وتجريب', hint:'يُترجَم التعلم إلى ممارسات وتجارب صفية فعلية وملموسة.' },
+  { key:'results', label:'التوجه بالنتائج والتحسين المستمر', hint:'يُقيَّم الأثر على تعلم الطلاب ويُستخدم لتحسين الممارسات باستمرار.' }
+];
+const SELF_EVAL_SCALE = ['1 - مبتدئ','2 - في طور التطور','3 - متمكن','4 - متقدم / نموذجي'];
+function selfEvalAvgScore(payload){
+  if (!payload || !payload.criteria) return null;
+  const scores = SELF_EVAL_CRITERIA.map(function(c){
+    const v = payload.criteria[c.key] && payload.criteria[c.key].score;
+    const m = v && /^(\d)/.exec(v);
+    return m ? Number(m[1]) : null;
+  }).filter(function(n){ return n!=null; });
+  if (!scores.length) return null;
+  return scores.reduce(function(a,b){ return a+b; },0) / scores.length;
+}
 function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
@@ -1286,7 +1380,14 @@ function blankData(formType){
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
     case 'plcMeetingMinutes': return { school:State.user.school, plc:'', date:today, time:'', meetingType:'اجتماع دوري', attendees:[ {name:'', spec:'', present:true} ], agenda:[''], summary:'', decisions:[ {decision:'', responsible:'', deadline:''} ] };
     case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
+    case 'plcSelfEval': return { school:State.user.school, plc:'', semester:'', criteria:blankSelfEvalCriteria(), reflection:'' };
+    case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
   }
+}
+function blankSelfEvalCriteria(){
+  const obj = {};
+  SELF_EVAL_CRITERIA.forEach(function(c){ obj[c.key] = { score:'', note:'' }; });
+  return obj;
 }
 function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[] }; }
 function blankSession(){ return { teacher:'', subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
@@ -1325,6 +1426,7 @@ async function render(){
       case 'review': renderShell(app, await screenReview(State.params.id)); bindReview(); break;
       case 'teacherSession': renderShell(app, await screenTeacherSession(State.params.subId, State.params.idx)); bindTeacherSession(); break;
       case 'taskDetail': renderShell(app, await screenTaskDetail(State.params.taskId, State.params.readonly)); bindTaskDetail(); break;
+      case 'communityReport': renderShell(app, await screenCommunityReport(State.params.id)); bindCommunityReport(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
@@ -1515,6 +1617,7 @@ function dashTabsHtml(){
       '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين الفصلية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
     '</div>'
   );
@@ -1589,6 +1692,7 @@ async function screenPrincipalCommunities(){
   const users = await DB.listUsers({ school: State.user.school });
   const subs = await DB.listSubmissions({ school: State.user.school });
   const tasks = await DB.listTasks({ school: State.user.school });
+  const goals = await DB.listGoals({ school: State.user.school });
   const communityNotifs = (State.notifications||[]).filter(function(n){ return n.target_type==='community'; });
 
   const rows = communities.map(function(c){
@@ -1599,14 +1703,23 @@ async function screenPrincipalCommunities(){
     cSubs.forEach(function(s){ subCounts[s.status] = (subCounts[s.status]||0)+1; });
     const cTasks = tasks.filter(function(t){ return t.community_id===c.id; });
     const doneTasks = cTasks.filter(function(t){ return t.status==='done'; }).length;
+    const cGoals = goals.filter(function(g){ return g.community_id===c.id; });
+    const meetingSubs = cSubs.filter(function(s){ return s.form_type==='plcMeetingMinutes'; });
+    const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; });
     const cNotifs = communityNotifs.filter(function(n){ return n.target_id===c.id; })
       .sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
-    return { community:c, leader:leader, members:members, subCounts:subCounts, totalSubs:cSubs.length, tasks:cTasks, doneTasks:doneTasks, notifs:cNotifs };
+    const approvalRate = cSubs.length ? (subCounts.approved / cSubs.length) : null;
+    const attendanceRate = meetingAttendanceRate(meetingSubs);
+    const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
+    const goalsRate = communityGoalsAvgProgress(cGoals);
+    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
+    return { community:c, leader:leader, members:members, subCounts:subCounts, totalSubs:cSubs.length, tasks:cTasks, doneTasks:doneTasks, goals:cGoals, notifs:cNotifs,
+      approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, scorecard:scorecard };
   });
 
   const summaryTable = (
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th></tr></thead>' +
+      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th><th>نسبة الحضور</th><th>التقييم الذاتي</th><th>تقدم الأهداف</th><th>بطاقة الأداء</th></tr></thead>' +
       '<tbody>' + (rows.length ? rows.map(function(r){
         return (
           '<tr>' +
@@ -1616,9 +1729,13 @@ async function screenPrincipalCommunities(){
             '<td>'+r.subCounts.approved+' / '+r.subCounts.pending+' / '+r.subCounts.returned+'</td>' +
             '<td>'+r.doneTasks+' / '+r.tasks.length+'</td>' +
             '<td>'+r.notifs.length+'</td>' +
+            '<td>'+pctLabel(r.attendanceRate)+'</td>' +
+            '<td>'+pctLabel(r.selfEvalRate)+'</td>' +
+            '<td>'+pctLabel(r.goalsRate)+'</td>' +
+            '<td><b>'+(r.scorecard==null?'—':r.scorecard)+'</b></td>' +
           '</tr>'
         );
-      }).join('') : '<tr class="empty-row"><td colspan="6">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
+      }).join('') : '<tr class="empty-row"><td colspan="10">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
       '</tbody>' +
     '</table></div></div>'
   );
@@ -1641,19 +1758,23 @@ async function screenPrincipalCommunities(){
       '<div class="program-card">' +
         '<div class="ph">' +
           '<h3>'+esc(c.name)+'</h3>' +
-          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+'</p>' +
+          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+(r.scorecard!=null?(' · بطاقة الأداء: <b>'+r.scorecard+'</b>'):'')+'</p>' +
         '</div>' +
         '<div class="kpi-grid">' +
           '<div class="kpi-card accent-success"><div class="v">'+r.subCounts.approved+'</div><div class="l">نماذج معتمدة</div></div>' +
           '<div class="kpi-card accent-pending"><div class="v">'+r.subCounts.pending+'</div><div class="l">بانتظار الاعتماد</div></div>' +
           '<div class="kpi-card accent-danger"><div class="v">'+r.subCounts.returned+'</div><div class="l">مرتجعة</div></div>' +
           '<div class="kpi-card"><div class="v">'+r.doneTasks+' / '+r.tasks.length+'</div><div class="l">مهام مكتملة / الإجمالي</div></div>' +
+          '<div class="kpi-card"><div class="v">'+pctLabel(r.attendanceRate)+'</div><div class="l">نسبة الحضور في اللقاءات</div></div>' +
+          '<div class="kpi-card"><div class="v">'+pctLabel(r.selfEvalRate)+'</div><div class="l">التقييم الذاتي</div></div>' +
+          '<div class="kpi-card"><div class="v">'+pctLabel(r.goalsRate)+'</div><div class="l">تقدم الأهداف ('+r.goals.length+')</div></div>' +
         '</div>' +
         '<div class="ind-row" style="cursor:pointer;" data-action="togglePrincipalComm" data-id="'+c.id+'">' +
           '<div class="ind-main"><div class="lbl">رسائل هذا المجتمع ('+r.notifs.length+')</div></div>' +
           '<div class="ind-side"><button class="btn btn-ghost btn-sm" data-action="togglePrincipalComm" data-id="'+c.id+'">'+(expanded?'إخفاء':'عرض')+'</button></div>' +
         '</div>' +
         (expanded ? ('<div class="notif-list" style="margin-top:8px;">'+notifsList+'</div>') : '') +
+        '<div style="margin-top:12px;"><button class="btn btn-gold btn-sm" data-action="openCommunityReport" data-id="'+c.id+'">تصدير تقرير المجتمع للزيارة الإشرافية</button></div>' +
       '</div>'
     );
   }).join('');
@@ -1677,6 +1798,95 @@ function bindPrincipalCommunities(){
       render();
     });
   });
+  document.querySelectorAll('[data-action="openCommunityReport"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('communityReport', { id: el.getAttribute('data-id') }); });
+  });
+}
+
+/* ----- تقرير موحَّد لزيارة الإشراف التربوي لمجتمع مهني محدَّد ----- */
+async function screenCommunityReport(communityId){
+  const c = (State.communitiesCache||[]).find(function(x){ return x.id===communityId; });
+  if (!c){
+    return '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div><p>لم يتم العثور على المجتمع المهني.</p>';
+  }
+  const users = await DB.listUsers({ school: State.user.school });
+  const leader = users.find(function(u){ return u.community_id===c.id && u.role==='coordinator'; });
+  const members = users.filter(function(u){ return u.community_id===c.id && u.role==='teacher'; });
+  const allSubs = await DB.listSubmissions({ school: State.user.school });
+  const cSubs = leader ? allSubs.filter(function(s){ return s.created_by===leader.id; }) : [];
+  const approvedSubs = cSubs.filter(function(s){ return s.status==='approved'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
+  const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===c.id; });
+  const meetingSubs = cSubs.filter(function(s){ return s.form_type==='plcMeetingMinutes'; });
+  const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
+  const peerObsSubs = cSubs.filter(function(s){ return s.form_type==='peerObservation'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
+  const approvalRate = cSubs.length ? (approvedSubs.length / cSubs.length) : null;
+  const attendanceRate = meetingAttendanceRate(meetingSubs);
+  const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
+  const goalsRate = communityGoalsAvgProgress(goals);
+  const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
+
+  const subsRows = approvedSubs.map(function(s){
+    const def = formDef(s.form_type);
+    return '<tr><td>'+esc(def.title)+'</td><td>'+fmtDate(s.updated_at)+'</td></tr>';
+  }).join('');
+
+  const goalsRows = goals.map(function(g){
+    const rate = goalProgressRate(g);
+    const statusLabel = g.status==='achieved' ? 'تم تحقيقه' : g.status==='missed' ? 'لم يتحقق' : 'قيد التنفيذ';
+    return (
+      '<tr><td>'+esc(g.title)+'</td><td>'+esc(g.baseline_value!=null&&g.baseline_value!==''?g.baseline_value:'—')+' ← '+esc(g.target_value!=null&&g.target_value!==''?g.target_value:'—')+' '+esc(g.measure_unit||'')+'</td>' +
+      '<td>'+esc(g.current_value!=null&&g.current_value!==''?g.current_value:'—')+'</td><td>'+pctLabel(rate)+'</td><td>'+statusLabel+'</td></tr>'
+    );
+  }).join('');
+
+  const latestSelfEval = selfEvalSubs[0];
+  const latestPeerObs = peerObsSubs[0];
+
+  return (
+    '<div class="sheet-wrap">' +
+      '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
+        '<span style="display:flex;gap:8px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="printForm">طباعة</button>' +
+        '<button class="btn btn-gold btn-sm" data-action="exportPdf" data-filename="تقرير زيارة - '+esc(c.name)+'">تصدير PDF</button>' +
+        '</span></div>' +
+      '<div class="form-sheet">' +
+        '<div class="sheet-header"><div class="titles"><h1>تقرير زيارة الإشراف التربوي</h1><div class="sub">'+esc(c.name)+' — '+esc(State.user.school)+'</div></div><div class="form-no">'+fmtDate(nowIso())+'</div></div>' +
+        '<div class="field-grid cols-3">' +
+          inputField('المنسق (القائد)','leaderName', leader?leader.full_name:'لم يُعيَّن منسق', {readonly:true}) +
+          inputField('عدد الأعضاء','membersCount', String(members.length), {readonly:true}) +
+          inputField('بطاقة الأداء المجمّعة (من 100)','scorecard', scorecard==null?'—':String(scorecard), {readonly:true}) +
+        '</div>' +
+        '<div class="kpi-grid">' +
+          '<div class="kpi-card accent-success"><div class="v">'+pctLabel(approvalRate)+'</div><div class="l">نسبة اعتماد النماذج</div></div>' +
+          '<div class="kpi-card"><div class="v">'+pctLabel(attendanceRate)+'</div><div class="l">نسبة الحضور في اللقاءات</div></div>' +
+          '<div class="kpi-card"><div class="v">'+pctLabel(selfEvalRate)+'</div><div class="l">التقييم الذاتي</div></div>' +
+          '<div class="kpi-card"><div class="v">'+pctLabel(goalsRate)+'</div><div class="l">تقدم خطة التحسين</div></div>' +
+        '</div>' +
+        '<div class="block-title"><span class="dot"></span> النماذج المعتمدة ('+approvedSubs.length+')</div>' +
+        '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>النموذج</th><th>تاريخ الاعتماد</th></tr></thead><tbody>' +
+          (subsRows || '<tr><td colspan="2" style="text-align:center;color:var(--muted);">لا توجد نماذج معتمدة بعد.</td></tr>') +
+        '</tbody></table></div>' +
+        '<div class="block-title"><span class="dot"></span> خطة التحسين الفصلية والأهداف ('+goals.length+')</div>' +
+        '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الحالة</th></tr></thead><tbody>' +
+          (goalsRows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);">لا توجد أهداف مسجَّلة لهذا الفصل.</td></tr>') +
+        '</tbody></table></div>' +
+        (latestSelfEval ? (
+          '<div class="block-title"><span class="dot"></span> أحدث تقييم ذاتي لمجتمع التعلم المهني (بتاريخ '+fmtDate(latestSelfEval.updated_at)+')</div>' +
+          renderPlcSelfEval(latestSelfEval.payload, true)
+        ) : '') +
+        (latestPeerObs ? (
+          '<div class="block-title"><span class="dot"></span> أحدث زيارة صفية تبادلية (بتاريخ '+fmtDate(latestPeerObs.updated_at)+')</div>' +
+          renderPeerObservation(latestPeerObs.payload, true)
+        ) : '') +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindCommunityReport(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ State.dashTab = 'communitiesEval'; go('dashboard'); });
+  document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
+  const exportBtn = document.querySelector('[data-action="exportPdf"]');
+  if (exportBtn) exportBtn.addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
 }
 
 /* ----- لوحة منسق المجتمع المهني: إسناد مهام للمعلمين ----- */
@@ -1768,6 +1978,163 @@ function bindCoordinatorTasks(){
   });
   document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id'), readonly:true }); });
+  });
+}
+
+/* ----- خطة التحسين الفصلية وتتبع الأهداف (منسق المجتمع المهني) ----- */
+let GoalsUI = { modalOpen:false, editId:null };
+function goalProgressRate(goal){
+  const base = Number(goal.baseline_value), target = Number(goal.target_value), cur = Number(goal.current_value);
+  if (!isFinite(base) || !isFinite(target) || !isFinite(cur) || target===base) return null;
+  return Math.max(0, Math.min(1, (cur - base) / (target - base)));
+}
+function communityGoalsAvgProgress(goals){
+  const rates = (goals||[]).map(goalProgressRate).filter(function(r){ return r!=null; });
+  if (!rates.length) return null;
+  return rates.reduce(function(a,b){ return a+b; },0) / rates.length;
+}
+function meetingAttendanceRate(meetingSubs){
+  let present = 0, total = 0;
+  (meetingSubs||[]).forEach(function(s){
+    (s.payload && s.payload.attendees || []).forEach(function(a){ total++; if (a.present) present++; });
+  });
+  return total ? (present / total) : null;
+}
+function communitySelfEvalAvgRate(selfEvalSubs){
+  const scores = (selfEvalSubs||[]).map(function(s){ return selfEvalAvgScore(s.payload); }).filter(function(n){ return n!=null; });
+  if (!scores.length) return null;
+  return Math.max(0, Math.min(1, (scores.reduce(function(a,b){ return a+b; },0) / scores.length - 1) / 3));
+}
+function communityScorecard(parts){
+  const vals = [parts.approvalRate, parts.attendanceRate, parts.selfEvalRate, parts.goalsRate].filter(function(v){ return v!=null; });
+  if (!vals.length) return null;
+  return Math.round((vals.reduce(function(a,b){ return a+b; },0) / vals.length) * 100);
+}
+function pctLabel(rate){ return rate==null ? '—' : Math.round(rate*100)+'%'; }
+async function screenCoordinatorGoals(){
+  const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
+  const sorted = goals.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  const counts = { active:0, achieved:0, missed:0 };
+  goals.forEach(function(g){ counts[g.status] = (counts[g.status]||0)+1; });
+
+  const rows = sorted.map(function(g){
+    const rate = goalProgressRate(g);
+    const pct = rate==null ? '—' : Math.round(rate*100)+'%';
+    const statusLabel = g.status==='achieved' ? 'تم تحقيقه' : g.status==='missed' ? 'لم يتحقق' : 'قيد التنفيذ';
+    const statusClass = g.status==='achieved' ? 'approved' : g.status==='missed' ? 'returned' : 'pending';
+    return (
+      '<tr>' +
+        '<td><b>'+esc(g.title)+'</b><div style="color:var(--muted);font-size:12px;">الفصل '+esc(SEMESTER_LABELS[g.semester]||g.semester||'—')+'</div></td>' +
+        '<td>'+esc(g.baseline_value!=null && g.baseline_value!=='' ? g.baseline_value : '—')+' ← '+esc(g.target_value!=null && g.target_value!=='' ? g.target_value : '—')+' '+esc(g.measure_unit||'')+'</td>' +
+        '<td>'+esc(g.current_value!=null && g.current_value!=='' ? g.current_value : '—')+'</td>' +
+        '<td>'+pct+'</td>' +
+        '<td>'+(g.due_date?fmtDate(g.due_date):'—')+'</td>' +
+        '<td><span class="badge '+statusClass+'">'+statusLabel+'</span></td>' +
+        '<td class="row-actions"><button class="btn btn-ghost btn-sm" data-action="editGoal" data-id="'+g.id+'">تعديل</button><button class="btn btn-ghost btn-sm" data-action="deleteGoal" data-id="'+g.id+'">حذف</button></td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const editGoal = GoalsUI.editId ? goals.find(function(g){ return g.id===GoalsUI.editId; }) : null;
+  const modal = GoalsUI.modalOpen ? goalComposeModal(editGoal) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="kpi-grid">' +
+      '<div class="kpi-card"><div class="v">'+goals.length+'</div><div class="l">إجمالي الأهداف</div></div>' +
+      '<div class="kpi-card accent-pending"><div class="v">'+counts.active+'</div><div class="l">قيد التنفيذ</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+counts.achieved+'</div><div class="l">تم تحقيقها</div></div>' +
+      '<div class="kpi-card accent-danger"><div class="v">'+counts.missed+'</div><div class="l">لم تتحقق</div></div>' +
+    '</div>' +
+    '<div class="section-head"><h2>خطة التحسين الفصلية وأهداف المجتمع المهني</h2>' +
+      (State.user.community_id ? '<button class="btn btn-primary" data-action="newGoal">+ هدف جديد</button>' : '') +
+    '</div>' +
+    (State.user.community_id ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الموعد</th><th>الحالة</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا توجد أهداف بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    modal
+  );
+}
+function goalComposeModal(goal){
+  const g = goal || { title:'', measure_unit:'', baseline_value:'', target_value:'', current_value:'', due_date:'', semester:'', status:'active' };
+  return (
+    '<div class="modal-bg" data-action="closeGoalModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>'+(goal?'تعديل الهدف':'هدف جديد')+'</h3>' +
+        '<div class="field"><label>عنوان الهدف</label><input class="input" id="glTitle" value="'+esc(g.title)+'" placeholder="مثال: رفع نسبة إنجاز خطط الدروس النموذجية"></div>' +
+        '<div class="field"><label>الفصل الدراسي</label><select class="input" id="glSemester">' +
+          ['1','2','3'].map(function(v){ return '<option value="'+v+'" '+(v===g.semester?'selected':'')+'>الفصل '+SEMESTER_LABELS[v]+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>وحدة القياس (اختياري)</label><input class="input" id="glUnit" value="'+esc(g.measure_unit||'')+'" placeholder="مثال: %، عدد الزيارات..."></div>' +
+        '<div class="field-grid cols-3">' +
+          '<div class="field"><label>خط الأساس</label><input class="input" type="number" id="glBaseline" value="'+esc(g.baseline_value!=null?g.baseline_value:'')+'"></div>' +
+          '<div class="field"><label>القيمة المستهدفة</label><input class="input" type="number" id="glTarget" value="'+esc(g.target_value!=null?g.target_value:'')+'"></div>' +
+          '<div class="field"><label>القيمة الحالية</label><input class="input" type="number" id="glCurrent" value="'+esc(g.current_value!=null?g.current_value:'')+'"></div>' +
+        '</div>' +
+        '<div class="field"><label>الموعد النهائي (اختياري)</label><input class="input" type="date" id="glDue" value="'+esc(g.due_date||'')+'"></div>' +
+        '<div class="field"><label>حالة الهدف</label><select class="input" id="glStatus">' +
+          '<option value="active" '+(g.status==='active'?'selected':'')+'>قيد التنفيذ</option>' +
+          '<option value="achieved" '+(g.status==='achieved'?'selected':'')+'>تم تحقيقه</option>' +
+          '<option value="missed" '+(g.status==='missed'?'selected':'')+'>لم يتحقق</option>' +
+        '</select></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveGoal">'+(goal?'حفظ التعديلات':'إضافة الهدف')+'</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeGoalModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindCoordinatorGoals(){
+  const newBtn = document.querySelector('[data-action="newGoal"]');
+  if (newBtn) newBtn.addEventListener('click', function(){ GoalsUI.modalOpen = true; GoalsUI.editId = null; render(); bindCoordinatorGoals(); });
+  const closeModal = function(){ GoalsUI.modalOpen = false; GoalsUI.editId = null; render(); bindCoordinatorGoals(); };
+  const closeBtn = document.querySelector('[data-action="closeGoalModal"]');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  const closeBg = document.querySelector('[data-action="closeGoalModalBg"]');
+  if (closeBg) closeBg.addEventListener('click', closeModal);
+  document.querySelectorAll('[data-action="editGoal"]').forEach(function(el){
+    el.addEventListener('click', function(){ GoalsUI.modalOpen = true; GoalsUI.editId = el.getAttribute('data-id'); render(); bindCoordinatorGoals(); });
+  });
+  document.querySelectorAll('[data-action="deleteGoal"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('سيتم حذف هذا الهدف نهائيًا. هل تريد الاستمرار؟')) return;
+      try{ await DB.deleteGoal(el.getAttribute('data-id')); toast('تم حذف الهدف.'); render(); bindCoordinatorGoals(); }catch(e){ toast(e.message); }
+    });
+  });
+  const saveBtn = document.querySelector('[data-action="saveGoal"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const title = document.getElementById('glTitle').value.trim();
+    if (!title){ toast('يرجى إدخال عنوان الهدف.'); return; }
+    const semester = document.getElementById('glSemester').value;
+    const measure_unit = document.getElementById('glUnit').value.trim();
+    const baseline = document.getElementById('glBaseline').value;
+    const target = document.getElementById('glTarget').value;
+    const current = document.getElementById('glCurrent').value;
+    const due_date = document.getElementById('glDue').value;
+    const status = document.getElementById('glStatus').value;
+    const patch = {
+      title:title, semester:semester, measure_unit:measure_unit||null,
+      baseline_value: baseline===''?null:Number(baseline),
+      target_value: target===''?null:Number(target),
+      current_value: current===''?null:Number(current),
+      due_date: due_date||null, status:status
+    };
+    try{
+      if (GoalsUI.editId){
+        await DB.updateGoal(GoalsUI.editId, patch);
+        toast('تم حفظ التعديلات.');
+      } else {
+        await DB.createGoal(Object.assign({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name }, patch));
+        toast('تم إضافة الهدف.');
+      }
+      GoalsUI.modalOpen = false; GoalsUI.editId = null;
+      render(); bindCoordinatorGoals();
+    }catch(e){ toast(e.message); }
   });
 }
 
@@ -1901,6 +2268,9 @@ async function screenDashboard(){
   if (State.dashTab==='communitiesEval' && State.user.role==='principal'){
     return await screenPrincipalCommunities();
   }
+  if (State.dashTab==='goals' && State.user.role==='coordinator'){
+    return await screenCoordinatorGoals();
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -1985,6 +2355,7 @@ function bindDashboard(){
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='communitiesEval' && State.user.role==='principal') bindPrincipalCommunities();
+  else if (State.dashTab==='goals' && State.user.role==='coordinator') bindCoordinatorGoals();
   else if (State.dashTab==='indicators') bindIndicators();
 }
 
@@ -2850,6 +3221,8 @@ function screenEditor(){
     case 'modelLesson': body = renderModelLesson(EditorState.data, readonly); break;
     case 'plcMeetingMinutes': body = renderPlcMeeting(EditorState.data, readonly); break;
     case 'motivationInitiative': body = renderMotivation(EditorState.data, readonly); break;
+    case 'plcSelfEval': body = renderPlcSelfEval(EditorState.data, readonly); break;
+    case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly); break;
   }
 
   const returnBox = EditorState.status==='returned' && EditorState.returnComment
@@ -3062,6 +3435,70 @@ function renderMotivation(d, ro){
   );
 }
 
+function renderPlcSelfEval(d, ro){
+  const criteria = SELF_EVAL_CRITERIA.map(function(c){
+    const cv = d.criteria[c.key] || { score:'', note:'' };
+    return (
+      '<div class="session-card">' +
+        '<div class="session-head"><span class="ttl">'+esc(c.label)+'</span></div>' +
+        '<div class="upload-note" style="margin-bottom:10px;">'+esc(c.hint)+'</div>' +
+        '<div class="field"><label>مستوى الممارسة</label>'+radioGroup('criteria.'+c.key+'.score', SELF_EVAL_SCALE, cv.score)+'</div>' +
+        inputField('شواهد/ملاحظات','criteria.'+c.key+'.note',cv.note,{type:'textarea',readonly:ro})+
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-3">' +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) +
+      '<div class="field"><label>الفصل الدراسي</label>'+radioGroup('semester', ['الأول','الثاني','الثالث'], d.semester)+'</div>' +
+    '</div>' +
+    '<div class="block-title"><span class="dot"></span> معايير التقييم الذاتي لمجتمع التعلم المهني</div>' +
+    criteria +
+    '<div class="block-title"><span class="dot"></span> التأمل العام وفرص التحسين القادمة</div>' +
+    inputField('','reflection', d.reflection, {type:'textarea', readonly:ro, placeholder:'مثال: أبرز ما تعلّمناه هذا الفصل، وما الذي سنعمل على تطويره في الفصل القادم...'})
+  );
+}
+
+function renderPeerObservation(d, ro){
+  const strengths = (d.strengths||[]).map(function(p,i){
+    return (
+      '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">' +
+        '<span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span>' +
+        '<input class="input" data-field="strengths.'+i+'" value="'+esc(p)+'" '+(ro?'disabled':'')+' style="flex:1;">' +
+        (ro?'':'<button class="rmv" data-action="removeRow" data-list="strengths" data-idx="'+i+'">✕</button>') +
+      '</div>'
+    );
+  }).join('');
+  const improvements = (d.improvements||[]).map(function(p,i){
+    return (
+      '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">' +
+        '<span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span>' +
+        '<input class="input" data-field="improvements.'+i+'" value="'+esc(p)+'" '+(ro?'disabled':'')+' style="flex:1;">' +
+        (ro?'':'<button class="rmv" data-action="removeRow" data-list="improvements" data-idx="'+i+'">✕</button>') +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-2">' +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('المعلم الملاحِظ','observerName',d.observerName,{readonly:ro}) +
+    '</div>' +
+    '<div class="field-grid cols-2">' +
+      inputField('المعلم المُلاحَظ','observedTeacher',d.observedTeacher,{readonly:ro}) + inputField('المادة','subject',d.subject,{readonly:ro}) +
+    '</div>' +
+    '<div class="field-grid cols-2">' +
+      inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) + inputField('موضوع الحصة','lessonTopic',d.lessonTopic,{readonly:ro}) +
+    '</div>' +
+    '<div class="block-title"><span class="dot"></span> الممارسة المُلاحَظة</div>' +
+    inputField('','observedPractice', d.observedPractice, {type:'textarea', readonly:ro, placeholder:'وصف موجز للاستراتيجية أو الممارسة التي رُكِّز عليها خلال الزيارة.'}) +
+    '<div class="block-title"><span class="dot"></span> نقاط القوة</div>' +
+    strengths + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="strengths">+ إضافة نقطة قوة</button>') +
+    '<div class="block-title"><span class="dot"></span> فرص التحسين</div>' +
+    improvements + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="improvements">+ إضافة فرصة تحسين</button>') +
+    '<div class="block-title"><span class="dot"></span> اتفاق المتابعة</div>' +
+    inputField('','followUp', d.followUp, {type:'textarea', readonly:ro, placeholder:'ما الذي اتفق عليه المعلمان لتطبيقه أو متابعته بعد هذه الزيارة؟'})
+  );
+}
+
 /* ---------------------- ربط أحداث المحرّر ---------------------- */
 function getPath(obj, path){
   const parts = path.split('.'); let cur = obj;
@@ -3087,6 +3524,8 @@ function defaultRowFor(list){
     case 'agenda': return '';
     case 'decisions': return { decision:'', responsible:'', deadline:'' };
     case 'impacts': return { indicator:'', baseline:'', target:'', actual:'' };
+    case 'strengths': return '';
+    case 'improvements': return '';
     default: return {};
   }
 }
@@ -3181,6 +3620,8 @@ async function screenView(id){
     case 'modelLesson': body = renderModelLesson(s.payload, true); break;
     case 'plcMeetingMinutes': body = renderPlcMeeting(s.payload, true); break;
     case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
+    case 'plcSelfEval': body = renderPlcSelfEval(s.payload, true); break;
+    case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
   }
   const stamp = s.status==='approved' ? (
     '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
@@ -3223,6 +3664,8 @@ async function screenReview(id){
     case 'modelLesson': body = renderModelLesson(s.payload, true); break;
     case 'plcMeetingMinutes': body = renderPlcMeeting(s.payload, true); break;
     case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
+    case 'plcSelfEval': body = renderPlcSelfEval(s.payload, true); break;
+    case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
   }
   return (
     '<div class="sheet-bar no-print"><div style="display:flex;gap:8px;align-items:center;"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></div>' +
