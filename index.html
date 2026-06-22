@@ -1310,7 +1310,9 @@ async function render(){
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
   if (State.user){
     State.notifications = await DB.listNotifications({ school: State.user.school });
-    State.communitiesCache = (State.user.role==='admin' || State.user.role==='coordinator') ? await DB.listCommunities({}) : [];
+    State.communitiesCache = State.user.role==='admin' ? await DB.listCommunities({})
+      : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
+      : [];
   }
   try{
     switch(State.screen){
@@ -1512,6 +1514,7 @@ function dashTabsHtml(){
       '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
+      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
     '</div>'
   );
 }
@@ -1574,6 +1577,103 @@ function bindCommunityMembers(){
       if (!confirm('هل تريد إزالة هذا المعلم من مجتمعك؟')) return;
       try{ await DB.updateUser(el.getAttribute('data-id'), { community_id: null }); toast('تمت إزالة المعلم من المجتمع.'); render(); bindCommunityMembers(); }
       catch(e){ toast(e.message); }
+    });
+  });
+}
+
+/* ----- لوحة مدير المدرسة: تقييم المجتمعات المهنية (رسائل وإحصائيات كل مجتمع منفصلة) ----- */
+let PrincipalCommUI = { expanded:{} };
+async function screenPrincipalCommunities(){
+  const communities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const users = await DB.listUsers({ school: State.user.school });
+  const subs = await DB.listSubmissions({ school: State.user.school });
+  const tasks = await DB.listTasks({ school: State.user.school });
+  const communityNotifs = (State.notifications||[]).filter(function(n){ return n.target_type==='community'; });
+
+  const rows = communities.map(function(c){
+    const leader = users.find(function(u){ return u.community_id===c.id && u.role==='coordinator'; });
+    const members = users.filter(function(u){ return u.community_id===c.id && u.role==='teacher'; });
+    const cSubs = leader ? subs.filter(function(s){ return s.created_by===leader.id; }) : [];
+    const subCounts = { draft:0, pending:0, approved:0, returned:0 };
+    cSubs.forEach(function(s){ subCounts[s.status] = (subCounts[s.status]||0)+1; });
+    const cTasks = tasks.filter(function(t){ return t.community_id===c.id; });
+    const doneTasks = cTasks.filter(function(t){ return t.status==='done'; }).length;
+    const cNotifs = communityNotifs.filter(function(n){ return n.target_id===c.id; })
+      .sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+    return { community:c, leader:leader, members:members, subCounts:subCounts, totalSubs:cSubs.length, tasks:cTasks, doneTasks:doneTasks, notifs:cNotifs };
+  });
+
+  const summaryTable = (
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th></tr></thead>' +
+      '<tbody>' + (rows.length ? rows.map(function(r){
+        return (
+          '<tr>' +
+            '<td><b>'+esc(r.community.name)+'</b></td>' +
+            '<td>'+(r.leader?esc(r.leader.full_name):'<span style="color:var(--muted);">لا يوجد منسق</span>')+'</td>' +
+            '<td>'+r.members.length+'</td>' +
+            '<td>'+r.subCounts.approved+' / '+r.subCounts.pending+' / '+r.subCounts.returned+'</td>' +
+            '<td>'+r.doneTasks+' / '+r.tasks.length+'</td>' +
+            '<td>'+r.notifs.length+'</td>' +
+          '</tr>'
+        );
+      }).join('') : '<tr class="empty-row"><td colspan="6">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
+      '</tbody>' +
+    '</table></div></div>'
+  );
+
+  const cards = rows.map(function(r){
+    const c = r.community;
+    const expanded = !!PrincipalCommUI.expanded[c.id];
+    const notifsList = r.notifs.length ? r.notifs.map(function(n){
+      return (
+        '<div class="notif-item">' +
+          '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
+          '<div class="ntitle">'+esc(n.title)+'</div>' +
+          (n.body ? '<div class="nbody">'+esc(n.body)+'</div>' : '') +
+          '<div class="nmeta">'+esc(n.sender_name||'')+(n.due_date?(' · الموعد: '+fmtDate(n.due_date)):'')+' · '+fmtDateTime(n.created_at)+'</div>' +
+        '</div>'
+      );
+    }).join('') : '<p style="color:var(--muted);font-size:13.5px;">لا توجد رسائل من منسق هذا المجتمع حتى الآن.</p>';
+
+    return (
+      '<div class="program-card">' +
+        '<div class="ph">' +
+          '<h3>'+esc(c.name)+'</h3>' +
+          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+'</p>' +
+        '</div>' +
+        '<div class="kpi-grid">' +
+          '<div class="kpi-card accent-success"><div class="v">'+r.subCounts.approved+'</div><div class="l">نماذج معتمدة</div></div>' +
+          '<div class="kpi-card accent-pending"><div class="v">'+r.subCounts.pending+'</div><div class="l">بانتظار الاعتماد</div></div>' +
+          '<div class="kpi-card accent-danger"><div class="v">'+r.subCounts.returned+'</div><div class="l">مرتجعة</div></div>' +
+          '<div class="kpi-card"><div class="v">'+r.doneTasks+' / '+r.tasks.length+'</div><div class="l">مهام مكتملة / الإجمالي</div></div>' +
+        '</div>' +
+        '<div class="ind-row" style="cursor:pointer;" data-action="togglePrincipalComm" data-id="'+c.id+'">' +
+          '<div class="ind-main"><div class="lbl">رسائل هذا المجتمع ('+r.notifs.length+')</div></div>' +
+          '<div class="ind-side"><button class="btn btn-ghost btn-sm" data-action="togglePrincipalComm" data-id="'+c.id+'">'+(expanded?'إخفاء':'عرض')+'</button></div>' +
+        '</div>' +
+        (expanded ? ('<div class="notif-list" style="margin-top:8px;">'+notifsList+'</div>') : '') +
+      '</div>'
+    );
+  }).join('');
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>تقييم المجتمعات المهنية</h2></div>' +
+    '<div style="color:var(--muted);font-size:13px;margin-bottom:14px;">رسائل وإحصائيات كل مجتمع مهني تظهر هنا منفصلة عن المجتمعات الأخرى، لمساعدتك على تقييم أداء كل منسق ومجتمعه وتحديد فرص التجويد.</div>' +
+    summaryTable +
+    '<div class="section-head" style="margin-top:24px;"><h2>تفاصيل كل مجتمع على حدة</h2></div>' +
+    (cards || '<p style="color:var(--muted);font-size:13.5px;">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</p>')
+  );
+}
+function bindPrincipalCommunities(){
+  document.querySelectorAll('[data-action="togglePrincipalComm"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const id = el.getAttribute('data-id');
+      PrincipalCommUI.expanded[id] = !PrincipalCommUI.expanded[id];
+      render();
     });
   });
 }
@@ -1797,6 +1897,9 @@ async function screenDashboard(){
   if (State.dashTab==='tasks' && State.user.role==='coordinator'){
     return await screenCoordinatorTasks();
   }
+  if (State.dashTab==='communitiesEval' && State.user.role==='principal'){
+    return await screenPrincipalCommunities();
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -1880,6 +1983,7 @@ function bindDashboard(){
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
+  else if (State.dashTab==='communitiesEval' && State.user.role==='principal') bindPrincipalCommunities();
   else if (State.dashTab==='indicators') bindIndicators();
 }
 
