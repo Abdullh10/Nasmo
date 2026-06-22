@@ -2704,7 +2704,9 @@ async function screenIndicators(){
     return '<option value="'+v+'" '+(v===currentSemester?'selected':'')+'>الفصل الدراسي '+SEMESTER_LABELS[v]+'</option>';
   }).join('');
 
-  const settingsBar = (
+  const canEditIndicators = State.user.role!=='principal';
+
+  const settingsBar = canEditIndicators ? (
     '<div class="settings-bar no-print">' +
       '<label>الفصل الدراسي:</label>' +
       '<select id="semesterSelectInput" class="input" style="width:auto;">'+semesterOptionsHtml+'</select>' +
@@ -2714,6 +2716,13 @@ async function screenIndicators(){
       (curWeek!=null
         ? '<span class="prog-txt" style="margin-right:auto;">الأسبوع الدراسي الحالي: '+curWeek+'</span>'
         : '<span class="prog-txt" style="margin-right:auto;">حدّد تاريخ البداية لحساب الأسبوع الحالي تلقائيًا.</span>') +
+    '</div>'
+  ) : (
+    '<div class="settings-bar no-print">' +
+      '<span class="prog-txt"><b>الفصل الدراسي:</b> '+esc(SEMESTER_LABELS[currentSemester]||currentSemester)+'</span>' +
+      '<span class="prog-txt" style="margin-right:auto;">' +
+        (curWeek!=null ? ('الأسبوع الدراسي الحالي: '+curWeek) : 'لم يُحدَّد تاريخ بداية الفصل بعد.') +
+      '</span>' +
     '</div>'
   );
 
@@ -2733,7 +2742,9 @@ async function screenIndicators(){
         ? (State.user.role==='coordinator'
             ? '<button class="btn btn-ghost btn-sm" data-action="quickCreateIndicator" data-form="'+ind.formType+'">+ إنشاء '+esc(def.title)+'</button>'
             : '')
-        : '<label class="chk '+(manualDone?'checked':'')+'" style="font-size:11.5px;"><input type="checkbox" data-action="toggleIndicatorDone" data-id="'+ind.id+'" '+(manualDone?'checked':'')+'> أُنجز</label>';
+        : (canEditIndicators
+            ? '<label class="chk '+(manualDone?'checked':'')+'" style="font-size:11.5px;"><input type="checkbox" data-action="toggleIndicatorDone" data-id="'+ind.id+'" '+(manualDone?'checked':'')+'> أُنجز</label>'
+            : '<span class="badge '+(manualDone?'approved':'pending')+'">'+(manualDone?'أُنجز':'لم يُنجز بعد')+'</span>');
       const progressHtml = ind.formType
         ? ('<div class="prog-bar"><i style="width:'+percent+'%;"></i></div><span class="prog-txt">'+doneCount+(ind.targetCount?('/'+ind.targetCount):'')+(pendingCount?(' · '+pendingCount+' بانتظار الاعتماد'):'')+'</span>')
         : '';
