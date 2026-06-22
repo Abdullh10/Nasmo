@@ -78,6 +78,7 @@ a{ color:var(--teal-dark); }
 .btn-sm{ padding:7px 12px; font-size:12.5px; border-radius:7px; }
 .hint-box{ margin-top:18px; padding:12px 14px; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; font-size:12.5px; color:var(--muted); }
 .hint-box b{ color:var(--navy-2); }
+.credit-line{ margin-top:18px; text-align:center; font-size:12.5px; color:var(--muted); }
 .error-text{ color:var(--danger); font-size:13px; margin:-4px 0 10px; }
 
 /* ---------- top nav ---------- */
@@ -1474,17 +1475,17 @@ function screenLogin(){
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="loginUser" placeholder="مثال: coordinator"></div>' +
         '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
-        '<div class="hint-box">' +
-          (isRemote() ?
-            ('برمجة الأستاذ عبدالله حمدي') :
-            ('<b>للتجربة السريعة:</b><br>' +
+        (isRemote() ?
+          '<div class="credit-line">برمجة الأستاذ عبدالله حمدي</div>' :
+          ('<div class="hint-box">' +
+            '<b>للتجربة السريعة:</b><br>' +
             'حساب منسق المجتمع المهني — اسم المستخدم: <span class="mono">coordinator</span> / كلمة المرور: <span class="mono">1234</span><br>' +
             'حساب مدير المدرسة — اسم المستخدم: <span class="mono">principal</span> / كلمة المرور: <span class="mono">1234</span><br>' +
             'حساب معلم (رفع شواهد) — اسم المستخدم: <span class="mono">teacher</span> / كلمة المرور: <span class="mono">1234</span><br>' +
             'حساب مدير نظام (إدارة المستخدمين) — اسم المستخدم: <span class="mono">admin</span> / كلمة المرور: <span class="mono">1234</span>' +
-            '<br><br>وضع التشغيل الحالي: <b>تجريبي محلي (هذا المتصفح فقط)</b>')
-          ) +
-        '</div>' +
+            '<br><br>وضع التشغيل الحالي: <b>تجريبي محلي (هذا المتصفح فقط)</b>' +
+          '</div>')
+        ) +
       '</div>' +
     '</div>'
   );
