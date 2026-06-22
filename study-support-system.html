@@ -214,6 +214,23 @@ textarea.input{ resize:vertical; min-height:64px; }
 .task-card .meta b{ display:block; font-size:14px; color:var(--navy-2); margin-bottom:3px; }
 .task-card .meta span{ font-size:12.5px; color:var(--muted); }
 
+.program-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:22px; overflow:hidden; }
+.program-card .ph{ padding:16px 18px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+.program-card .ph h3{ font-size:15.5px; color:var(--navy); margin-bottom:3px; }
+.program-card .ph p{ font-size:12.5px; color:var(--muted); }
+.ind-row{ padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.ind-row:last-child{ border-bottom:none; }
+.ind-row .ind-main{ flex:1; min-width:240px; }
+.ind-row .ind-main .lbl{ font-size:13.5px; color:var(--ink); font-weight:600; margin-bottom:5px; }
+.ind-row .ind-main .sub{ font-size:11.5px; color:var(--muted); line-height:1.7; }
+.ind-row .ind-side{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:160px; }
+.prog-bar{ width:140px; height:7px; border-radius:6px; background:var(--surface-2); overflow:hidden; border:1px solid var(--border); }
+.prog-bar > i{ display:block; height:100%; background:var(--success); }
+.prog-txt{ font-size:11px; color:var(--muted); font-family:'JetBrains Mono'; }
+.settings-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin-bottom:18px; }
+.settings-bar label{ font-size:12.5px; color:var(--muted); font-weight:700; }
+.settings-bar input{ border:1px solid var(--border); border-radius:7px; padding:6px 10px; font-size:13px; font-family:inherit; }
+
 .stamp{
   position:absolute; left:34px; top:90px; width:118px; height:118px; border-radius:50%;
   border:3px solid var(--gold); display:flex; align-items:center; justify-content:center; text-align:center;
@@ -310,6 +327,21 @@ create table submissions (
   updated_at timestamptz default now()
 );
 
+create table app_settings (
+  school text primary key,
+  semester_start date
+);
+
+create table indicator_status (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  indicator_id text not null,
+  done boolean default false,
+  done_by text,
+  done_at timestamptz,
+  unique (school, indicator_id)
+);
+
 -- فعّل RLS وأضف سياسات تسمح لأي مستخدم مُصادَق بالقراءة/الكتابة ضمن مدرسته،
 -- أو استخدم anon key مبدئيًا للتجربة الداخلية فقط ثم شدّد الصلاحيات قبل النشر العام.
 */
@@ -337,6 +369,8 @@ async function remoteFetch(path, opts){
 /* ---------------------- طبقة البيانات (محلي / سحابي) ---------------------- */
 const LS_USERS = "dtd_users_v1";
 const LS_SUBS  = "dtd_submissions_v1";
+const LS_SETTINGS  = "dtd_settings_v1";
+const LS_INDSTATUS = "dtd_indicator_status_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -486,6 +520,52 @@ const DB = {
     users = users.filter(function(u){ return u.id!==id; });
     localStorage.setItem(LS_USERS, JSON.stringify(users));
     return true;
+  },
+  async getSettings(school){
+    if (isRemote()){
+      const rows = await remoteFetch('app_settings?school=eq.' + encodeURIComponent(school));
+      return (rows && rows[0]) || null;
+    }
+    const all = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
+    return all[school] || null;
+  },
+  async saveSettings(school, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('app_settings?school=eq.' + encodeURIComponent(school), { method:'PATCH', body:patch, prefer:'return=representation' });
+      if (rows && rows[0]) return rows[0];
+      const created = await remoteFetch('app_settings', { method:'POST', body:Object.assign({ school:school }, patch), prefer:'return=representation' });
+      return created && created[0];
+    }
+    const all = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
+    all[school] = Object.assign({}, all[school], patch);
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(all));
+    return all[school];
+  },
+  async getIndicatorStatus(school){
+    if (isRemote()){
+      const rows = await remoteFetch('indicator_status?school=eq.' + encodeURIComponent(school));
+      const map = {};
+      (rows||[]).forEach(function(r){ map[r.indicator_id] = r; });
+      return map;
+    }
+    const all = JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}');
+    return all[school] || {};
+  },
+  async setIndicatorStatus(school, indicatorId, patch){
+    if (isRemote()){
+      const existing = await remoteFetch('indicator_status?school=eq.' + encodeURIComponent(school) + '&indicator_id=eq.' + encodeURIComponent(indicatorId));
+      if (existing && existing[0]){
+        const rows = await remoteFetch('indicator_status?id=eq.' + encodeURIComponent(existing[0].id), { method:'PATCH', body:patch, prefer:'return=representation' });
+        return rows && rows[0];
+      }
+      const rows = await remoteFetch('indicator_status', { method:'POST', body:Object.assign({ school:school, indicator_id:indicatorId }, patch), prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const all = JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}');
+    all[school] = all[school] || {};
+    all[school][indicatorId] = Object.assign({}, all[school][indicatorId], patch);
+    localStorage.setItem(LS_INDSTATUS, JSON.stringify(all));
+    return all[school][indicatorId];
   }
 };
 
@@ -505,8 +585,68 @@ function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
 const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام' };
 
+/* ---------------------- مؤشرات الدليل التنفيذي للبرنامج ---------------------- */
+const PROGRAM_DEFS = [
+  { id:'collectiveEfficacy', title:'الفعالية الجماعية للمعلمين', subtitle:'Collective Teachers Efficacy',
+    goal:'خلق فرص للمعلمين لكسب وبناء المهارات والمعارف وتبادل الخبرات، وتقديم الدعم اللازم للمعلمين على المستوى الشخصي والمهني وإشراكهم في صنع القرار المدرسي.' },
+  { id:'rti', title:'الاستجابة للتدخل (معالجة التعثر الدراسي)', subtitle:'Response to Intervention – RTI',
+    goal:'تقديم الدعم اللازم لطلاب التعثر الدراسي في مرحلة مبكرة من بداية العام الدراسي.' },
+  { id:'motivation', title:'التحفيز وإثارة الدافعية', subtitle:'',
+    goal:'خلق بيئة تعليمية محفزة ومثيرة للتعلم.' }
+];
+
+const INDICATOR_DEFS = [
+  { id:'ce1', program:'collectiveEfficacy', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
+  { id:'ce2', program:'collectiveEfficacy', label:'تحديد حصص مكتبية لكل مجتمع تعلم مهني لتفعيل أدوارها (حصة واحدة أسبوعيًا كحد أدنى).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:1, formType:null, targetCount:null, note:'عدم تكليف المعلم بحصة إشغال أو مناوبة تتعارض مع حصة المجتمع المهني.' },
+  { id:'ce3', program:'collectiveEfficacy', label:'عقد حلقة نقاش في كل مجتمع تعلم مهني لمناقشة نتائج نهاية الفصل الدراسي الأول.', execResp:'مجتمع التعلم المهني / إدارة المدرسة', followResp:'الإشراف التربوي', weekStart:2, weekEnd:3, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
+  { id:'ce4', program:'collectiveEfficacy', label:'تنفيذ حصة نموذجية واحدة كحد أدنى يستهدف أسلوبًا جديدًا أو إستراتيجية حديثة، مع مراعاة التنوع في التخصصات.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:3, weekEnd:13, formType:'modelLesson', targetCount:4, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
+  { id:'ce5', program:'collectiveEfficacy', label:'عقد حلقة نقاش في كل مجتمع تعلم مهني حول موضوع تربوي يحدده المجتمع المهني.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:8, weekEnd:8, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
+  { id:'ce6', program:'collectiveEfficacy', label:'عقد ورشة عمل في كل مجتمع تعلم مهني لمناقشة نتائج منتصف الفصل، واقتراح فرص تحسينها.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:10, weekEnd:15, formType:'indicatorReport', targetCount:2, note:'مراعاة الفترة الزمنية التي يتم فيها تحديد فترة التقويم.' },
+  { id:'ce7', program:'collectiveEfficacy', label:'تجميع ورفع ملفات برنامج دعم التحصيل الدراسي.', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:16, weekEnd:16, formType:null, targetCount:null, note:'يتم الرفع على OneDrive.' },
+
+  { id:'rti1', program:'rti', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
+  { id:'rti2', program:'rti', label:'تحديد حصة بمسمى (داعم) ضمن الحصص الأسبوعية للمواد المهارية (الرياضيات – اللغة العربية – العلوم – اللغة الإنجليزية).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:1, formType:null, targetCount:null, note:'هذا المؤشر خاص بالمرحلة الابتدائية.' },
+  { id:'rti3', program:'rti', label:'تحديد طلاب فئة الدعم للخطة (الجماعية) وتنفيذها للطلاب الذين لم يحققوا نسبة 50% في الاختبار التشخيصي.', execResp:'إدارة المدرسة / الموجه الطلابي / المعلم', followResp:'الإشراف التربوي', weekStart:2, weekEnd:17, formType:'groupPlan', targetCount:1, note:'التنسيق مع المشرف التربوي، وإشعار ولي الأمر خطيًا بانضمام ابنه للبرنامج كحد أقصى في الأسبوع الثاني.' },
+  { id:'rti4', program:'rti', label:'تخصيص ملف إنجاز خاص بهذا البرنامج مع المعلم لمتابعة مستوى تقدم الطالب.', execResp:'المعلم', followResp:'الموجه الطلابي / إدارة المدرسة / الإشراف التربوي', weekStart:1, weekEnd:18, weekLabel:'من بداية انطلاق البرنامج', formType:null, targetCount:null, note:'إشراك الموجه الطلابي واطلاعه أولًا بأول على ملف معالجة التعثر.' },
+  { id:'rti5', program:'rti', label:'تحديث قائمة الطلاب في فئة الدعم، ومتابعتهم.', execResp:'المعلم', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:9, weekEnd:17, weekLabel:'بعد تنفيذ تقويم الفترة الأولى', formType:null, targetCount:null, note:'يكون التحديث بناءً على نتائج اختبار الفترة الأولى، بإخراج من حقق 50% وإلحاق من لم يحقق النسبة بالخطة العلاجية.' },
+  { id:'rti6', program:'rti', label:'تنفيذ اختبار (داعم) التجريبي للاختبار النهائي في جميع المواد الخاضعة لنظام الاختبار النهائي.', execResp:'المعلم', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:15, weekEnd:15, formType:null, targetCount:null, note:'الاختبار يكون في المادة المقطوعة من الأسبوع (1) إلى نهاية الأسبوع (9).' },
+  { id:'rti7', program:'rti', label:'تنفيذ خطة علاجية (فردية) داخل الصف للطلاب الذين لم يحققوا نسبة 50%، بمتابعتهم وتقديم الدعم اللازم لمعالجة الضعف.', execResp:'المعلم / الموجه الطلابي', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:17, weekEnd:18, formType:'individualAgreement', targetCount:1, note:'' },
+  { id:'rti8', program:'rti', label:'تجميع ورفع ملفات برنامج دعم التحصيل الدراسي (معالجة التعثر الدراسي).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:16, weekEnd:16, formType:null, targetCount:null, note:'يتم الرفع على OneDrive.' },
+
+  { id:'mo1', program:'motivation', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
+  { id:'mo2', program:'motivation', label:'عقد حلقة نقاش في مجتمعات التعلم المهنية حول موضوع (التحفيز وإثارة الدافعية).', execResp:'منسقو المجتمعات المهنية', followResp:'إدارة المدرسة', weekStart:5, weekEnd:5, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت التنفيذ.' },
+  { id:'mo3', program:'motivation', label:'تفعيل إستراتيجيات التحفيز وإثارة الدافعية في مواقف تعليمية مختلفة.', execResp:'المعلمون', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:3, weekEnd:15, formType:'motivationInitiative', targetCount:1, note:'' },
+  { id:'mo4', program:'motivation', label:'تنفيذ برنامج لتحفيز وإثارة الدافعية لدى المعلم والمتعلم.', execResp:'إدارة المدرسة', followResp:'الإشراف التربوي', weekStart:9, weekEnd:15, formType:null, targetCount:null, note:'' }
+];
+function indicatorsForProgram(programId){ return INDICATOR_DEFS.filter(function(i){ return i.program===programId; }); }
+
+const TIME_STATUS_LABEL = { upcoming:'لم يحن وقته', inrange:'ضمن الفترة المستهدفة', overdue:'متأخر عن الفترة', complete:'مكتمل' };
+const TIME_STATUS_BADGE = { upcoming:'draft', inrange:'pending', overdue:'returned', complete:'approved' };
+
+function currentWeekNumber(semesterStart){
+  if (!semesterStart) return null;
+  const start = new Date(semesterStart);
+  const now = new Date();
+  const diffDays = Math.floor((now - start) / 86400000);
+  if (diffDays < 0) return 0;
+  return Math.floor(diffDays / 7) + 1;
+}
+
+function indicatorTimeStatus(ind, curWeek, doneCount, targetCount){
+  if (targetCount != null && doneCount >= targetCount) return 'complete';
+  if (curWeek == null) return 'inrange';
+  if (curWeek < ind.weekStart) return 'upcoming';
+  if (curWeek > ind.weekEnd) return 'overdue';
+  return 'inrange';
+}
+
+function indicatorPeriodLabel(ind){
+  if (ind.weekLabel) return ind.weekLabel;
+  return ind.weekStart === ind.weekEnd ? ('الأسبوع ('+ind.weekStart+')') : ('الأسبوع ('+ind.weekStart+' - '+ind.weekEnd+')');
+}
+
 /* ---------------------- الحالة العامة والتوجيه ---------------------- */
-const State = { user:null, screen:'login', params:{}, allSubs:[] };
+const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms' };
 
 function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); }
 function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
@@ -732,9 +872,25 @@ function bindLogin(){
 }
 
 /* ----- لوحة التحكم ----- */
+function dashTabsHtml(){
+  return (
+    '<div class="tabs no-print" style="margin-bottom:20px;">' +
+      '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
+      '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
+    '</div>'
+  );
+}
 async function screenDashboard(){
   if (State.user.role==='teacher') return screenTeacherTasks();
   if (State.user.role==='admin') return screenAdminUsers();
+  if (State.dashTab==='indicators'){
+    return (
+      '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
+      '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+      dashTabsHtml() +
+      await screenIndicators()
+    );
+  }
   const subs = await DB.listSubmissions({ school: State.user.school });
   State.allSubs = subs;
   const mine = State.user.role==='coordinator' ? subs.filter(function(s){ return s.created_by===State.user.id; }) : subs;
@@ -798,6 +954,7 @@ async function screenDashboard(){
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
     kpis +
     '<div class="section-head"><h2>' + (State.user.role==='coordinator' ? 'نماذجي' : 'جميع النماذج') + '</h2>' + newBtn + '</div>' +
     tableBlock
@@ -807,6 +964,7 @@ function bindDashboard(){
   document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
   if (State.user.role==='teacher') bindTeacherTasks();
   else if (State.user.role==='admin') bindAdminUsers();
+  else if (State.dashTab==='indicators') bindIndicators();
 }
 
 /* ----- لوحة المعلم: المتابعات المكلَّف بها ----- */
@@ -1009,6 +1167,91 @@ function bindAdminUsers(){
       }
       AdminUI.modalOpen=false; AdminUI.editingId=null; render(); bindAdminUsers();
     }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- متابعة مؤشرات البرنامج (الدليل التنفيذي) ----- */
+async function screenIndicators(){
+  const subs = await DB.listSubmissions({ school: State.user.school });
+  const settings = (await DB.getSettings(State.user.school)) || {};
+  const indStatus = await DB.getIndicatorStatus(State.user.school);
+  const semesterStart = settings.semester_start || settings.semesterStart || '';
+  const curWeek = currentWeekNumber(semesterStart);
+
+  const settingsBar = (
+    '<div class="settings-bar no-print">' +
+      '<label>تاريخ بداية الفصل الدراسي الثاني:</label>' +
+      '<input type="date" id="semesterStartInput" value="'+esc(semesterStart)+'">' +
+      '<button class="btn btn-primary btn-sm" data-action="saveSemesterStart">حفظ</button>' +
+      (curWeek!=null
+        ? '<span class="prog-txt" style="margin-right:auto;">الأسبوع الدراسي الحالي: '+curWeek+'</span>'
+        : '<span class="prog-txt" style="margin-right:auto;">حدّد تاريخ البداية لحساب الأسبوع الحالي تلقائيًا.</span>') +
+    '</div>'
+  );
+
+  const programsHtml = PROGRAM_DEFS.map(function(prog){
+    const rows = indicatorsForProgram(prog.id).map(function(ind){
+      const def = ind.formType ? formDef(ind.formType) : null;
+      let doneCount = 0, pendingCount = 0, percent = 0, manualDone = false;
+      if (ind.formType){
+        doneCount = subs.filter(function(s){ return s.form_type===ind.formType && s.status==='approved'; }).length;
+        pendingCount = subs.filter(function(s){ return s.form_type===ind.formType && s.status==='pending'; }).length;
+        percent = ind.targetCount ? Math.min(100, Math.round(doneCount/ind.targetCount*100)) : (doneCount>0?100:0);
+      } else {
+        manualDone = !!(indStatus[ind.id] && indStatus[ind.id].done);
+      }
+      const timeStatus = indicatorTimeStatus(ind, curWeek, ind.formType ? doneCount : (manualDone?1:0), ind.formType ? ind.targetCount : 1);
+      const sideAction = ind.formType
+        ? (State.user.role==='coordinator'
+            ? '<button class="btn btn-ghost btn-sm" data-action="quickCreateIndicator" data-form="'+ind.formType+'">+ إنشاء '+esc(def.title)+'</button>'
+            : '')
+        : '<label class="chk '+(manualDone?'checked':'')+'" style="font-size:11.5px;"><input type="checkbox" data-action="toggleIndicatorDone" data-id="'+ind.id+'" '+(manualDone?'checked':'')+'> أُنجز</label>';
+      const progressHtml = ind.formType
+        ? ('<div class="prog-bar"><i style="width:'+percent+'%;"></i></div><span class="prog-txt">'+doneCount+(ind.targetCount?('/'+ind.targetCount):'')+(pendingCount?(' · '+pendingCount+' بانتظار الاعتماد'):'')+'</span>')
+        : '';
+      return (
+        '<div class="ind-row">' +
+          '<div class="ind-main">' +
+            '<div class="lbl">'+esc(ind.label)+'</div>' +
+            '<div class="sub">تنفيذ: '+esc(ind.execResp)+' · متابعة: '+esc(ind.followResp)+' · '+esc(indicatorPeriodLabel(ind))+
+              (def?' · النموذج: '+esc(def.title):'') + (ind.note?' · '+esc(ind.note):'') +
+            '</div>' +
+          '</div>' +
+          '<div class="ind-side">' +
+            '<span class="badge '+TIME_STATUS_BADGE[timeStatus]+'">'+TIME_STATUS_LABEL[timeStatus]+'</span>' +
+            progressHtml +
+            sideAction +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    return (
+      '<div class="program-card">' +
+        '<div class="ph"><h3>'+esc(prog.title)+(prog.subtitle?' <span style="color:var(--muted);font-weight:400;font-size:12px;">('+esc(prog.subtitle)+')</span>':'')+'</h3><p>'+esc(prog.goal)+'</p></div>' +
+        rows +
+      '</div>'
+    );
+  }).join('');
+
+  return settingsBar + programsHtml;
+}
+function bindIndicators(){
+  const saveBtn = document.querySelector('[data-action="saveSemesterStart"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const val = document.getElementById('semesterStartInput').value;
+    if (!val){ toast('اختر تاريخًا أولًا.'); return; }
+    await DB.saveSettings(State.user.school, { semester_start: val });
+    toast('تم حفظ تاريخ بداية الفصل.');
+    render();
+  });
+  document.querySelectorAll('[data-action="quickCreateIndicator"]').forEach(function(el){
+    el.addEventListener('click', function(){ openEditor(el.getAttribute('data-form'), null); });
+  });
+  document.querySelectorAll('[data-action="toggleIndicatorDone"]').forEach(function(el){
+    el.addEventListener('change', async function(){
+      await DB.setIndicatorStatus(State.user.school, el.getAttribute('data-id'), { done: el.checked, done_by: State.user.full_name, done_at: nowIso() });
+      render();
+    });
   });
 }
 
@@ -1500,6 +1743,7 @@ function bindGlobalAction(el){
   else if (action==='openEdit'){ el.addEventListener('click', async function(){ const s = await DB.getSubmission(el.getAttribute('data-id')); openEditor(s.form_type, s); }); }
   else if (action==='openView'){ el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); }); }
   else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
+  else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
