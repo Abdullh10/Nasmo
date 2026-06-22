@@ -321,6 +321,7 @@ drop table if exists notifications;
 drop table if exists submissions;
 drop table if exists indicator_status;
 drop table if exists app_settings;
+drop table if exists site_settings;
 drop table if exists profiles;
 drop table if exists communities;
 
@@ -379,7 +380,8 @@ create table submissions (
 
 create table app_settings (
   school text primary key,
-  semester_start date
+  semester_start date,
+  current_semester text default '2'
 );
 
 create table indicator_status (
@@ -390,6 +392,13 @@ create table indicator_status (
   done_by text,
   done_at timestamptz,
   unique (school, indicator_id)
+);
+
+create table site_settings (
+  id text primary key default 'global',
+  program_title text,
+  program_subtitle text,
+  academic_year text
 );
 
 -- دوال مساعدة (security definer) لقراءة دور/مدرسة المستخدم الحالي من JWT دون تكرار سياسات profiles على نفسها:
@@ -406,10 +415,11 @@ alter table notifications enable row level security;
 alter table submissions enable row level security;
 alter table app_settings enable row level security;
 alter table indicator_status enable row level security;
+alter table site_settings enable row level security;
 
 create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
 create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
-create policy "profiles_update" on profiles for update using ( id = auth.uid() or my_role() = 'admin' ) with check ( id = auth.uid() or my_role() = 'admin' );
+create policy "profiles_update" on profiles for update using ( id = auth.uid() or my_role() = 'admin' or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) ) with check ( id = auth.uid() or my_role() = 'admin' or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) );
 create policy "profiles_delete" on profiles for delete using ( my_role() = 'admin' );
 
 create policy "communities_select" on communities for select using ( school = my_school() or my_role() = 'admin' );
@@ -424,6 +434,9 @@ create policy "submissions_all" on submissions for all using ( school = my_schoo
 create policy "app_settings_all" on app_settings for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 create policy "indicator_status_all" on indicator_status for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+create policy "site_settings_select" on site_settings for select using ( true );
+create policy "site_settings_write" on site_settings for all using ( my_role() = 'admin' ) with check ( my_role() = 'admin' );
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -491,14 +504,27 @@ const LS_SETTINGS  = "dtd_settings_v1";
 const LS_INDSTATUS = "dtd_indicator_status_v1";
 const LS_COMMUNITIES = "dtd_communities_v1";
 const LS_NOTIFICATIONS = "dtd_notifications_v1";
+const LS_SITE_SETTINGS = "dtd_site_settings_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function hijriDateFmt(d){
+  return new Intl.DateTimeFormat('ar-SA', {calendar:'islamic-umalqura', year:'numeric', month:'long', day:'numeric'}).format(d);
+}
+function fmtDate(s){
+  if(!s) return '—';
+  const parts = String(s).slice(0,10).split('-');
+  if (parts.length<3) return '—';
+  const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+  if (isNaN(d.getTime())) return '—';
+  return hijriDateFmt(d);
+}
 function fmtDateTime(iso){
   if(!iso) return '—';
   const d = new Date(iso);
-  return d.toLocaleDateString('ar-SA') + ' - ' + d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
+  if (isNaN(d.getTime())) return '—';
+  return hijriDateFmt(d) + ' - ' + d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
 }
 
 function localSeed(){
@@ -703,6 +729,47 @@ const DB = {
     localStorage.setItem(LS_SETTINGS, JSON.stringify(all));
     return all[school];
   },
+  async getSiteSettings(){
+    if (isRemote()){
+      const rows = await remoteFetch('site_settings?id=eq.global');
+      return (rows && rows[0]) || {};
+    }
+    return JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}');
+  },
+  async saveSiteSettings(patch){
+    if (isRemote()){
+      const rows = await remoteFetch('site_settings?id=eq.global', { method:'PATCH', body:patch, prefer:'return=representation' });
+      if (rows && rows[0]) return rows[0];
+      const created = await remoteFetch('site_settings', { method:'POST', body:Object.assign({ id:'global' }, patch), prefer:'return=representation' });
+      return created && created[0];
+    }
+    const cur = JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}');
+    const merged = Object.assign(cur, patch);
+    localStorage.setItem(LS_SITE_SETTINGS, JSON.stringify(merged));
+    return merged;
+  },
+  async renameSchool(oldName, newName){
+    if (isRemote()){
+      const tables = ['profiles','submissions','notifications','communities','app_settings'];
+      await Promise.all(tables.map(function(t){
+        return remoteFetch(t + '?school=eq.' + encodeURIComponent(oldName), { method:'PATCH', body:{ school:newName } });
+      }));
+      State.user.school = newName;
+      setUserSession(State.user);
+      return;
+    }
+    const renameInStore = function(key){
+      const all = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(all)) return;
+      all.forEach(function(row){ if (row.school===oldName) row.school = newName; });
+      localStorage.setItem(key, JSON.stringify(all));
+    };
+    renameInStore(LS_USERS); renameInStore(LS_SUBS); renameInStore(LS_COMMUNITIES); renameInStore(LS_NOTIFICATIONS);
+    const settingsAll = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
+    if (settingsAll[oldName]){ settingsAll[newName] = settingsAll[oldName]; delete settingsAll[oldName]; localStorage.setItem(LS_SETTINGS, JSON.stringify(settingsAll)); }
+    State.user.school = newName;
+    setUserSession(State.user);
+  },
   async getIndicatorStatus(school){
     if (isRemote()){
       const rows = await remoteFetch('indicator_status?school=eq.' + encodeURIComponent(school));
@@ -862,6 +929,7 @@ function indicatorsForProgram(programId){ return INDICATOR_DEFS.filter(function(
 
 const TIME_STATUS_LABEL = { upcoming:'لم يحن وقته', inrange:'ضمن الفترة المستهدفة', overdue:'متأخر عن الفترة', complete:'مكتمل' };
 const TIME_STATUS_BADGE = { upcoming:'draft', inrange:'pending', overdue:'returned', complete:'approved' };
+const SEMESTER_LABELS = { '1':'الأول', '2':'الثاني', '3':'الثالث' };
 
 function currentWeekNumber(semesterStart){
   if (!semesterStart) return null;
@@ -890,6 +958,7 @@ const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms
 
 /* ---------------------- التنبيهات والرسائل ---------------------- */
 let NotifUI = { open:false, compose:false };
+let SiteSettings = { program_title:'منصة دعم التحصيل الدراسي', program_subtitle:'والفاعلية الجماعية للمعلمين', academic_year:'' };
 const NOTIF_TYPE_LABEL = { meeting:'تذكير اجتماع', submission:'تسليم عمل', demo:'حصة توضيحية', general:'عام' };
 const LOGOUT_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 const BELL_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
@@ -965,7 +1034,7 @@ function buildSignaturePad(name, existingDataUrl, readonly){
 }
 function mountPad(cid, name){
   const canvas = document.getElementById(cid);
-  if (!canvas || Pads[cid]) return;
+  if (!canvas || (Pads[cid] && Pads[cid].el === canvas)) return;
   const ctx = canvas.getContext('2d');
   let drawing = false, hasInk = false;
   function pos(e){
@@ -984,6 +1053,7 @@ function mountPad(cid, name){
   canvas.addEventListener('touchmove', move, {passive:false});
   canvas.addEventListener('touchend', end);
   Pads[cid] = {
+    el:canvas,
     name:name,
     clear:function(){ ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false; },
     isEmpty:function(){ return !hasInk; },
@@ -1093,7 +1163,7 @@ function topNav(){
               '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
               '<div class="ntitle">'+esc(n.title)+'</div>' +
               (n.body ? '<div class="nbody">'+esc(n.body)+'</div>' : '') +
-              '<div class="nmeta">'+esc(n.sender_name||'')+(n.due_date?(' · الموعد: '+esc(n.due_date)):'')+' · '+fmtDateTime(n.created_at)+'</div>' +
+              '<div class="nmeta">'+esc(n.sender_name||'')+(n.due_date?(' · الموعد: '+fmtDate(n.due_date)):'')+' · '+fmtDateTime(n.created_at)+'</div>' +
             '</div>'
           );
         }).join('') : '<div class="notif-empty">لا توجد تنبيهات حتى الآن.</div>') +
@@ -1107,7 +1177,7 @@ function topNav(){
     '<div class="topnav no-print">' +
       '<div class="topnav-brand">' +
         '<img class="brand-mark" style="width:46px;height:46px;" src="'+RCJY_LOGO+'" alt="شعار الهيئة الملكية للجبيل وينبع">' +
-        '<div class="topnav-title">منصة دعم التحصيل الدراسي<small>'+esc(State.user.school)+'</small></div>' +
+        '<div class="topnav-title">'+esc(SiteSettings.program_title)+'<small>'+esc(State.user.school)+(SiteSettings.academic_year?' · العام الدراسي '+esc(SiteSettings.academic_year):'')+'</small></div>' +
       '</div>' +
       '<div class="topnav-right">' +
         '<div class="user-pill"><span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+roleLabel+'</span></div>' +
@@ -1205,7 +1275,7 @@ function screenLogin(){
   return (
     '<div class="center-screen">' +
       '<div class="login-card">' +
-        '<div class="brand"><img class="brand-mark" src="'+RCJY_LOGO+'" alt="شعار الهيئة الملكية للجبيل وينبع"><div><div class="brand-title">منصة دعم التحصيل الدراسي</div><div class="brand-sub">والفاعلية الجماعية للمعلمين</div></div></div>' +
+        '<div class="brand"><img class="brand-mark" src="'+RCJY_LOGO+'" alt="شعار الهيئة الملكية للجبيل وينبع"><div><div class="brand-title">'+esc(SiteSettings.program_title)+'</div><div class="brand-sub">'+esc(SiteSettings.program_subtitle)+'</div></div></div>' +
         '<div class="login-h">تسجيل الدخول</div>' +
         '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
         '<div id="loginError" class="error-text" style="display:none;"></div>' +
@@ -1250,16 +1320,131 @@ function dashTabsHtml(){
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
       '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
       '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
     '</div>'
   );
+}
+async function screenCommunityMembers(){
+  const communities = State.communitiesCache || [];
+  const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
+  if (!myCommunity){
+    return (
+      '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+      '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+      dashTabsHtml() +
+      '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>'
+    );
+  }
+  const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher'; });
+  const linked = teachers.filter(function(t){ return t.community_id===myCommunity.id; });
+  const unlinked = teachers.filter(function(t){ return !t.community_id; });
+
+  const linkedRows = linked.length ? linked.map(function(t){
+    return (
+      '<div class="ind-row">' +
+        '<div class="ind-main"><div class="lbl">'+esc(t.full_name)+'</div><div class="sub">'+esc(t.specialty||'—')+'</div></div>' +
+        '<div class="ind-side"><button class="btn btn-ghost btn-sm" data-action="unlinkTeacher" data-id="'+t.id+'">إزالة من المجتمع</button></div>' +
+      '</div>'
+    );
+  }).join('') : '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون مرتبطون بمجتمعك بعد.</p>';
+
+  const unlinkedRows = unlinked.length ? unlinked.map(function(t){
+    return (
+      '<div class="ind-row">' +
+        '<div class="ind-main"><div class="lbl">'+esc(t.full_name)+'</div><div class="sub">'+esc(t.specialty||'—')+'</div></div>' +
+        '<div class="ind-side"><button class="btn btn-primary btn-sm" data-action="linkTeacher" data-id="'+t.id+'">+ إضافة للمجتمع</button></div>' +
+      '</div>'
+    );
+  }).join('') : '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون غير مرتبطين بمجتمع حاليًا. المعلمون الجدد يُنشئهم مدير النظام ويظهرون هنا تلقائيًا.</p>';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="program-card">' +
+      '<div class="ph"><h3>أعضاء '+esc(myCommunity.name)+'</h3></div>' +
+      linkedRows +
+    '</div>' +
+    '<div class="program-card">' +
+      '<div class="ph"><h3>معلمون غير مرتبطين بمجتمع</h3><p>اختر المعلمين الذين تريد إضافتهم إلى مجتمعك. هذه البيانات أنشأها مدير النظام مسبقًا.</p></div>' +
+      unlinkedRows +
+    '</div>'
+  );
+}
+function bindCommunityMembers(){
+  document.querySelectorAll('[data-action="linkTeacher"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      try{ await DB.updateUser(el.getAttribute('data-id'), { community_id: State.user.community_id }); toast('تمت إضافة المعلم إلى مجتمعك.'); render(); bindCommunityMembers(); }
+      catch(e){ toast(e.message); }
+    });
+  });
+  document.querySelectorAll('[data-action="unlinkTeacher"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد إزالة هذا المعلم من مجتمعك؟')) return;
+      try{ await DB.updateUser(el.getAttribute('data-id'), { community_id: null }); toast('تمت إزالة المعلم من المجتمع.'); render(); bindCommunityMembers(); }
+      catch(e){ toast(e.message); }
+    });
+  });
 }
 function adminTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
       '<button class="tab '+(State.adminTab==='users'?'active':'')+'" data-action="adminTab" data-tab="users">المستخدمون</button>' +
       '<button class="tab '+(State.adminTab==='communities'?'active':'')+'" data-action="adminTab" data-tab="communities">المجتمعات المهنية</button>' +
+      '<button class="tab '+(State.adminTab==='settings'?'active':'')+'" data-action="adminTab" data-tab="settings">إعدادات النظام</button>' +
     '</div>'
   );
+}
+async function screenAdminSettings(){
+  const s = SiteSettings;
+  return (
+    '<div class="program-card">' +
+      '<div class="ph"><h3>الإعدادات العامة</h3><p>تُحفظ هذه القيم مرة واحدة وتنعكس في جميع شاشات النظام (العنوان، الصفحة الرئيسية، شاشة الدخول).</p></div>' +
+      '<div style="padding:16px 18px;">' +
+        '<div class="field"><label>عنوان البرنامج</label><input class="input" id="ssTitle" value="'+esc(s.program_title)+'"></div>' +
+        '<div class="field"><label>العنوان الفرعي</label><input class="input" id="ssSubtitle" value="'+esc(s.program_subtitle)+'"></div>' +
+        '<div class="field"><label>العام الدراسي (مثال: 1447 / 1448هـ)</label><input class="input" id="ssYear" value="'+esc(s.academic_year)+'"></div>' +
+        '<button class="btn btn-primary" data-action="saveSiteSettings">حفظ الإعدادات</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="program-card">' +
+      '<div class="ph"><h3>تغيير اسم المدرسة</h3><p>تنبيه: سيُطبَّق الاسم الجديد على جميع حسابات المستخدمين والنماذج والمجتمعات المهنية المسجَّلة باسم المدرسة الحالي.</p></div>' +
+      '<div style="padding:16px 18px;">' +
+        '<div class="field"><label>اسم المدرسة الحالي</label><input class="input" id="ssOldSchool" value="'+esc(State.user.school)+'"></div>' +
+        '<div class="field"><label>اسم المدرسة الجديد</label><input class="input" id="ssNewSchool" placeholder="اكتب الاسم الجديد"></div>' +
+        '<button class="btn btn-gold" data-action="renameSchool">تطبيق التغيير على جميع السجلات</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindAdminSettings(){
+  const saveBtn = document.querySelector('[data-action="saveSiteSettings"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const patch = {
+      program_title: document.getElementById('ssTitle').value.trim(),
+      program_subtitle: document.getElementById('ssSubtitle').value.trim(),
+      academic_year: document.getElementById('ssYear').value.trim()
+    };
+    try{
+      const saved = await DB.saveSiteSettings(patch);
+      SiteSettings = Object.assign({}, SiteSettings, saved);
+      document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
+      toast('تم حفظ الإعدادات.');
+      render();
+    }catch(e){ toast(e.message); }
+  });
+  const renameBtn = document.querySelector('[data-action="renameSchool"]');
+  if (renameBtn) renameBtn.addEventListener('click', async function(){
+    const oldName = document.getElementById('ssOldSchool').value.trim();
+    const newName = document.getElementById('ssNewSchool').value.trim();
+    if (!oldName || !newName){ toast('يرجى تعبئة اسم المدرسة الحالي والجديد.'); return; }
+    if (!confirm('سيتم تغيير اسم المدرسة من "'+oldName+'" إلى "'+newName+'" في جميع السجلات. هل تريد الاستمرار؟')) return;
+    try{
+      await DB.renameSchool(oldName, newName);
+      toast('تم تغيير اسم المدرسة بنجاح.');
+      render();
+    }catch(e){ toast(e.message); }
+  });
 }
 async function screenDashboard(){
   if (State.user.role==='teacher') return screenTeacherTasks();
@@ -1268,8 +1453,11 @@ async function screenDashboard(){
       '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
       '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين، والمجتمعات المهنية</div>' +
       adminTabsHtml() +
-      (State.adminTab==='communities' ? await screenAdminCommunities() : await screenAdminUsers())
+      (State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : await screenAdminUsers())
     );
+  }
+  if (State.dashTab==='community' && State.user.role==='coordinator'){
+    return await screenCommunityMembers();
   }
   if (State.dashTab==='indicators'){
     return (
@@ -1351,7 +1539,8 @@ async function screenDashboard(){
 function bindDashboard(){
   document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
   if (State.user.role==='teacher') bindTeacherTasks();
-  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else bindAdminUsers(); }
+  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else bindAdminUsers(); }
+  else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
   else if (State.dashTab==='indicators') bindIndicators();
 }
 
@@ -1372,7 +1561,7 @@ async function screenTeacherTasks(){
     return (
       '<div class="task-card">' +
         '<div class="meta"><b>الطالب: '+esc(t.sub.payload.studentName)+' — '+esc(t.sub.payload.grade)+'</b>' +
-          '<span>المادة: '+esc(t.sess.subject||'—')+' · التاريخ: '+esc(t.sess.date||'—')+' · '+(done?'<span style="color:var(--success);font-weight:700;">تم التوقيع والتعبئة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التعبئة</span>')+'</span></div>' +
+          '<span>المادة: '+esc(t.sess.subject||'—')+' · التاريخ: '+fmtDate(t.sess.date)+' · '+(done?'<span style="color:var(--success);font-weight:700;">تم التوقيع والتعبئة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التعبئة</span>')+'</span></div>' +
         '<button class="btn '+(done?'btn-ghost':'btn-primary')+' btn-sm" data-action="openTeacherSession" data-sub="'+t.sub.id+'" data-idx="'+t.idx+'">'+(done?'تعديل الجلسة':'تعبئة الجلسة ورفع الشواهد')+'</button>' +
       '</div>'
     );
@@ -1787,11 +1976,18 @@ async function screenIndicators(){
   const settings = (await DB.getSettings(State.user.school)) || {};
   const indStatus = await DB.getIndicatorStatus(State.user.school);
   const semesterStart = settings.semester_start || settings.semesterStart || '';
+  const currentSemester = settings.current_semester || '2';
   const curWeek = currentWeekNumber(semesterStart);
+
+  const semesterOptionsHtml = ['1','2','3'].map(function(v){
+    return '<option value="'+v+'" '+(v===currentSemester?'selected':'')+'>الفصل الدراسي '+SEMESTER_LABELS[v]+'</option>';
+  }).join('');
 
   const settingsBar = (
     '<div class="settings-bar no-print">' +
-      '<label>تاريخ بداية الفصل الدراسي الثاني:</label>' +
+      '<label>الفصل الدراسي:</label>' +
+      '<select id="semesterSelectInput" class="input" style="width:auto;">'+semesterOptionsHtml+'</select>' +
+      '<label>تاريخ بدايته:</label>' +
       '<input type="date" id="semesterStartInput" value="'+esc(semesterStart)+'">' +
       '<button class="btn btn-primary btn-sm" data-action="saveSemesterStart">حفظ</button>' +
       (curWeek!=null
@@ -1850,8 +2046,9 @@ function bindIndicators(){
   const saveBtn = document.querySelector('[data-action="saveSemesterStart"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const val = document.getElementById('semesterStartInput').value;
+    const semVal = document.getElementById('semesterSelectInput').value;
     if (!val){ toast('اختر تاريخًا أولًا.'); return; }
-    await DB.saveSettings(State.user.school, { semester_start: val });
+    await DB.saveSettings(State.user.school, { semester_start: val, current_semester: semVal });
     toast('تم حفظ تاريخ بداية الفصل.');
     render();
   });
@@ -2254,7 +2451,7 @@ async function screenView(id){
     case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
   }
   const stamp = s.status==='approved' ? (
-    '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? new Date(s.approved_at).toLocaleDateString('ar-SA'): '') +'</div></div></div>'
+    '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
   ) : '';
   return (
     '<div class="sheet-wrap">' +
@@ -2359,6 +2556,11 @@ function bindGlobalAction(el){
   const u = loadUserSession();
   if (u){ State.user = u; go('dashboard'); }
   else { go('login'); }
+  DB.getSiteSettings().then(function(s){
+    SiteSettings = Object.assign({}, SiteSettings, s);
+    document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
+    render();
+  }).catch(function(){});
 })();
 </script>
 </body>
