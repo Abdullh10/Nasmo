@@ -559,9 +559,10 @@ const DB = {
         body: JSON.stringify({ email: authEmailFor(username), password: password })
       });
       if (!res.ok){
-        const errData = await res.json().catch(function(){ return null; });
-        const msg = errData && (errData.error_description || errData.msg || errData.error);
-        throw new Error(msg ? ('فشل تسجيل الدخول: ' + msg) : 'اسم المستخدم أو كلمة المرور غير صحيحة.');
+        const rawText = await res.text().catch(function(){ return ''; });
+        let msg = null;
+        try{ const errData = JSON.parse(rawText); msg = errData.error_description || errData.msg || errData.error; }catch(e){}
+        throw new Error('فشل تسجيل الدخول (' + res.status + '): ' + (msg || rawText || 'اسم المستخدم أو كلمة المرور غير صحيحة.'));
       }
       const data = await res.json();
       AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
@@ -641,9 +642,10 @@ const DB = {
         body: JSON.stringify({ email: authEmailFor(obj.username), password: obj.password })
       });
       if (!signupRes.ok){
-        const errData = await signupRes.json().catch(function(){ return null; });
-        const msg = errData && (errData.msg || errData.error_description || errData.error);
-        throw new Error(msg ? ('فشل إنشاء حساب المصادقة: ' + msg) : 'فشل إنشاء حساب المصادقة، تأكد أن اسم المستخدم غير مستخدم مسبقًا.');
+        const rawText = await signupRes.text().catch(function(){ return ''; });
+        let msg = null;
+        try{ const errData = JSON.parse(rawText); msg = errData.msg || errData.error_description || errData.error; }catch(e){}
+        throw new Error('فشل إنشاء حساب المصادقة (' + signupRes.status + '): ' + (msg || rawText || 'تأكد أن اسم المستخدم غير مستخدم مسبقًا.'));
       }
       const signupData = await signupRes.json();
       const newId = (signupData.user && signupData.user.id) || signupData.id;
