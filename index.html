@@ -1869,6 +1869,19 @@ function parseFlexibleRows(text){
   }
   return parseCsv(text);
 }
+function sleep(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); }
+async function createUserWithRetry(userObj){
+  const maxAttempts = 5;
+  for (let attempt=1; attempt<=maxAttempts; attempt++){
+    try{
+      return await DB.createUser(userObj);
+    }catch(e){
+      const isRateLimited = /\(429\)/.test(e.message) || /rate limit/i.test(e.message);
+      if (isRateLimited && attempt < maxAttempts){ await sleep(attempt * 4000); continue; }
+      throw e;
+    }
+  }
+}
 async function importTeacherRows(dataRows){
   const existingUsers = await DB.listUsers({});
   const preExistingUsernames = existingUsers.map(function(u){ return u.username; });
@@ -1889,9 +1902,10 @@ async function importTeacherRows(dataRows){
     allUsernames.push(candidate);
     const password = String(Math.floor(100000 + Math.random()*900000));
     try{
-      await DB.createUser({ username:candidate, password:password, full_name:fullName, role:'teacher', school:State.user.school, community_id:null, phone:phone, email:email });
+      await createUserWithRetry({ username:candidate, password:password, full_name:fullName, role:'teacher', school:State.user.school, community_id:null, phone:phone, email:email });
       created.push({ full_name:fullName, username:candidate, password:password, email:email });
     }catch(e){ failed.push(fullName + ' — ' + e.message); }
+    if (i < dataRows.length - 1) await sleep(700);
   }
   if (!created.length && !skippedExisting.length && !failed.length){ toast('لم يتم العثور على بيانات معلمين صالحة، يرجى مراجعة تنسيق الملف.'); return; }
   const parts = [];
