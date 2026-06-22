@@ -1,218 +1,1757 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تدريب على قراءة المعادلة الكيميائية</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Tajawal', sans-serif; }
-        .explanation-box { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); max-height: 0; opacity: 0; overflow: hidden; }
-        .explanation-box.show { max-height: 500px; opacity: 1; margin-top: 1.5rem; }
-        .option-btn.correct { border-color: #10b981; background-color: #ecfdf5; color: #065f46; }
-        .option-btn.wrong { border-color: #ef4444; background-color: #fef2f2; color: #991b1b; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0B2A4A">
+<title>منصة دعم التحصيل الدراسي والفاعلية الجماعية للمعلمين</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=Noto+Kufi+Arabic:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0B2A4A; --navy-2:#143B66; --navy-3:#0E5A82;
+  --teal:#0E7C7B; --teal-dark:#0A5C5B;
+  --gold:#B8860B; --gold-light:#E9C46A;
+  --bg:#F3F5F8; --surface:#FFFFFF; --surface-2:#FAFBFC;
+  --text:#1E2A38; --muted:#6B7686; --border:#E1E6ED;
+  --success:#1F8A55; --success-bg:#E8F5EE;
+  --pending:#B45309; --pending-bg:#FDF1E0;
+  --danger:#B91C1C; --danger-bg:#FBE9E9;
+  --draft:#5B6472; --draft-bg:#EDEFF2;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(11,42,74,.06), 0 6px 18px rgba(11,42,74,.06);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Tajawal',sans-serif;
+  font-size:15px; line-height:1.65;
+  min-height:100vh;
+}
+h1,h2,h3,h4{ font-family:'Noto Kufi Arabic',sans-serif; margin:0; color:var(--navy); }
+.mono{ font-family:'JetBrains Mono',monospace; direction:ltr; unicode-bidi:embed; }
+button{ font-family:inherit; cursor:pointer; }
+input,select,textarea{ font-family:inherit; font-size:14.5px; }
+a{ color:var(--teal-dark); }
+::selection{ background:var(--gold-light); }
+
+/* ---------- layout shells ---------- */
+#app{min-height:100vh;}
+.center-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+
+/* ---------- login ---------- */
+.login-card{
+  width:100%; max-width:430px; background:var(--surface);
+  border-radius:16px; box-shadow:var(--shadow); padding:36px 32px 28px;
+  border:1px solid var(--border); position:relative; overflow:hidden;
+}
+.login-card::before{
+  content:""; position:absolute; inset:0 0 auto 0; height:6px;
+  background:linear-gradient(90deg,var(--navy),var(--teal),var(--gold));
+}
+.brand{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+.brand-mark{
+  width:46px; height:46px; border-radius:12px; flex:none;
+  background:linear-gradient(160deg,var(--navy),var(--navy-3));
+  display:flex; align-items:center; justify-content:center;
+  color:var(--gold-light); font-family:'Noto Kufi Arabic'; font-weight:800; font-size:20px;
+}
+.brand-title{ font-size:15px; font-weight:800; color:var(--navy); line-height:1.3;}
+.brand-sub{ font-size:12px; color:var(--muted); }
+.login-h{ font-size:20px; margin:18px 0 4px; }
+.login-p{ color:var(--muted); font-size:13.5px; margin-bottom:20px; }
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:13px; color:var(--navy-2); font-weight:700; margin-bottom:6px; }
+.input,select.input,textarea.input{
+  width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:8px;
+  background:var(--surface-2); color:var(--text); transition:.15s;
+}
+.input:focus,select.input:focus,textarea.input:focus{ outline:none; border-color:var(--teal); background:#fff; box-shadow:0 0 0 3px rgba(14,124,123,.12); }
+.btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:8px; padding:11px 18px; font-weight:700; font-size:14px; transition:.15s; }
+.btn-primary{ background:var(--navy); color:#fff; }
+.btn-primary:hover{ background:var(--navy-2); }
+.btn-block{ width:100%; }
+.btn-gold{ background:var(--gold); color:#fff; }
+.btn-gold:hover{ background:#9c7209; }
+.btn-ghost{ background:transparent; color:var(--navy); border:1.5px solid var(--border); }
+.btn-ghost:hover{ background:var(--surface-2); }
+.btn-danger{ background:#fff; color:var(--danger); border:1.5px solid #f0c4c4; }
+.btn-danger:hover{ background:var(--danger-bg); }
+.btn-sm{ padding:7px 12px; font-size:12.5px; border-radius:7px; }
+.hint-box{ margin-top:18px; padding:12px 14px; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; font-size:12.5px; color:var(--muted); }
+.hint-box b{ color:var(--navy-2); }
+.error-text{ color:var(--danger); font-size:13px; margin:-4px 0 10px; }
+
+/* ---------- top nav ---------- */
+.topnav{
+  background:var(--navy); color:#fff; padding:0 20px; height:62px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  position:sticky; top:0; z-index:30; box-shadow:0 2px 10px rgba(0,0,0,.12);
+}
+.topnav-brand{ display:flex; align-items:center; gap:10px; }
+.topnav-title{ font-family:'Noto Kufi Arabic'; font-weight:800; font-size:15.5px; }
+.topnav-title small{ display:block; font-family:'Tajawal'; font-weight:400; font-size:11px; color:#B9C6D6; }
+.topnav-right{ display:flex; align-items:center; gap:10px; }
+.user-pill{ display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.08); padding:6px 12px; border-radius:30px; font-size:13px; }
+.user-pill .role-tag{ background:var(--gold); color:#1d1300; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:20px; }
+.icon-btn{ background:rgba(255,255,255,.08); border:none; color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.icon-btn:hover{ background:rgba(255,255,255,.18); }
+
+.shell{ max-width:1180px; margin:0 auto; padding:24px 20px 60px; }
+
+/* ---------- kpis ---------- */
+.kpi-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+.kpi-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; box-shadow:var(--shadow); }
+.kpi-card .v{ font-family:'JetBrains Mono'; font-size:28px; font-weight:700; color:var(--navy); }
+.kpi-card .l{ font-size:12.5px; color:var(--muted); margin-top:2px; }
+.kpi-card.accent-pending .v{ color:var(--pending); }
+.kpi-card.accent-success .v{ color:var(--success); }
+.kpi-card.accent-danger .v{ color:var(--danger); }
+
+@media (max-width:760px){ .kpi-grid{ grid-template-columns:repeat(2,1fr);} }
+
+/* ---------- section header ---------- */
+.section-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:30px 0 14px; flex-wrap:wrap; }
+.section-head h2{ font-size:17px; }
+.tabs{ display:flex; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:4px; }
+.tab{ padding:7px 14px; border-radius:6px; font-size:13px; font-weight:700; color:var(--muted); background:transparent; border:none; }
+.tab.active{ background:var(--navy); color:#fff; }
+
+/* ---------- table ---------- */
+.table-wrap{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+.table-scroll{ overflow-x:auto; }
+table.list{ width:100%; border-collapse:collapse; min-width:640px; }
+table.list th{ text-align:right; font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; padding:12px 16px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+table.list td{ padding:13px 16px; border-bottom:1px solid var(--border); font-size:13.5px; vertical-align:middle; }
+table.list tr:last-child td{ border-bottom:none; }
+table.list tr:hover td{ background:#FAFCFE; }
+.empty-row td{ text-align:center; color:var(--muted); padding:34px; }
+
+.badge{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:20px; }
+.badge::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.badge.draft{ background:var(--draft-bg); color:var(--draft); }
+.badge.pending{ background:var(--pending-bg); color:var(--pending); }
+.badge.approved{ background:var(--success-bg); color:var(--success); }
+.badge.returned{ background:var(--danger-bg); color:var(--danger); }
+
+.row-actions{ display:flex; gap:6px; justify-content:flex-end; }
+
+/* ---------- form picker ---------- */
+.card-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+@media (max-width:900px){ .card-grid{ grid-template-columns:repeat(2,1fr);} }
+@media (max-width:600px){ .card-grid{ grid-template-columns:1fr;} }
+.form-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); cursor:pointer; transition:.15s; position:relative; }
+.form-card:hover{ transform:translateY(-2px); border-color:var(--teal); }
+.form-card .num{ position:absolute; left:14px; top:14px; font-family:'JetBrains Mono'; font-size:11px; color:var(--muted); background:var(--surface-2); padding:2px 8px; border-radius:20px; }
+.form-card .ic{ width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:19px; margin-bottom:10px; }
+.form-card h3{ font-size:14.5px; margin-bottom:4px; }
+.form-card p{ font-size:12.5px; color:var(--muted); margin:0; }
+.form-card .tag{ display:inline-block; margin-top:10px; font-size:11px; font-weight:700; color:var(--teal-dark); background:#EAF6F5; padding:3px 9px; border-radius:20px; }
+.new-tag{ background:#FDF1E0; color:var(--pending); }
+
+/* ---------- form sheet ---------- */
+.sheet-wrap{ max-width:920px; margin:0 auto; }
+.sheet-bar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.sheet-bar .left{ display:flex; align-items:center; gap:10px; }
+.form-sheet{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+  padding:30px 34px; position:relative;
+}
+.sheet-header{ display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid var(--navy); padding-bottom:16px; margin-bottom:22px; }
+.sheet-header .titles h1{ font-size:19px; }
+.sheet-header .titles .sub{ color:var(--muted); font-size:12.5px; margin-top:3px; }
+.sheet-header .form-no{ font-family:'JetBrains Mono'; font-size:12px; color:#fff; background:var(--navy); padding:5px 12px; border-radius:7px; white-space:nowrap; }
+
+.field-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+.field-grid.cols-2{ grid-template-columns:repeat(2,1fr); }
+.field-grid.cols-4{ grid-template-columns:repeat(4,1fr); }
+@media (max-width:700px){ .field-grid, .field-grid.cols-2, .field-grid.cols-4{ grid-template-columns:1fr; } }
+
+.block-title{ font-size:13.5px; font-weight:800; color:var(--navy-2); margin:22px 0 10px; display:flex; align-items:center; gap:8px; }
+.block-title .dot{ width:7px; height:7px; border-radius:50%; background:var(--gold); }
+
+.checkbox-group{ display:flex; flex-wrap:wrap; gap:8px; }
+.chk{ display:flex; align-items:center; gap:6px; background:var(--surface-2); border:1.3px solid var(--border); border-radius:20px; padding:6px 13px; font-size:12.5px; cursor:pointer; user-select:none; }
+.chk input{ accent-color:var(--teal); }
+.chk.checked{ background:#EAF6F5; border-color:var(--teal); color:var(--teal-dark); font-weight:700; }
+
+.dyn-table{ width:100%; border-collapse:collapse; margin-bottom:10px; }
+.dyn-table th{ font-size:11.5px; color:var(--muted); text-align:right; padding:7px 8px; border-bottom:1.5px solid var(--border); }
+.dyn-table td{ padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+.dyn-table input, .dyn-table textarea{ width:100%; }
+.dyn-table .rmv{ background:none; border:none; color:var(--danger); font-size:16px; padding:2px 6px;}
+.add-row-btn{ font-size:12.5px; font-weight:700; color:var(--teal-dark); background:#EAF6F5; border:1px dashed var(--teal); padding:7px 14px; border-radius:8px; }
+
+.session-card{ border:1.5px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:var(--surface-2); position:relative; }
+.session-card .session-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.session-card .session-head .ttl{ font-weight:700; font-size:13px; color:var(--navy-2); }
+
+textarea.input{ resize:vertical; min-height:64px; }
+
+.sig-box{ border:1.5px dashed var(--border); border-radius:10px; padding:10px; background:var(--surface-2); }
+.sig-box canvas{ width:100%; height:120px; background:#fff; border-radius:7px; touch-action:none; border:1px solid var(--border); }
+.sig-actions{ display:flex; justify-content:space-between; margin-top:8px; align-items:center; }
+.sig-name{ font-size:12px; color:var(--muted); }
+.sig-img{ max-height:70px; }
+.signed-chip{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--success); background:var(--success-bg); padding:5px 11px; border-radius:20px; }
+
+.sig-footer{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:26px; padding-top:18px; border-top:1.5px dashed var(--border); }
+@media (max-width:700px){ .sig-footer{ grid-template-columns:1fr; } }
+.sig-footer .who{ font-size:12.5px; font-weight:700; color:var(--navy-2); margin-bottom:6px; }
+
+.upload-note{ font-size:12px; color:var(--muted); background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; padding:9px 11px; }
+
+.evidence-grid{ display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+.evidence-thumb{ position:relative; width:84px; height:84px; border-radius:8px; overflow:hidden; border:1.5px solid var(--border); }
+.evidence-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+.evidence-thumb .rmv-ev{ position:absolute; top:2px; left:2px; background:rgba(185,28,28,.9); color:#fff; border:none; width:20px; height:20px; border-radius:50%; font-size:12px; line-height:1; }
+.evidence-add{ width:84px; height:84px; border-radius:8px; border:1.5px dashed var(--teal); background:#EAF6F5; color:var(--teal-dark); display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; }
+
+.task-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 18px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.task-card .meta b{ display:block; font-size:14px; color:var(--navy-2); margin-bottom:3px; }
+.task-card .meta span{ font-size:12.5px; color:var(--muted); }
+
+.program-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:22px; overflow:hidden; }
+.program-card .ph{ padding:16px 18px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+.program-card .ph h3{ font-size:15.5px; color:var(--navy); margin-bottom:3px; }
+.program-card .ph p{ font-size:12.5px; color:var(--muted); }
+.ind-row{ padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.ind-row:last-child{ border-bottom:none; }
+.ind-row .ind-main{ flex:1; min-width:240px; }
+.ind-row .ind-main .lbl{ font-size:13.5px; color:var(--ink); font-weight:600; margin-bottom:5px; }
+.ind-row .ind-main .sub{ font-size:11.5px; color:var(--muted); line-height:1.7; }
+.ind-row .ind-side{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:160px; }
+.prog-bar{ width:140px; height:7px; border-radius:6px; background:var(--surface-2); overflow:hidden; border:1px solid var(--border); }
+.prog-bar > i{ display:block; height:100%; background:var(--success); }
+.prog-txt{ font-size:11px; color:var(--muted); font-family:'JetBrains Mono'; }
+.settings-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; margin-bottom:18px; }
+.settings-bar label{ font-size:12.5px; color:var(--muted); font-weight:700; }
+.settings-bar input{ border:1px solid var(--border); border-radius:7px; padding:6px 10px; font-size:13px; font-family:inherit; }
+
+.stamp{
+  position:absolute; left:34px; top:90px; width:118px; height:118px; border-radius:50%;
+  border:3px solid var(--gold); display:flex; align-items:center; justify-content:center; text-align:center;
+  transform:rotate(-14deg); color:var(--gold); opacity:.92; pointer-events:none;
+  background:repeating-radial-gradient(circle, transparent 0 96%, rgba(184,134,11,.07) 97%);
+}
+.stamp::before{ content:""; position:absolute; inset:7px; border:1.5px solid var(--gold); border-radius:50%; }
+.stamp .txt{ font-family:'Noto Kufi Arabic'; font-weight:800; font-size:13px; line-height:1.3; }
+.stamp .sm{ font-size:8.5px; font-family:'JetBrains Mono'; margin-top:3px; }
+@keyframes stampIn{ 0%{ transform:rotate(-14deg) scale(2.4); opacity:0;} 60%{ opacity:1;} 100%{ transform:rotate(-14deg) scale(1); opacity:.92;} }
+.stamp.animate{ animation:stampIn .45s ease-out; }
+
+.status-strip{ display:flex; align-items:center; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+.step{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+.step .c{ width:22px; height:22px; border-radius:50%; background:var(--draft-bg); color:var(--draft); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+.step.done .c{ background:var(--success); color:#fff; }
+.step.now .c{ background:var(--navy); color:#fff; }
+.step-sep{ width:26px; height:2px; background:var(--border); }
+
+.return-note{ background:var(--danger-bg); border:1px solid #f0c4c4; border-radius:9px; padding:12px 14px; font-size:13px; color:#7a1414; margin-bottom:18px; }
+.return-note b{ display:block; margin-bottom:3px; }
+
+.review-panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px; position:sticky; top:80px; }
+.review-panel h3{ font-size:14.5px; margin-bottom:12px; }
+.review-grid{ display:grid; grid-template-columns:1fr; gap:10px; }
+
+.modal-bg{ position:fixed; inset:0; background:rgba(11,26,42,.55); display:flex; align-items:center; justify-content:center; z-index:60; padding:20px; }
+.modal-box{ background:#fff; border-radius:14px; padding:24px; max-width:440px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+.modal-box h3{ font-size:16px; margin-bottom:6px; }
+.modal-box p{ color:var(--muted); font-size:13px; margin-bottom:16px; }
+.modal-actions{ display:flex; gap:10px; margin-top:16px; }
+
+.toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:12px 22px; border-radius:30px; font-size:13.5px; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.2); z-index:80; }
+
+.layout-2col{ display:grid; grid-template-columns:1fr 300px; gap:20px; align-items:start; }
+@media (max-width:900px){ .layout-2col{ grid-template-columns:1fr; } }
+
+/* ---------- print ---------- */
+@media print{
+  body{ background:#fff; }
+  .no-print{ display:none !important; }
+  .shell{ padding:0; max-width:none; }
+  .form-sheet{ box-shadow:none; border:none; padding:0; }
+  .sheet-wrap{ max-width:none; }
+}
+.footer-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; }
+</style>
 </head>
-<body class="bg-slate-50 min-h-screen flex flex-col items-center py-10 px-4">
+<body>
+<div id="app"></div>
 
-    <header class="max-w-3xl w-full text-center mb-10">
-        <h1 class="text-3xl font-bold text-slate-800 mb-2">تدريب على قراءة المعادلة الكيميائية</h1>
-        <p class="text-slate-600 font-medium italic">حلل، فكر، ثم استنتج</p>
-        <div class="h-1.5 w-24 bg-blue-600 mx-auto mt-4 rounded-full shadow-sm"></div>
-    </header>
+<script>
+/* =========================================================================
+   منصة دعم التحصيل الدراسي والفاعلية الجماعية للمعلمين
+   نظام إلكتروني أحادي الملف (Single-file) — يعمل دون اتصال بالكامل (localStorage)
+   ويدعم اختياريًا المزامنة السحابية عبر Supabase (REST) لمشاركة البيانات
+   بين حساب "منسق المجتمع المهني" و حساب "مدير المدرسة".
 
-    <main id="quiz-container" class="max-w-3xl w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100 relative">
-        <div class="mb-8">
-            <div class="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                <span>السؤال <span id="current-question-num">1</span> / 10</span>
-                <span id="progress-percent">10%</span>
-            </div>
-            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div id="progress-bar" class="bg-blue-600 h-full transition-all duration-700 ease-out" style="width: 10%;"></div>
-            </div>
-        </div>
+   لتفعيل المزامنة السحابية: عبّئ القيمتين أدناه ببيانات مشروع Supabase
+   (Project Settings → API)، وأنشئ الجدولين المرفقين في تعليق SQL_SCHEMA.
+   إن تُركا فارغتين يعمل النظام محليًا (وضع تجريبي) في هذا المتصفح فقط.
+========================================================================= */
+const CONFIG = {
+  SUPABASE_URL: "",        // مثال: https://xxxxx.supabase.co
+  SUPABASE_ANON_KEY: ""    // المفتاح العام (anon public key)
+};
 
-        <div id="question-content">
-            <h2 id="question-text" class="text-xl font-bold text-slate-800 mb-6 leading-relaxed">
-                جاري التحميل...
-            </h2>
-            <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                </div>
-        </div>
+/* SQL_SCHEMA (نفّذها في SQL Editor داخل Supabase عند التفعيل):
 
-        <div id="explanation-container" class="explanation-box p-5 rounded-xl border-r-4 border-blue-500 bg-blue-50">
-            <div class="flex items-center gap-2 mb-2">
-                <span id="feedback-icon"></span>
-                <span id="feedback-title" class="font-bold text-lg"></span>
-            </div>
-            <p id="explanation-text" class="text-slate-700 leading-relaxed"></p>
-        </div>
+create table profiles (
+  id uuid primary key default gen_random_uuid(),
+  username text unique not null,
+  password text not null,
+  full_name text not null,
+  role text not null check (role in ('coordinator','principal','teacher','admin')),
+  school text not null,
+  created_at timestamptz default now()
+);
 
-        <div class="mt-8 flex justify-end items-center border-t pt-6">
-            <button id="next-btn" onclick="nextQuestion()" class="hidden bg-slate-800 hover:bg-black text-white px-10 py-3 rounded-xl font-bold transition-all transform hover:scale-105 active:scale-95 shadow-lg">
-                السؤال التالي
-            </button>
-        </div>
-    </main>
+create table submissions (
+  id uuid primary key default gen_random_uuid(),
+  form_type text not null,
+  school text not null,
+  created_by uuid references profiles(id),
+  created_by_name text,
+  payload jsonb not null,
+  status text not null default 'draft',
+  preparer_signature text,
+  principal_signature text,
+  principal_comment text,
+  submitted_at timestamptz,
+  approved_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
 
-    <div id="results-container" class="hidden max-w-xl w-full bg-white rounded-2xl shadow-2xl p-10 text-center border border-slate-100">
-        <h2 class="text-3xl font-bold text-slate-800 mb-2">انتهى التدريب!</h2>
-        <p class="text-slate-500 mb-8">لقد أنجزت عملاً رائعاً في تحليل التفاعلات الكيميائية</p>
-        <div class="text-7xl font-black text-blue-600 mb-10"><span id="final-score">0</span><span class="text-2xl text-slate-300">/10</span></div>
-        <button onclick="location.reload()" class="bg-blue-600 hover:bg-blue-700 text-white w-full py-4 rounded-xl font-bold text-lg transition-all shadow-lg">
-            إعادة التدريب
-        </button>
-    </div>
+create table app_settings (
+  school text primary key,
+  semester_start date
+);
 
-    <script>
-        const quizData = [
-            {
-                q: "إذا قمنا بمضاعفة كمية غاز النيتروجين المضافة مع بقاء الهيدروجين كافياً، كيف تتأثر النسبة المولية في المعادلة الموزونة؟",
-                options: ["تظل ثابتة عند 1:3", "تتضاعف لتصبح 2:3", "تتغير النسبة الكتلية فقط", "تقل النسبة للنصف"],
-                correct: 0,
-                explanation: "المعاملات في المعادلة الموزونة تمثل 'وصفة' التفاعل الكيميائي الثابتة. زيادة الكميات المضافة لا تغير هذه النسب الأساسية."
-            },
-            {
-                q: "عند تفاعل 14g من النيتروجين تماماً، ما هي كتلة الأمونيا الناتجة؟",
-                options: ["17 جرام", "34 جرام", "20 جرام", "7 جرام"],
-                correct: 0,
-                explanation: "بناءً على المعادلة: 28g نيتروجين تنتج 34g أمونيا. وبما أن 14g هي نصف الـ 28g، فإن الناتج سيكون نصف الـ 34g أي 17g."
-            },
-            {
-                q: "ماذا يحدث للعدد الإجمالي للجزيئات عند تحول المتفاعلات بالكامل لنواتج؟",
-                options: ["يقل بمقدار النصف", "يزداد الضعف", "يظل ثابتاً", "يتلاشى"],
-                correct: 0,
-                explanation: "نجمع معاملات المتفاعلات (1+3=4) والناتج (2). تحولنا من 4 جزيئات إلى جزيئين، أي نقصان للنصف."
-            },
-            {
-                q: "ما هي النسبة الكتلية المبسطة للهيدروجين إلى الأمونيا الناتجة؟",
-                options: ["3 : 17", "1 : 3", "6 : 28", "2 : 3"],
-                correct: 0,
-                explanation: "الكتلة في المعادلة هي 6g هيدروجين : 34g أمونيا. بالقسمة على 2، تصبح النسبة المبسطة 3 : 17."
-            },
-            {
-                q: "ما المعلومة التي يوفرها الرمز (g) المكتوب بجانب المواد؟",
-                options: ["الحالة الفيزيائية", "الكتلة المولية", "سرعة التفاعل", "درجة الحرارة"],
-                correct: 0,
-                explanation: "الرموز الصغيرة (s, l, g, aq) تصف حالة المادة الفيزيائية (صلب، سائل، غاز، محلول مائي)."
-            },
-            {
-                q: "كم مولاً من النيتروجين نحتاج للتفاعل مع 6 مولات من الهيدروجين؟",
-                options: ["2 مول", "6 مولات", "3 مولات", "1 مول"],
-                correct: 0,
-                explanation: "النسبة هي 1 نيتروجين : 3 هيدروجين. لذا نحتاج (6 / 3) = 2 مول من النيتروجين."
-            },
-            {
-                q: "لماذا تختلف النسبة العددية للجزيئات (1:3) عن النسبة الكتلية (28:6)؟",
-                options: ["بسبب اختلاف الكتل المولية", "بسبب خطأ في الموازنة", "لأن الغازات تتمدد", "بسبب الضغط"],
-                correct: 0,
-                explanation: "جزيئات المواد المختلفة لها كتل مختلفة؛ جزيء النيتروجين أثقل بكثير من جزيء الهيدروجين رغم كونهما يشغلان نفس حيز المول."
-            },
-            {
-                q: "إذا بدأنا بـ 10 جزيئات N2 و 30 جزيئاً H2، كم جزيئاً من NH3 سينتج؟",
-                options: ["20 جزيء", "10 جزيئات", "40 جزيء", "60 جزيء"],
-                correct: 0,
-                explanation: "النسبة بين N2 و NH3 هي 1 : 2. إذاً 10 جزيئات تنتج ضعفها من الأمونيا."
-            },
-            {
-                q: "أي معلومة 'لا' توفرها المعادلة الكيميائية الموزونة؟",
-                options: ["سرعة التفاعل", "نسبة المولات", "حالة المادة", "حفظ الكتلة"],
-                correct: 0,
-                explanation: "المعادلة الموزونة تخبرنا 'ماذا' و 'بكم' يتفاعل، لكنها لا تذكر 'متى' أو 'ما هي سرعة' حدوث ذلك."
-            },
-            {
-                q: "إذا أنتج التفاعل 68g من الأمونيا، فكم كانت كتلة النيتروجين المتفاعل؟",
-                options: ["56g", "28g", "34g", "14g"],
-                correct: 0,
-                explanation: "إنتاج 34g يتطلب 28g نيتروجين. وبما أن 68g هي الضعف، نحتاج ضعف كمية النيتروجين (28 × 2 = 56g)."
-            }
-        ];
+create table indicator_status (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  indicator_id text not null,
+  done boolean default false,
+  done_by text,
+  done_at timestamptz,
+  unique (school, indicator_id)
+);
 
-        let currentQ = 0;
-        let score = 0;
-        let answered = false;
+-- فعّل RLS وأضف سياسات تسمح لأي مستخدم مُصادَق بالقراءة/الكتابة ضمن مدرسته،
+-- أو استخدم anon key مبدئيًا للتجربة الداخلية فقط ثم شدّد الصلاحيات قبل النشر العام.
+*/
 
-        function loadQuestion() {
-            answered = false;
-            document.getElementById('next-btn').classList.add('hidden');
-            document.getElementById('explanation-container').classList.remove('show');
-            
-            const q = quizData[currentQ];
-            document.getElementById('question-text').innerText = q.q;
-            document.getElementById('current-question-num').innerText = currentQ + 1;
-            
-            const progress = ((currentQ + 1) / quizData.length) * 100;
-            document.getElementById('progress-bar').style.width = `${progress}%`;
-            document.getElementById('progress-percent').innerText = `${Math.round(progress)}%`;
+function isRemote(){ return !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY); }
 
-            const optionsHTML = q.options.map((opt, i) => `
-                <button onclick="handleAnswer(${i}, this)" class="option-btn w-full text-right p-4 rounded-xl border-2 border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-all font-medium text-slate-700">
-                    ${opt}
-                </button>
-            `).join('');
-            document.getElementById('options-container').innerHTML = optionsHTML;
-        }
+async function remoteFetch(path, opts){
+  opts = opts || {};
+  const headers = {
+    "apikey": CONFIG.SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + CONFIG.SUPABASE_ANON_KEY,
+    "Content-Type": "application/json"
+  };
+  if (opts.prefer) headers["Prefer"] = opts.prefer;
+  const res = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
+    method: opts.method || "GET",
+    headers: headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  if (!res.ok) { throw new Error("تعذّر الاتصال بقاعدة البيانات السحابية (" + res.status + ")"); }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
 
-        function handleAnswer(idx, btn) {
-            if (answered) return;
-            answered = true;
-            
-            const correctIdx = quizData[currentQ].correct;
-            const buttons = document.querySelectorAll('.option-btn');
-            
-            if (idx === correctIdx) {
-                btn.classList.add('correct');
-                score++;
-                showFeedback(true);
-            } else {
-                btn.classList.add('wrong');
-                buttons[correctIdx].classList.add('correct');
-                showFeedback(false);
-            }
-            
-            document.getElementById('next-btn').classList.remove('hidden');
-        }
+/* ---------------------- طبقة البيانات (محلي / سحابي) ---------------------- */
+const LS_USERS = "dtd_users_v1";
+const LS_SUBS  = "dtd_submissions_v1";
+const LS_SETTINGS  = "dtd_settings_v1";
+const LS_INDSTATUS = "dtd_indicator_status_v1";
 
-        function showFeedback(isCorrect) {
-            const container = document.getElementById('explanation-container');
-            const title = document.getElementById('feedback-title');
-            const icon = document.getElementById('feedback-icon');
-            const text = document.getElementById('explanation-text');
+function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
+function nowIso(){ return new Date().toISOString(); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ar-SA') + ' - ' + d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
+}
 
-            if (isCorrect) {
-                container.classList.replace('border-blue-500', 'border-green-500');
-                container.classList.replace('bg-blue-50', 'bg-green-50');
-                title.innerText = "إجابة صحيحة!";
-                title.className = "font-bold text-lg text-green-700";
-                icon.innerHTML = '<svg class="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>';
-            } else {
-                container.classList.replace('border-blue-500', 'border-red-500');
-                container.classList.replace('bg-blue-50', 'bg-red-50');
-                title.innerText = "تحتاج لمراجعة:";
-                title.className = "font-bold text-lg text-red-700";
-                icon.innerHTML = '<svg class="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>';
-            }
-            
-            text.innerText = quizData[currentQ].explanation;
-            container.classList.add('show');
-        }
+function localSeed(){
+  if (!localStorage.getItem(LS_USERS)) {
+    const users = [
+      { id: uid(), username:'coordinator', password:'1234', full_name:'أ. منسق المجتمع المهني', role:'coordinator', school:'مدرسة العلا الثانوية' },
+      { id: uid(), username:'principal',   password:'1234', full_name:'مدير مدرسة العلا الثانوية', role:'principal',   school:'مدرسة العلا الثانوية' },
+      { id: uid(), username:'teacher',     password:'1234', full_name:'أ. خالد الأحمد', role:'teacher', school:'مدرسة العلا الثانوية' },
+      { id: uid(), username:'admin',       password:'1234', full_name:'مدير نظام المنصة', role:'admin', school:'مدرسة العلا الثانوية' }
+    ];
+    localStorage.setItem(LS_USERS, JSON.stringify(users));
+  }
+  if (!localStorage.getItem(LS_SUBS)) {
+    const users = JSON.parse(localStorage.getItem(LS_USERS));
+    const coord = users.find(function(u){ return u.role==='coordinator'; });
+    const teacher = users.find(function(u){ return u.role==='teacher'; });
+    const demo3 = {
+      id: uid(), form_type:'individualAgreement', school: coord.school, created_by: coord.id, created_by_name: coord.full_name,
+      payload: { studentName:'فهد العتيبي', grade:'الثاني متوسط',
+        sessions:[ { teacher:teacher.full_name, subject:'الكيمياء', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] } ],
+        parentSuggested:'' },
+      status:'approved', preparer_signature:null, principal_signature:null, principal_comment:'',
+      submitted_at:nowIso(), approved_at:nowIso(), created_at:nowIso(), updated_at:nowIso()
+    };
+    const demo1 = {
+      id: uid(), form_type:'modelLesson', school: coord.school, created_by: coord.id, created_by_name: coord.full_name,
+      payload: { day:'الأحد', date:new Date().toISOString().slice(0,10), school:coord.school, period:'الحصة الثالثة', plc:'مجتمع تعلم الكيمياء', teacher:'أ. خالد الأحمد', objectives:'تنفيذ استراتيجية التعلم النشط في موضوع الأحماض والقواعد', positives:['تفاعل الطلاب الكبير مع التجربة العملية','وضوح الأهداف في بداية الحصة','تنوع أساليب التقويم خلال الحصة'] },
+      status:'pending', preparer_signature:null, principal_signature:null, principal_comment:'',
+      submitted_at:nowIso(), approved_at:null, created_at:nowIso(), updated_at:nowIso()
+    };
+    const demo2 = {
+      id: uid(), form_type:'plcMeetingMinutes', school: coord.school, created_by: coord.id, created_by_name: coord.full_name,
+      payload: { school:coord.school, plc:'مجتمع تعلم الرياضيات', date:new Date().toISOString().slice(0,10), time:'11:00', meetingType:'اجتماع دوري',
+        attendees:[{name:'أ. سعد القرني', spec:'رياضيات', present:true},{name:'أ. منى العتيبي', spec:'رياضيات', present:true}],
+        agenda:['مراجعة نتائج الاختبار التشخيصي','توزيع الطلاب على الخطط العلاجية'],
+        summary:'تم استعراض نتائج التحصيل لمنتصف الفصل وتحديد الطلاب المرشحين للخطة العلاجية الجماعية.',
+        decisions:[{decision:'تفعيل الخطة العلاجية الجماعية لصف 2/أ', responsible:'منسق المجتمع', deadline:new Date().toISOString().slice(0,10)}] },
+      status:'approved', preparer_signature:null, principal_signature:null, principal_comment:'',
+      submitted_at:nowIso(), approved_at:nowIso(), created_at:nowIso(), updated_at:nowIso()
+    };
+    localStorage.setItem(LS_SUBS, JSON.stringify([demo1, demo2, demo3]));
+  }
+}
 
-        function nextQuestion() {
-            currentQ++;
-            if (currentQ < quizData.length) {
-                // Reset container styles before loading next
-                const container = document.getElementById('explanation-container');
-                container.className = "explanation-box p-5 rounded-xl border-r-4 border-blue-500 bg-blue-50";
-                loadQuestion();
-            } else {
-                document.getElementById('quiz-container').classList.add('hidden');
-                document.getElementById('results-container').classList.remove('hidden');
-                document.getElementById('final-score').innerText = score;
-            }
-        }
+const DB = {
+  async login(username, password){
+    if (isRemote()){
+      const rows = await remoteFetch('profiles?username=eq.' + encodeURIComponent(username) + '&password=eq.' + encodeURIComponent(password));
+      return (rows && rows[0]) || null;
+    }
+    const users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    const found = users.find(function(u){ return u.username===username && u.password===password; });
+    return found || null;
+  },
+  async listSubmissions(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'submissions?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      const rows = await remoteFetch(path);
+      return rows || [];
+    }
+    let subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
+    if (filter.school) subs = subs.filter(function(s){ return s.school===filter.school; });
+    if (filter.created_by) subs = subs.filter(function(s){ return s.created_by===filter.created_by; });
+    subs.sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+    return subs;
+  },
+  async getSubmission(id){
+    if (isRemote()){
+      const rows = await remoteFetch('submissions?id=eq.' + encodeURIComponent(id));
+      return (rows && rows[0]) || null;
+    }
+    const subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
+    return subs.find(function(s){ return s.id===id; }) || null;
+  },
+  async createSubmission(obj){
+    obj.id = uid(); obj.created_at = nowIso(); obj.updated_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('submissions', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
+    subs.push(obj);
+    localStorage.setItem(LS_SUBS, JSON.stringify(subs));
+    return obj;
+  },
+  async updateSubmission(id, patch){
+    patch.updated_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('submissions?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
+    const idx = subs.findIndex(function(s){ return s.id===id; });
+    if (idx>-1){ subs[idx] = Object.assign({}, subs[idx], patch); localStorage.setItem(LS_SUBS, JSON.stringify(subs)); return subs[idx]; }
+    return null;
+  },
+  async listUsers(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'profiles?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      const rows = await remoteFetch(path);
+      return rows || [];
+    }
+    let users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    if (filter.school) users = users.filter(function(u){ return u.school===filter.school; });
+    return users.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+  },
+  async createUser(obj){
+    obj.id = uid(); obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    if (users.some(function(u){ return u.username===obj.username; })) throw new Error('اسم المستخدم مستخدَم مسبقًا.');
+    users.push(obj);
+    localStorage.setItem(LS_USERS, JSON.stringify(users));
+    return obj;
+  },
+  async updateUser(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    const idx = users.findIndex(function(u){ return u.id===id; });
+    if (idx>-1){ users[idx] = Object.assign({}, users[idx], patch); localStorage.setItem(LS_USERS, JSON.stringify(users)); return users[idx]; }
+    return null;
+  },
+  async deleteUser(id){
+    if (isRemote()){
+      await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    users = users.filter(function(u){ return u.id!==id; });
+    localStorage.setItem(LS_USERS, JSON.stringify(users));
+    return true;
+  },
+  async getSettings(school){
+    if (isRemote()){
+      const rows = await remoteFetch('app_settings?school=eq.' + encodeURIComponent(school));
+      return (rows && rows[0]) || null;
+    }
+    const all = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
+    return all[school] || null;
+  },
+  async saveSettings(school, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('app_settings?school=eq.' + encodeURIComponent(school), { method:'PATCH', body:patch, prefer:'return=representation' });
+      if (rows && rows[0]) return rows[0];
+      const created = await remoteFetch('app_settings', { method:'POST', body:Object.assign({ school:school }, patch), prefer:'return=representation' });
+      return created && created[0];
+    }
+    const all = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
+    all[school] = Object.assign({}, all[school], patch);
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(all));
+    return all[school];
+  },
+  async getIndicatorStatus(school){
+    if (isRemote()){
+      const rows = await remoteFetch('indicator_status?school=eq.' + encodeURIComponent(school));
+      const map = {};
+      (rows||[]).forEach(function(r){ map[r.indicator_id] = r; });
+      return map;
+    }
+    const all = JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}');
+    return all[school] || {};
+  },
+  async setIndicatorStatus(school, indicatorId, patch){
+    if (isRemote()){
+      const existing = await remoteFetch('indicator_status?school=eq.' + encodeURIComponent(school) + '&indicator_id=eq.' + encodeURIComponent(indicatorId));
+      if (existing && existing[0]){
+        const rows = await remoteFetch('indicator_status?id=eq.' + encodeURIComponent(existing[0].id), { method:'PATCH', body:patch, prefer:'return=representation' });
+        return rows && rows[0];
+      }
+      const rows = await remoteFetch('indicator_status', { method:'POST', body:Object.assign({ school:school, indicator_id:indicatorId }, patch), prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const all = JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}');
+    all[school] = all[school] || {};
+    all[school][indicatorId] = Object.assign({}, all[school][indicatorId], patch);
+    localStorage.setItem(LS_INDSTATUS, JSON.stringify(all));
+    return all[school][indicatorId];
+  }
+};
 
-        loadQuestion();
-    </script>
+if (!isRemote()) localSeed();
+
+/* ---------------------- تعريف النماذج ---------------------- */
+const FORM_DEFS = [
+  { id:'groupPlan', no:1, title:'الخطة العلاجية (الجماعية)', desc:'تسجيل الطلاب المتعثرين ضمن مجموعة، والمهارات المستهدفة والأساليب والشواهد.', icon:'👥', color:'#0E7C7B', source:true },
+  { id:'indicatorReport', no:2, title:'التقرير العام للمؤشرات', desc:'توثيق فعاليات الفاعلية الجماعية أو الاستجابة للتدخل والمشاركين والوصف والتوصيات.', icon:'📊', color:'#0B2A4A', source:true },
+  { id:'individualAgreement', no:3, title:'اتفاقية الخطة العلاجية الفردية', desc:'اتفاقية مع ولي الأمر عند انتقال الطالب للخطة الفردية، مع متابعات أسبوعية متعددة المعلمين.', icon:'🤝', color:'#B45309', source:true },
+  { id:'modelLesson', no:4, title:'الحصة النموذجية', desc:'توثيق حصة نموذجية لمجتمع تعلم مهني وإيجابيات الموقف التعليمي.', icon:'📝', color:'#7C3AED', source:true },
+  { id:'plcMeetingMinutes', no:5, title:'محضر لقاء مجتمع التعلم المهني', desc:'محضر رسمي للاجتماعات: الحضور وجدول الأعمال والقرارات والمتابعات.', icon:'🗂️', color:'#0E5A82', source:false },
+  { id:'motivationInitiative', no:6, title:'توثيق مبادرة تحفيزية وقياس الأثر', desc:'توثيق مبادرات تحفيز المعلمين والمتعلمين ومؤشرات قياس الأثر.', icon:'🏆', color:'#B8860B', source:false }
+];
+function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
+
+const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
+const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام' };
+
+/* ---------------------- مؤشرات الدليل التنفيذي للبرنامج ---------------------- */
+const PROGRAM_DEFS = [
+  { id:'collectiveEfficacy', title:'الفعالية الجماعية للمعلمين', subtitle:'Collective Teachers Efficacy',
+    goal:'خلق فرص للمعلمين لكسب وبناء المهارات والمعارف وتبادل الخبرات، وتقديم الدعم اللازم للمعلمين على المستوى الشخصي والمهني وإشراكهم في صنع القرار المدرسي.' },
+  { id:'rti', title:'الاستجابة للتدخل (معالجة التعثر الدراسي)', subtitle:'Response to Intervention – RTI',
+    goal:'تقديم الدعم اللازم لطلاب التعثر الدراسي في مرحلة مبكرة من بداية العام الدراسي.' },
+  { id:'motivation', title:'التحفيز وإثارة الدافعية', subtitle:'',
+    goal:'خلق بيئة تعليمية محفزة ومثيرة للتعلم.' }
+];
+
+const INDICATOR_DEFS = [
+  { id:'ce1', program:'collectiveEfficacy', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
+  { id:'ce2', program:'collectiveEfficacy', label:'تحديد حصص مكتبية لكل مجتمع تعلم مهني لتفعيل أدوارها (حصة واحدة أسبوعيًا كحد أدنى).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:1, formType:null, targetCount:null, note:'عدم تكليف المعلم بحصة إشغال أو مناوبة تتعارض مع حصة المجتمع المهني.' },
+  { id:'ce3', program:'collectiveEfficacy', label:'عقد حلقة نقاش في كل مجتمع تعلم مهني لمناقشة نتائج نهاية الفصل الدراسي الأول.', execResp:'مجتمع التعلم المهني / إدارة المدرسة', followResp:'الإشراف التربوي', weekStart:2, weekEnd:3, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
+  { id:'ce4', program:'collectiveEfficacy', label:'تنفيذ حصة نموذجية واحدة كحد أدنى يستهدف أسلوبًا جديدًا أو إستراتيجية حديثة، مع مراعاة التنوع في التخصصات.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:3, weekEnd:13, formType:'modelLesson', targetCount:4, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
+  { id:'ce5', program:'collectiveEfficacy', label:'عقد حلقة نقاش في كل مجتمع تعلم مهني حول موضوع تربوي يحدده المجتمع المهني.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:8, weekEnd:8, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
+  { id:'ce6', program:'collectiveEfficacy', label:'عقد ورشة عمل في كل مجتمع تعلم مهني لمناقشة نتائج منتصف الفصل، واقتراح فرص تحسينها.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:10, weekEnd:15, formType:'indicatorReport', targetCount:2, note:'مراعاة الفترة الزمنية التي يتم فيها تحديد فترة التقويم.' },
+  { id:'ce7', program:'collectiveEfficacy', label:'تجميع ورفع ملفات برنامج دعم التحصيل الدراسي.', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:16, weekEnd:16, formType:null, targetCount:null, note:'يتم الرفع على OneDrive.' },
+
+  { id:'rti1', program:'rti', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
+  { id:'rti2', program:'rti', label:'تحديد حصة بمسمى (داعم) ضمن الحصص الأسبوعية للمواد المهارية (الرياضيات – اللغة العربية – العلوم – اللغة الإنجليزية).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:1, formType:null, targetCount:null, note:'هذا المؤشر خاص بالمرحلة الابتدائية.' },
+  { id:'rti3', program:'rti', label:'تحديد طلاب فئة الدعم للخطة (الجماعية) وتنفيذها للطلاب الذين لم يحققوا نسبة 50% في الاختبار التشخيصي.', execResp:'إدارة المدرسة / الموجه الطلابي / المعلم', followResp:'الإشراف التربوي', weekStart:2, weekEnd:17, formType:'groupPlan', targetCount:1, note:'التنسيق مع المشرف التربوي، وإشعار ولي الأمر خطيًا بانضمام ابنه للبرنامج كحد أقصى في الأسبوع الثاني.' },
+  { id:'rti4', program:'rti', label:'تخصيص ملف إنجاز خاص بهذا البرنامج مع المعلم لمتابعة مستوى تقدم الطالب.', execResp:'المعلم', followResp:'الموجه الطلابي / إدارة المدرسة / الإشراف التربوي', weekStart:1, weekEnd:18, weekLabel:'من بداية انطلاق البرنامج', formType:null, targetCount:null, note:'إشراك الموجه الطلابي واطلاعه أولًا بأول على ملف معالجة التعثر.' },
+  { id:'rti5', program:'rti', label:'تحديث قائمة الطلاب في فئة الدعم، ومتابعتهم.', execResp:'المعلم', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:9, weekEnd:17, weekLabel:'بعد تنفيذ تقويم الفترة الأولى', formType:null, targetCount:null, note:'يكون التحديث بناءً على نتائج اختبار الفترة الأولى، بإخراج من حقق 50% وإلحاق من لم يحقق النسبة بالخطة العلاجية.' },
+  { id:'rti6', program:'rti', label:'تنفيذ اختبار (داعم) التجريبي للاختبار النهائي في جميع المواد الخاضعة لنظام الاختبار النهائي.', execResp:'المعلم', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:15, weekEnd:15, formType:null, targetCount:null, note:'الاختبار يكون في المادة المقطوعة من الأسبوع (1) إلى نهاية الأسبوع (9).' },
+  { id:'rti7', program:'rti', label:'تنفيذ خطة علاجية (فردية) داخل الصف للطلاب الذين لم يحققوا نسبة 50%، بمتابعتهم وتقديم الدعم اللازم لمعالجة الضعف.', execResp:'المعلم / الموجه الطلابي', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:17, weekEnd:18, formType:'individualAgreement', targetCount:1, note:'' },
+  { id:'rti8', program:'rti', label:'تجميع ورفع ملفات برنامج دعم التحصيل الدراسي (معالجة التعثر الدراسي).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:16, weekEnd:16, formType:null, targetCount:null, note:'يتم الرفع على OneDrive.' },
+
+  { id:'mo1', program:'motivation', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
+  { id:'mo2', program:'motivation', label:'عقد حلقة نقاش في مجتمعات التعلم المهنية حول موضوع (التحفيز وإثارة الدافعية).', execResp:'منسقو المجتمعات المهنية', followResp:'إدارة المدرسة', weekStart:5, weekEnd:5, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت التنفيذ.' },
+  { id:'mo3', program:'motivation', label:'تفعيل إستراتيجيات التحفيز وإثارة الدافعية في مواقف تعليمية مختلفة.', execResp:'المعلمون', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:3, weekEnd:15, formType:'motivationInitiative', targetCount:1, note:'' },
+  { id:'mo4', program:'motivation', label:'تنفيذ برنامج لتحفيز وإثارة الدافعية لدى المعلم والمتعلم.', execResp:'إدارة المدرسة', followResp:'الإشراف التربوي', weekStart:9, weekEnd:15, formType:null, targetCount:null, note:'' }
+];
+function indicatorsForProgram(programId){ return INDICATOR_DEFS.filter(function(i){ return i.program===programId; }); }
+
+const TIME_STATUS_LABEL = { upcoming:'لم يحن وقته', inrange:'ضمن الفترة المستهدفة', overdue:'متأخر عن الفترة', complete:'مكتمل' };
+const TIME_STATUS_BADGE = { upcoming:'draft', inrange:'pending', overdue:'returned', complete:'approved' };
+
+function currentWeekNumber(semesterStart){
+  if (!semesterStart) return null;
+  const start = new Date(semesterStart);
+  const now = new Date();
+  const diffDays = Math.floor((now - start) / 86400000);
+  if (diffDays < 0) return 0;
+  return Math.floor(diffDays / 7) + 1;
+}
+
+function indicatorTimeStatus(ind, curWeek, doneCount, targetCount){
+  if (targetCount != null && doneCount >= targetCount) return 'complete';
+  if (curWeek == null) return 'inrange';
+  if (curWeek < ind.weekStart) return 'upcoming';
+  if (curWeek > ind.weekEnd) return 'overdue';
+  return 'inrange';
+}
+
+function indicatorPeriodLabel(ind){
+  if (ind.weekLabel) return ind.weekLabel;
+  return ind.weekStart === ind.weekEnd ? ('الأسبوع ('+ind.weekStart+')') : ('الأسبوع ('+ind.weekStart+' - '+ind.weekEnd+')');
+}
+
+/* ---------------------- الحالة العامة والتوجيه ---------------------- */
+const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms' };
+
+function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); }
+function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
+function logout(){ sessionStorage.removeItem('dtd_session'); State.user=null; go('login'); }
+
+function go(screen, params){ State.screen = screen; State.params = params || {}; render(); window.scrollTo(0,0); }
+
+function toast(msg){
+  const t = document.createElement('div'); t.className='toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 2600);
+}
+
+/* ---------------------- تصدير PDF حقيقي (html2canvas + jsPDF) ---------------------- */
+async function exportFormToPdf(filename){
+  const el = document.querySelector('.form-sheet');
+  if (!el || !window.html2canvas || !window.jspdf){ toast('تعذّر تجهيز التصدير، يرجى المحاولة عبر الطباعة.'); return; }
+  toast('جارٍ تجهيز ملف PDF...');
+  try{
+    const canvas = await html2canvas(el, { scale:2, useCORS:true, backgroundColor:'#ffffff' });
+    const imgData = canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'p', unit:'pt', format:'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = canvas.height * imgWidth / canvas.width;
+    let heightLeft = imgHeight, position = 0;
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+    while (heightLeft > 0){
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+    pdf.save((filename || 'نموذج') + '.pdf');
+  }catch(e){ toast('تعذّر تصدير PDF: ' + e.message); }
+}
+
+/* ---------------------- مكوّن التوقيع (Canvas) ---------------------- */
+const Pads = {};
+function buildSignaturePad(name, existingDataUrl, readonly){
+  if (readonly){
+    if (existingDataUrl){
+      return '<div class="sig-box"><img class="sig-img" src="'+existingDataUrl+'" alt="توقيع"></div>';
+    }
+    return '<div class="upload-note">لا يوجد توقيع مسجَّل لهذا الحقل.</div>';
+  }
+  const cid = 'pad_' + name;
+  setTimeout(function(){ mountPad(cid, name, existingDataUrl); }, 0);
+  return (
+    '<div class="sig-box" id="wrap_'+cid+'">' +
+      (existingDataUrl ? '<img class="sig-img" src="'+existingDataUrl+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
+      '<canvas id="'+cid+'" width="500" height="140"></canvas>' +
+      '<div class="sig-actions">' +
+        '<span class="sig-name">وقّع بإصبعك أو بالماوس داخل الإطار</span>' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="clearPad" data-pad="'+cid+'">مسح التوقيع</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function mountPad(cid, name){
+  const canvas = document.getElementById(cid);
+  if (!canvas || Pads[cid]) return;
+  const ctx = canvas.getContext('2d');
+  let drawing = false, hasInk = false;
+  function pos(e){
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x:(cx-rect.left)*(canvas.width/rect.width), y:(cy-rect.top)*(canvas.height/rect.height) };
+  }
+  function start(e){ drawing=true; hasInk=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); }
+  function move(e){ if(!drawing) return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.strokeStyle='#0B2A4A'; ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.stroke(); e.preventDefault(); }
+  function end(){ drawing=false; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end);
+  Pads[cid] = {
+    name:name,
+    clear:function(){ ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false; },
+    isEmpty:function(){ return !hasInk; },
+    toDataUrl:function(){ return hasInk ? canvas.toDataURL('image/png') : null; }
+  };
+}
+function clearPad(cid){ if (Pads[cid]) Pads[cid].clear(); }
+
+/* ---------------------- عناصر مساعدة للواجهة ---------------------- */
+function checkboxGroup(name, options, selected){
+  selected = selected || [];
+  return '<div class="checkbox-group">' + options.map(function(opt){
+    const checked = selected.indexOf(opt) > -1;
+    return '<label class="chk '+(checked?'checked':'')+'"><input type="checkbox" data-action="toggleChk" data-group="'+name+'" data-val="'+esc(opt)+'" '+(checked?'checked':'')+'> '+esc(opt)+'</label>';
+  }).join('') + '</div>';
+}
+function radioGroup(name, options, selected){
+  return '<div class="checkbox-group">' + options.map(function(opt){
+    const checked = selected === opt;
+    return '<label class="chk '+(checked?'checked':'')+'"><input type="radio" name="'+name+'" data-action="setRadio" data-group="'+name+'" data-val="'+esc(opt)+'" '+(checked?'checked':'')+'> '+esc(opt)+'</label>';
+  }).join('') + '</div>';
+}
+function inputField(label, name, value, opts){
+  opts = opts || {};
+  const type = opts.type || 'text';
+  const ro = opts.readonly ? 'disabled' : '';
+  if (type === 'textarea'){
+    return '<div class="field"><label>'+esc(label)+'</label><textarea class="input" data-field="'+name+'" '+ro+' placeholder="'+(opts.placeholder?esc(opts.placeholder):'')+'">'+esc(value||'')+'</textarea></div>';
+  }
+  return '<div class="field"><label>'+esc(label)+'</label><input class="input" type="'+type+'" data-field="'+name+'" value="'+esc(value||'')+'" '+ro+' placeholder="'+(opts.placeholder?esc(opts.placeholder):'')+'"></div>';
+}
+
+/* ---------------------- حالة تعديل النموذج الحالي (محرّر) ---------------------- */
+let EditorState = null; // { formType, id(optional), data, status, prepSig, school, createdByName, createdBy }
+
+function blankData(formType){
+  const today = new Date().toISOString().slice(0,10);
+  switch(formType){
+    case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'' };
+    case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], description:'', recommendations:'', parentNote:'' };
+    case 'individualAgreement': return { studentName:'', grade:'', sessions:[ blankSession() ], parentSuggested:'' };
+    case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
+    case 'plcMeetingMinutes': return { school:State.user.school, plc:'', date:today, time:'', meetingType:'اجتماع دوري', attendees:[ {name:'', spec:'', present:true} ], agenda:[''], summary:'', decisions:[ {decision:'', responsible:'', deadline:''} ] };
+    case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
+  }
+}
+function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[] }; }
+function blankSession(){ return { teacher:'', subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
+
+function openEditor(formType, submission){
+  if (submission){
+    EditorState = {
+      id: submission.id, formType: submission.form_type, data: JSON.parse(JSON.stringify(submission.payload)),
+      status: submission.status, prepSig: submission.preparer_signature, school: submission.school,
+      createdByName: submission.created_by_name, createdBy: submission.created_by,
+      returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at
+    };
+  } else {
+    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null };
+  }
+  go('editor', { formType: formType });
+}
+
+/* ---------------------- التطبيق: الشاشات ---------------------- */
+async function render(){
+  const app = document.getElementById('app');
+  if (!State.user && State.screen!=='login'){ State.screen='login'; }
+  try{
+    switch(State.screen){
+      case 'login': app.innerHTML = screenLogin(); bindLogin(); break;
+      case 'dashboard': renderShell(app, await screenDashboard()); bindDashboard(); break;
+      case 'picker': renderShell(app, screenPicker()); bindPicker(); break;
+      case 'editor': renderShell(app, screenEditor()); bindEditor(); break;
+      case 'view': renderShell(app, await screenView(State.params.id)); bindView(); break;
+      case 'review': renderShell(app, await screenReview(State.params.id)); bindReview(); break;
+      case 'teacherSession': renderShell(app, await screenTeacherSession(State.params.subId, State.params.idx)); bindTeacherSession(); break;
+      default: renderShell(app, '<p>صفحة غير معروفة.</p>');
+    }
+  }catch(e){ renderShell(app, '<p class="error-text">'+esc(e.message)+'</p>'); }
+}
+
+function renderShell(app, innerHtml){
+  app.innerHTML = topNav() + '<div class="shell">' + innerHtml + '</div>';
+}
+
+function topNav(){
+  const roleLabel = ROLE_LABEL[State.user.role] || State.user.role;
+  return (
+    '<div class="topnav no-print">' +
+      '<div class="topnav-brand">' +
+        '<div class="brand-mark" style="width:38px;height:38px;font-size:16px;">د</div>' +
+        '<div class="topnav-title">منصة دعم التحصيل الدراسي<small>'+esc(State.user.school)+'</small></div>' +
+      '</div>' +
+      '<div class="topnav-right">' +
+        '<div class="user-pill"><span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+roleLabel+'</span></div>' +
+        '<button class="icon-btn" title="تسجيل الخروج" data-action="logout">⎋</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+/* ----- شاشة الدخول ----- */
+function screenLogin(){
+  return (
+    '<div class="center-screen">' +
+      '<div class="login-card">' +
+        '<div class="brand"><div class="brand-mark">د</div><div><div class="brand-title">منصة دعم التحصيل الدراسي</div><div class="brand-sub">والفاعلية الجماعية للمعلمين</div></div></div>' +
+        '<div class="login-h">تسجيل الدخول</div>' +
+        '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
+        '<div id="loginError" class="error-text" style="display:none;"></div>' +
+        '<div class="field"><label>اسم المستخدم</label><input class="input" id="loginUser" placeholder="مثال: coordinator"></div>' +
+        '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
+        '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
+        '<div class="hint-box">' +
+          '<b>للتجربة السريعة:</b><br>' +
+          'حساب منسق المجتمع المهني — اسم المستخدم: <span class="mono">coordinator</span> / كلمة المرور: <span class="mono">1234</span><br>' +
+          'حساب مدير المدرسة — اسم المستخدم: <span class="mono">principal</span> / كلمة المرور: <span class="mono">1234</span><br>' +
+          'حساب معلم (رفع شواهد) — اسم المستخدم: <span class="mono">teacher</span> / كلمة المرور: <span class="mono">1234</span><br>' +
+          'حساب مدير نظام (إدارة المستخدمين) — اسم المستخدم: <span class="mono">admin</span> / كلمة المرور: <span class="mono">1234</span>' +
+          (isRemote() ? '<br><br>وضع التشغيل الحالي: <b>سحابي (Supabase)</b>' : '<br><br>وضع التشغيل الحالي: <b>تجريبي محلي (هذا المتصفح فقط)</b>') +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindLogin(){
+  const btn = document.querySelector('[data-action="doLogin"]');
+  btn.addEventListener('click', async function(){
+    const u = document.getElementById('loginUser').value.trim();
+    const p = document.getElementById('loginPass').value.trim();
+    const errBox = document.getElementById('loginError');
+    errBox.style.display='none';
+    try{
+      const user = await DB.login(u, p);
+      if (!user){ errBox.textContent='اسم المستخدم أو كلمة المرور غير صحيحة.'; errBox.style.display='block'; return; }
+      setUserSession(user);
+      go('dashboard');
+    }catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
+  });
+  document.getElementById('loginPass').addEventListener('keydown', function(e){ if(e.key==='Enter') btn.click(); });
+}
+
+/* ----- لوحة التحكم ----- */
+function dashTabsHtml(){
+  return (
+    '<div class="tabs no-print" style="margin-bottom:20px;">' +
+      '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
+      '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
+    '</div>'
+  );
+}
+async function screenDashboard(){
+  if (State.user.role==='teacher') return screenTeacherTasks();
+  if (State.user.role==='admin') return screenAdminUsers();
+  if (State.dashTab==='indicators'){
+    return (
+      '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
+      '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+      dashTabsHtml() +
+      await screenIndicators()
+    );
+  }
+  const subs = await DB.listSubmissions({ school: State.user.school });
+  State.allSubs = subs;
+  const mine = State.user.role==='coordinator' ? subs.filter(function(s){ return s.created_by===State.user.id; }) : subs;
+  const counts = { draft:0, pending:0, approved:0, returned:0 };
+  mine.forEach(function(s){ counts[s.status] = (counts[s.status]||0)+1; });
+
+  const kpis = State.user.role==='coordinator' ? (
+    '<div class="kpi-grid">' +
+      '<div class="kpi-card"><div class="v">'+counts.draft+'</div><div class="l">مسودات</div></div>' +
+      '<div class="kpi-card accent-pending"><div class="v">'+counts.pending+'</div><div class="l">بانتظار الاعتماد</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+counts.approved+'</div><div class="l">معتمدة</div></div>' +
+      '<div class="kpi-card accent-danger"><div class="v">'+counts.returned+'</div><div class="l">مرتجعة للتعديل</div></div>' +
+    '</div>'
+  ) : (
+    '<div class="kpi-grid">' +
+      '<div class="kpi-card accent-pending"><div class="v">'+counts.pending+'</div><div class="l">بانتظار اعتمادك</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+counts.approved+'</div><div class="l">معتمدة هذا الفصل</div></div>' +
+      '<div class="kpi-card accent-danger"><div class="v">'+counts.returned+'</div><div class="l">مُرتجعة</div></div>' +
+      '<div class="kpi-card"><div class="v">'+subs.length+'</div><div class="l">إجمالي النماذج بالمدرسة</div></div>' +
+    '</div>'
+  );
+
+  const list = State.user.role==='coordinator' ? mine : subs;
+  const sorted = list.slice().sort(function(a,b){
+    const order = { pending:0, returned:1, draft:2, approved:3 };
+    return (order[a.status]-order[b.status]) || (new Date(b.updated_at)-new Date(a.updated_at));
+  });
+
+  const rows = sorted.map(function(s){
+    const def = formDef(s.form_type);
+    const canOpen = State.user.role==='principal' ? (s.status==='pending' || s.status==='approved') : true;
+    const action = State.user.role==='coordinator'
+      ? (s.status==='approved'
+          ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
+          : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>')
+      : (s.status==='pending'
+          ? '<button class="btn btn-gold btn-sm" data-action="openReview" data-id="'+s.id+'">مراجعة واعتماد</button>'
+          : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>');
+    return (
+      '<tr>' +
+        '<td><b>'+esc(def.title)+'</b><div style="color:var(--muted);font-size:12px;">نموذج رقم ('+def.no+')</div></td>' +
+        '<td>'+esc(s.created_by_name||'')+'</td>' +
+        '<td>'+fmtDateTime(s.updated_at)+'</td>' +
+        '<td><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></td>' +
+        '<td class="row-actions">'+action+'</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const tableBlock = (
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>النموذج</th><th>المُعد</th><th>آخر تحديث</th><th>الحالة</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="5">لا توجد نماذج بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>'
+  );
+
+  const newBtn = State.user.role==='coordinator'
+    ? '<button class="btn btn-primary" data-action="goPicker">+ إنشاء نموذج جديد</button>'
+    : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    kpis +
+    '<div class="section-head"><h2>' + (State.user.role==='coordinator' ? 'نماذجي' : 'جميع النماذج') + '</h2>' + newBtn + '</div>' +
+    tableBlock
+  );
+}
+function bindDashboard(){
+  document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
+  if (State.user.role==='teacher') bindTeacherTasks();
+  else if (State.user.role==='admin') bindAdminUsers();
+  else if (State.dashTab==='indicators') bindIndicators();
+}
+
+/* ----- لوحة المعلم: المتابعات المكلَّف بها ----- */
+async function screenTeacherTasks(){
+  const subs = await DB.listSubmissions({ school: State.user.school });
+  const tasks = [];
+  subs.forEach(function(s){
+    if (s.form_type !== 'individualAgreement' || s.status==='draft') return;
+    (s.payload.sessions||[]).forEach(function(sess, idx){
+      if (sess.teacher === State.user.full_name) tasks.push({ sub:s, idx:idx, sess:sess });
+    });
+  });
+  tasks.sort(function(a,b){ return (a.sess.sig?1:0) - (b.sess.sig?1:0); });
+
+  const cards = tasks.map(function(t){
+    const done = !!t.sess.sig;
+    return (
+      '<div class="task-card">' +
+        '<div class="meta"><b>الطالب: '+esc(t.sub.payload.studentName)+' — '+esc(t.sub.payload.grade)+'</b>' +
+          '<span>المادة: '+esc(t.sess.subject||'—')+' · التاريخ: '+esc(t.sess.date||'—')+' · '+(done?'<span style="color:var(--success);font-weight:700;">تم التوقيع والتعبئة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التعبئة</span>')+'</span></div>' +
+        '<button class="btn '+(done?'btn-ghost':'btn-primary')+' btn-sm" data-action="openTeacherSession" data-sub="'+t.sub.id+'" data-idx="'+t.idx+'">'+(done?'تعديل الجلسة':'تعبئة الجلسة ورفع الشواهد')+'</button>' +
+      '</div>'
+    );
+  }).join('');
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+' — متابعات أسبوعية مكلَّف بها ضمن اتفاقيات الخطة الفردية</div>' +
+    (cards || '<div class="table-wrap"><div style="padding:34px;text-align:center;color:var(--muted);">لا توجد متابعات مكلَّف بها حاليًا.</div></div>')
+  );
+}
+function bindTeacherTasks(){
+  document.querySelectorAll('[data-action="openTeacherSession"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      go('teacherSession', { subId: el.getAttribute('data-sub'), idx: +el.getAttribute('data-idx') });
+    });
+  });
+}
+
+/* ----- شاشة المعلم: تعبئة جلسة متابعة محددة ورفع الشواهد ----- */
+let TeacherSessionCache = null;
+async function screenTeacherSession(subId, idx){
+  const s = await DB.getSubmission(subId);
+  const sess = s.payload.sessions[idx];
+  TeacherSessionCache = { sub: s, idx: idx };
+  const files = (sess.evidenceFiles||[]).map(function(f, i){
+    return '<div class="evidence-thumb"><img src="'+f+'"><button type="button" class="rmv-ev" data-action="rmvEvidence" data-i="'+i+'">✕</button></div>';
+  }).join('');
+  return (
+    '<div class="sheet-wrap">' +
+      '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
+      '<div class="form-sheet">' +
+        '<div class="sheet-header"><div class="titles"><h1>تعبئة جلسة متابعة أسبوعية</h1><div class="sub">الطالب: '+esc(s.payload.studentName)+' — '+esc(s.payload.grade)+'</div></div></div>' +
+        '<div class="field-grid cols-2">' +
+          inputField('المادة','subject', sess.subject) +
+          inputField('التاريخ','date', sess.date, {type:'date'}) +
+        '</div>' +
+        inputField('الإجراءات/الأدوات المطبقة ونتيجة تقويم الأسبوع','notes', sess.notes, {type:'textarea'}) +
+        '<div class="block-title"><span class="dot"></span> شواهد الأسبوع (صور أوراق عمل، اختبارات، إنجاز الطالب...)</div>' +
+        '<div class="evidence-grid">' + files +
+          '<label class="evidence-add">+<input type="file" id="evidenceInput" accept="image/*" multiple style="display:none;"></label>' +
+        '</div>' +
+        '<div class="block-title"><span class="dot"></span> توقيع المعلم</div>' +
+        buildSignaturePad('teacher_sess', sess.sig, false) +
+      '</div>' +
+      '<div class="sheet-bar no-print" style="margin-top:16px;justify-content:flex-end;">' +
+        '<button class="btn btn-primary" data-action="saveTeacherSession">حفظ الجلسة والشواهد</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindTeacherSession(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
+  document.querySelectorAll('[data-field]').forEach(function(el){
+    el.addEventListener('input', function(){
+      TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx][el.getAttribute('data-field')] = el.value;
+    });
+  });
+  document.getElementById('evidenceInput').addEventListener('change', function(e){
+    const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
+    sess.evidenceFiles = sess.evidenceFiles || [];
+    Array.from(e.target.files).forEach(function(file){
+      const reader = new FileReader();
+      reader.onload = function(){
+        sess.evidenceFiles.push(reader.result);
+        render(); bindTeacherSession();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('[data-action="rmvEvidence"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
+      sess.evidenceFiles.splice(+el.getAttribute('data-i'), 1);
+      render(); bindTeacherSession();
+    });
+  });
+  document.querySelector('[data-action="saveTeacherSession"]').addEventListener('click', async function(){
+    const pad = Pads['pad_teacher_sess'];
+    const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
+    if (pad && !pad.isEmpty()) sess.sig = pad.toDataUrl();
+    if (!sess.sig){ toast('يرجى التوقيع قبل حفظ الجلسة.'); return; }
+    try{
+      await DB.updateSubmission(TeacherSessionCache.sub.id, { payload: TeacherSessionCache.sub.payload });
+      toast('تم حفظ الجلسة والشواهد بنجاح.');
+      go('dashboard');
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
+let AdminUI = { modalOpen:false, editingId:null };
+async function screenAdminUsers(){
+  const users = await DB.listUsers({});
+  const rows = users.map(function(u){
+    const canDelete = u.id !== State.user.id;
+    return (
+      '<tr>' +
+        '<td><b>'+esc(u.full_name)+'</b></td>' +
+        '<td class="mono">'+esc(u.username)+'</td>' +
+        '<td><span class="badge approved">'+esc(ROLE_LABEL[u.role]||u.role)+'</span></td>' +
+        '<td>'+esc(u.school)+'</td>' +
+        '<td class="row-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="editUser" data-id="'+u.id+'">تعديل</button>' +
+          (canDelete ? '<button class="btn btn-danger btn-sm" data-action="deleteUser" data-id="'+u.id+'">حذف</button>' : '') +
+        '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const modal = AdminUI.modalOpen ? userModal(users) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين</div>' +
+    '<div class="section-head"><h2>المستخدمون</h2><button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button></div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="5">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    modal
+  );
+}
+function userModal(users){
+  const editing = AdminUI.editingId ? users.find(function(u){ return u.id===AdminUI.editingId; }) : null;
+  return (
+    '<div class="modal-bg" data-action="closeModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>'+(editing?'تعديل مستخدم':'إضافة مستخدم جديد')+'</h3>' +
+        '<div class="field"><label>الاسم الكامل</label><input class="input" id="umFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
+        '<div class="field"><label>اسم المستخدم</label><input class="input" id="umUsername" value="'+esc(editing?editing.username:'')+'" '+(editing?'disabled':'')+'></div>' +
+        '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':'')+'"></div>' +
+        '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
+          ['coordinator','principal','teacher','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'"></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveUser" data-id="'+(editing?editing.id:'')+'">حفظ</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindAdminUsers(){
+  const addBtn = document.querySelector('[data-action="addUser"]');
+  if (addBtn) addBtn.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=null; render(); bindAdminUsers(); });
+  document.querySelectorAll('[data-action="editUser"]').forEach(function(el){
+    el.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=el.getAttribute('data-id'); render(); bindAdminUsers(); });
+  });
+  document.querySelectorAll('[data-action="deleteUser"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذا المستخدم؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+      try{ await DB.deleteUser(el.getAttribute('data-id')); toast('تم حذف المستخدم.'); render(); bindAdminUsers(); }
+      catch(e){ toast(e.message); }
+    });
+  });
+  const closeBtn = document.querySelector('[data-action="closeModal"]');
+  if (closeBtn) closeBtn.addEventListener('click', function(){ AdminUI.modalOpen=false; render(); bindAdminUsers(); });
+  const bg = document.querySelector('[data-action="closeModalBg"]');
+  if (bg) bg.addEventListener('click', function(){ AdminUI.modalOpen=false; render(); bindAdminUsers(); });
+  const saveBtn = document.querySelector('[data-action="saveUser"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const fullName = document.getElementById('umFullName').value.trim();
+    const username = document.getElementById('umUsername').value.trim();
+    const password = document.getElementById('umPassword').value.trim();
+    const role = document.getElementById('umRole').value;
+    const school = document.getElementById('umSchool').value.trim();
+    if (!fullName || !username || !school || (!AdminUI.editingId && !password)){ toast('يرجى تعبئة جميع الحقول المطلوبة.'); return; }
+    try{
+      if (AdminUI.editingId){
+        const patch = { full_name:fullName, role:role, school:school };
+        if (password) patch.password = password;
+        await DB.updateUser(AdminUI.editingId, patch);
+        toast('تم تحديث بيانات المستخدم.');
+      } else {
+        await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school });
+        toast('تمت إضافة المستخدم بنجاح.');
+      }
+      AdminUI.modalOpen=false; AdminUI.editingId=null; render(); bindAdminUsers();
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- متابعة مؤشرات البرنامج (الدليل التنفيذي) ----- */
+async function screenIndicators(){
+  const subs = await DB.listSubmissions({ school: State.user.school });
+  const settings = (await DB.getSettings(State.user.school)) || {};
+  const indStatus = await DB.getIndicatorStatus(State.user.school);
+  const semesterStart = settings.semester_start || settings.semesterStart || '';
+  const curWeek = currentWeekNumber(semesterStart);
+
+  const settingsBar = (
+    '<div class="settings-bar no-print">' +
+      '<label>تاريخ بداية الفصل الدراسي الثاني:</label>' +
+      '<input type="date" id="semesterStartInput" value="'+esc(semesterStart)+'">' +
+      '<button class="btn btn-primary btn-sm" data-action="saveSemesterStart">حفظ</button>' +
+      (curWeek!=null
+        ? '<span class="prog-txt" style="margin-right:auto;">الأسبوع الدراسي الحالي: '+curWeek+'</span>'
+        : '<span class="prog-txt" style="margin-right:auto;">حدّد تاريخ البداية لحساب الأسبوع الحالي تلقائيًا.</span>') +
+    '</div>'
+  );
+
+  const programsHtml = PROGRAM_DEFS.map(function(prog){
+    const rows = indicatorsForProgram(prog.id).map(function(ind){
+      const def = ind.formType ? formDef(ind.formType) : null;
+      let doneCount = 0, pendingCount = 0, percent = 0, manualDone = false;
+      if (ind.formType){
+        doneCount = subs.filter(function(s){ return s.form_type===ind.formType && s.status==='approved'; }).length;
+        pendingCount = subs.filter(function(s){ return s.form_type===ind.formType && s.status==='pending'; }).length;
+        percent = ind.targetCount ? Math.min(100, Math.round(doneCount/ind.targetCount*100)) : (doneCount>0?100:0);
+      } else {
+        manualDone = !!(indStatus[ind.id] && indStatus[ind.id].done);
+      }
+      const timeStatus = indicatorTimeStatus(ind, curWeek, ind.formType ? doneCount : (manualDone?1:0), ind.formType ? ind.targetCount : 1);
+      const sideAction = ind.formType
+        ? (State.user.role==='coordinator'
+            ? '<button class="btn btn-ghost btn-sm" data-action="quickCreateIndicator" data-form="'+ind.formType+'">+ إنشاء '+esc(def.title)+'</button>'
+            : '')
+        : '<label class="chk '+(manualDone?'checked':'')+'" style="font-size:11.5px;"><input type="checkbox" data-action="toggleIndicatorDone" data-id="'+ind.id+'" '+(manualDone?'checked':'')+'> أُنجز</label>';
+      const progressHtml = ind.formType
+        ? ('<div class="prog-bar"><i style="width:'+percent+'%;"></i></div><span class="prog-txt">'+doneCount+(ind.targetCount?('/'+ind.targetCount):'')+(pendingCount?(' · '+pendingCount+' بانتظار الاعتماد'):'')+'</span>')
+        : '';
+      return (
+        '<div class="ind-row">' +
+          '<div class="ind-main">' +
+            '<div class="lbl">'+esc(ind.label)+'</div>' +
+            '<div class="sub">تنفيذ: '+esc(ind.execResp)+' · متابعة: '+esc(ind.followResp)+' · '+esc(indicatorPeriodLabel(ind))+
+              (def?' · النموذج: '+esc(def.title):'') + (ind.note?' · '+esc(ind.note):'') +
+            '</div>' +
+          '</div>' +
+          '<div class="ind-side">' +
+            '<span class="badge '+TIME_STATUS_BADGE[timeStatus]+'">'+TIME_STATUS_LABEL[timeStatus]+'</span>' +
+            progressHtml +
+            sideAction +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    return (
+      '<div class="program-card">' +
+        '<div class="ph"><h3>'+esc(prog.title)+(prog.subtitle?' <span style="color:var(--muted);font-weight:400;font-size:12px;">('+esc(prog.subtitle)+')</span>':'')+'</h3><p>'+esc(prog.goal)+'</p></div>' +
+        rows +
+      '</div>'
+    );
+  }).join('');
+
+  return settingsBar + programsHtml;
+}
+function bindIndicators(){
+  const saveBtn = document.querySelector('[data-action="saveSemesterStart"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const val = document.getElementById('semesterStartInput').value;
+    if (!val){ toast('اختر تاريخًا أولًا.'); return; }
+    await DB.saveSettings(State.user.school, { semester_start: val });
+    toast('تم حفظ تاريخ بداية الفصل.');
+    render();
+  });
+  document.querySelectorAll('[data-action="quickCreateIndicator"]').forEach(function(el){
+    el.addEventListener('click', function(){ openEditor(el.getAttribute('data-form'), null); });
+  });
+  document.querySelectorAll('[data-action="toggleIndicatorDone"]').forEach(function(el){
+    el.addEventListener('change', async function(){
+      await DB.setIndicatorStatus(State.user.school, el.getAttribute('data-id'), { done: el.checked, done_by: State.user.full_name, done_at: nowIso() });
+      render();
+    });
+  });
+}
+
+/* ----- شاشة اختيار نموذج ----- */
+function screenPicker(){
+  const cards = FORM_DEFS.map(function(f){
+    return (
+      '<div class="form-card" data-action="pickForm" data-id="'+f.id+'">' +
+        '<span class="num">نموذج ('+f.no+')</span>' +
+        '<div class="ic" style="background:'+f.color+'1A;color:'+f.color+';">'+f.icon+'</div>' +
+        '<h3>'+esc(f.title)+'</h3><p>'+esc(f.desc)+'</p>' +
+        (f.source ? '<span class="tag">من النماذج المعتمدة</span>' : '<span class="tag new-tag">مقترح إضافي</span>') +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="section-head"><h2>إنشاء نموذج جديد</h2><button class="btn btn-ghost" data-action="back">رجوع</button></div>' +
+    '<p style="color:var(--muted);font-size:13.5px;margin-top:-8px;margin-bottom:18px;">اختر النموذج المطلوب تعبئته إلكترونيًا. بعد التعبئة والإرسال، سيُحال النموذج إلى مدير المدرسة للاعتماد النهائي بالتوقيع الإلكتروني.</p>' +
+    '<div class="card-grid">' + cards + '</div>'
+  );
+}
+function bindPicker(){
+  document.querySelectorAll('[data-action="pickForm"]').forEach(function(el){
+    el.addEventListener('click', function(){ openEditor(el.getAttribute('data-id'), null); });
+  });
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+}
+
+/* ----- شريط الحالة (Stepper) ----- */
+function statusStrip(status){
+  const steps = [
+    { key:'draft', label:'إعداد' },
+    { key:'pending', label:'إرسال للاعتماد' },
+    { key:'approved', label:'اعتماد مدير المدرسة' }
+  ];
+  let activeIdx = steps.findIndex(function(s){ return s.key===status; });
+  if (status==='returned') activeIdx = 1;
+  return '<div class="status-strip no-print">' + steps.map(function(s, i){
+    let cls = '';
+    if (status==='returned' && i===1) cls = 'now';
+    else if (i < activeIdx) cls='done';
+    else if (i === activeIdx) cls='now';
+    return (i>0?'<div class="step-sep"></div>':'') + '<div class="step '+cls+'"><span class="c">'+(i+1)+'</span><span>'+s.label+'</span></div>';
+  }).join('') + '</div>';
+}
+
+/* ----- محرّر النموذج ----- */
+function screenEditor(){
+  const def = formDef(EditorState.formType);
+  const readonly = false;
+  let body = '';
+  switch(EditorState.formType){
+    case 'groupPlan': body = renderGroupPlan(EditorState.data, readonly); break;
+    case 'indicatorReport': body = renderIndicatorReport(EditorState.data, readonly); break;
+    case 'individualAgreement': body = renderIndividualAgreement(EditorState.data, readonly); break;
+    case 'modelLesson': body = renderModelLesson(EditorState.data, readonly); break;
+    case 'plcMeetingMinutes': body = renderPlcMeeting(EditorState.data, readonly); break;
+    case 'motivationInitiative': body = renderMotivation(EditorState.data, readonly); break;
+  }
+
+  const returnBox = EditorState.status==='returned' && EditorState.returnComment
+    ? '<div class="return-note"><b>أُعيد النموذج للتعديل من مدير المدرسة:</b>'+esc(EditorState.returnComment)+'</div>' : '';
+
+  const sigBlock = (
+    '<div class="sig-footer">' +
+      '<div><div class="who">توقيع المُعد ('+esc(State.user.full_name)+')</div>' +
+        (EditorState.prepSig ? '<div class="signed-chip">✓ تم التوقيع</div><div style="margin-top:8px;">'+buildSignaturePad('preparer', EditorState.prepSig, true)+'</div><button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="resign">إعادة التوقيع</button>'
+          : buildSignaturePad('preparer', null, false)) +
+      '</div>' +
+    '</div>'
+  );
+
+  return (
+    '<div class="sheet-wrap">' +
+      '<div class="sheet-bar no-print">' +
+        '<div class="left"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button><span class="badge '+EditorState.status+'">'+STATUS_LABEL[EditorState.status]+'</span></div>' +
+        '<div></div>' +
+      '</div>' +
+      statusStrip(EditorState.status) +
+      returnBox +
+      '<div class="form-sheet">' +
+        '<div class="sheet-header"><div class="titles"><h1>'+esc(def.title)+'</h1><div class="sub">دعم التحصيل الدراسي — '+esc(EditorState.school)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
+        body +
+        sigBlock +
+        '<div class="footer-note">يُحفظ هذا النموذج إلكترونيًا ويُحال إلى مدير المدرسة للاعتماد النهائي.</div>' +
+      '</div>' +
+      '<div class="sheet-bar no-print" style="margin-top:16px;justify-content:flex-end;gap:10px;">' +
+        '<button class="btn btn-ghost" data-action="saveDraft">حفظ كمسودة</button>' +
+        '<button class="btn btn-primary" data-action="submitForm">إرسال لاعتماد مدير المدرسة</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+/* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
+
+function renderGroupPlan(d, ro){
+  const rows = d.students.map(function(s, i){
+    return (
+      '<tr data-row="students" data-idx="'+i+'">' +
+        '<td><input class="input" data-field="students.'+i+'.name" value="'+esc(s.name)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td><textarea class="input" data-field="students.'+i+'.diag" '+(ro?'disabled':'')+'>'+esc(s.diag)+'</textarea></td>' +
+        '<td><textarea class="input" data-field="students.'+i+'.skills" '+(ro?'disabled':'')+'>'+esc(s.skills)+'</textarea></td>' +
+        '<td>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</td>' +
+        '<td>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], s.evidence)+'</td>' +
+        '<td>'+checkboxGroup('students.'+i+'.progress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], s.progress)+'</td>' +
+        (ro?'':'<td><button class="dyn-table-rmv rmv" data-action="removeRow" data-list="students" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-4">' +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('الصف','grade',d.grade,{readonly:ro}) +
+      inputField('الشعبة','section',d.section,{readonly:ro}) + inputField('المادة','subject',d.subject,{readonly:ro}) +
+    '</div>' +
+    inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الاسم</th><th>شواهد التشخيص</th><th>المهارات المستهدفة</th><th>الأساليب المطبقة</th><th>الشواهد التعليمية</th><th>مؤشر التقدم</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>') +
+    '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
+    inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'})
+  );
+}
+
+function renderIndicatorReport(d, ro){
+  const rows = d.participants.map(function(p,i){
+    return (
+      '<tr><td style="width:36px;">'+(i+1)+'</td>' +
+        '<td><input class="input" data-field="participants.'+i+'.name" value="'+esc(p.name)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td><input class="input" data-field="participants.'+i+'.spec" value="'+esc(p.spec)+'" '+(ro?'disabled':'')+'></td>' +
+        (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="participants" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  const parentSection = (d.programType==='الاستجابة للتدخل (معالجة التعثر الدراسي)') ? (
+    '<div class="block-title"><span class="dot"></span> رأي ولي الأمر في سبب التعثر الدراسي (إن وجد)</div>' +
+    inputField('','parentNote', d.parentNote, {type:'textarea', readonly:ro, placeholder:'يُسجَّل هنا رأي ولي الأمر، أو يُرفق برأيه عبر صورة توقيعه على النسخة الورقية لعدم امتلاكه حسابًا في النظام.'})
+  ) : '';
+  return (
+    '<div class="field-grid cols-2">' +
+      '<div class="field"><label>البرنامج</label>'+radioGroup('programType', ['الفاعلية الجماعية للمعلمين','الاستجابة للتدخل (معالجة التعثر الدراسي)'], d.programType)+'</div>' +
+    '</div>' +
+    '<div class="field"><label>المؤشر</label>'+checkboxGroup('indicators', ['اجتماع','حضور','حلقة نقاش','حصر','لقاء جماعي','كلمة توعوية','مشاركة','مداولة تربوية','مناقشة النتائج','تكريم'], d.indicators)+'</div>' +
+    '<div class="block-title"><span class="dot"></span> المشاركون</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>العدد</th><th>الاسم</th><th>التخصص</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="participants">+ إضافة مشارك</button>') +
+    '<div class="block-title"><span class="dot"></span> الوصف</div>' + inputField('','description', d.description, {type:'textarea', readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> التوصيات</div>' + inputField('','recommendations', d.recommendations, {type:'textarea', readonly:ro}) +
+    parentSection
+  );
+}
+
+function renderIndividualAgreement(d, ro){
+  const sessions = d.sessions.map(function(s,i){
+    return (
+      '<div class="session-card">' +
+        '<div class="session-head"><span class="ttl">جلسة متابعة ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="sessions" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
+        '<div class="field-grid cols-2">' +
+          inputField('اسم المعلم','sessions.'+i+'.teacher',s.teacher,{readonly:ro}) +
+          inputField('المادة','sessions.'+i+'.subject',s.subject,{readonly:ro}) +
+        '</div>' +
+        inputField('التاريخ','sessions.'+i+'.date',s.date,{type:'date',readonly:ro}) +
+        inputField('الإجراءات/الأدوات المطبقة ونتيجة تقويم الأسبوع','sessions.'+i+'.notes',s.notes,{type:'textarea',readonly:ro,placeholder:'مثال: تطبيق استراتيجية ... وتقويم الطالب بنهاية الأسبوع أظهر ...'}) +
+        ((s.evidenceFiles && s.evidenceFiles.length) ? ('<div class="field"><label>شواهد المعلم</label><div class="evidence-grid">' + s.evidenceFiles.map(function(f){ return '<div class="evidence-thumb"><img src="'+f+'"></div>'; }).join('') + '</div></div>') : '') +
+        '<div class="field"><label>توقيع المعلم</label>' + buildSignaturePad('sessions.'+i, s.sig, ro) + '</div>' +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-2">' +
+      inputField('اسم الطالب','studentName',d.studentName,{readonly:ro}) + inputField('الصف','grade',d.grade,{readonly:ro}) +
+    '</div>' +
+    '<div class="upload-note">انطلاقًا من حرص المدرسة على دعم تحصيل الطلاب، أُدرج الطالب أعلاه في الخطة الفردية. تُسجَّل أدناه جلسات المتابعة الأسبوعية لكل معلم على حدة.</div>' +
+    '<div class="block-title"><span class="dot"></span> جلسات المتابعة الأسبوعية</div>' +
+    sessions + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="sessions">+ إضافة جلسة متابعة أسبوعية</button>') +
+    '<div class="block-title"><span class="dot"></span> الخطوات المقترحة من ولي أمر الطالب</div>' +
+    inputField('','parentSuggested', d.parentSuggested, {type:'textarea', readonly:ro}) +
+    '<div class="upload-note">نظرًا لعدم امتلاك ولي الأمر حسابًا في النظام: يُرجى طباعة النموذج بعد الاعتماد للحصول على توقيع ولي الأمر يدويًا، أو رفع صورة توقيعه ضمن سجل الشواهد.</div>'
+  );
+}
+
+function renderModelLesson(d, ro){
+  const positives = d.positives.map(function(p,i){
+    return (
+      '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">' +
+        '<span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span>' +
+        '<input class="input" data-field="positives.'+i+'" value="'+esc(p)+'" '+(ro?'disabled':'')+' style="flex:1;">' +
+        (ro?'':'<button class="rmv" data-action="removeRow" data-list="positives" data-idx="'+i+'">✕</button>') +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-4">' +
+      inputField('اليوم','day',d.day,{readonly:ro}) + inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('الحصة','period',d.period,{readonly:ro}) +
+    '</div>' +
+    '<div class="field-grid cols-2">' +
+      inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) + inputField('المعلم المنفذ','teacher',d.teacher,{readonly:ro}) +
+    '</div>' +
+    inputField('الأهداف/الإستراتيجيات/الأساليب المستهدفة','objectives',d.objectives,{type:'textarea',readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> إيجابيات الموقف التعليمي</div>' +
+    positives + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="positives">+ إضافة إيجابية</button>')
+  );
+}
+
+function renderPlcMeeting(d, ro){
+  const attRows = d.attendees.map(function(a,i){
+    return (
+      '<tr><td><input class="input" data-field="attendees.'+i+'.name" value="'+esc(a.name)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td><input class="input" data-field="attendees.'+i+'.spec" value="'+esc(a.spec)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td style="text-align:center;"><input type="checkbox" data-action="toggleAttend" data-idx="'+i+'" '+(a.present?'checked':'')+' '+(ro?'disabled':'')+'></td>' +
+        (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="attendees" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  const agenda = d.agenda.map(function(a,i){
+    return '<div style="display:flex;gap:8px;margin-bottom:8px;"><span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span><input class="input" data-field="agenda.'+i+'" value="'+esc(a)+'" '+(ro?'disabled':'')+' style="flex:1;">'+(ro?'':'<button class="rmv" data-action="removeRow" data-list="agenda" data-idx="'+i+'">✕</button>')+'</div>';
+  }).join('');
+  const decisions = d.decisions.map(function(dec,i){
+    return (
+      '<tr><td><input class="input" data-field="decisions.'+i+'.decision" value="'+esc(dec.decision)+'" '+(ro?'disabled':'')+'></td>' +
+      '<td><input class="input" data-field="decisions.'+i+'.responsible" value="'+esc(dec.responsible)+'" '+(ro?'disabled':'')+'></td>' +
+      '<td><input class="input" type="date" data-field="decisions.'+i+'.deadline" value="'+esc(dec.deadline)+'" '+(ro?'disabled':'')+'></td>' +
+      (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="decisions" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-4">' +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) +
+      inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) + inputField('الوقت','time',d.time,{type:'time',readonly:ro}) +
+    '</div>' +
+    '<div class="field"><label>نوع اللقاء</label>'+radioGroup('meetingType', ['اجتماع دوري','حلقة نقاش','لقاء تدريبي','أخرى'], d.meetingType)+'</div>' +
+    '<div class="block-title"><span class="dot"></span> الحضور</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الاسم</th><th>التخصص</th><th>حاضر</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+attRows+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="attendees">+ إضافة مشارك</button>') +
+    '<div class="block-title"><span class="dot"></span> جدول الأعمال</div>' + agenda + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="agenda">+ إضافة بند</button>') +
+    '<div class="block-title"><span class="dot"></span> ملخص النقاش</div>' + inputField('','summary', d.summary, {type:'textarea', readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> القرارات والمتابعات</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>القرار</th><th>المسؤول</th><th>الموعد</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+decisions+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="decisions">+ إضافة قرار</button>')
+  );
+}
+
+function renderMotivation(d, ro){
+  const impacts = d.impacts.map(function(im,i){
+    return (
+      '<tr><td><input class="input" data-field="impacts.'+i+'.indicator" value="'+esc(im.indicator)+'" '+(ro?'disabled':'')+'></td>' +
+      '<td><input class="input" data-field="impacts.'+i+'.baseline" value="'+esc(im.baseline)+'" '+(ro?'disabled':'')+'></td>' +
+      '<td><input class="input" data-field="impacts.'+i+'.target" value="'+esc(im.target)+'" '+(ro?'disabled':'')+'></td>' +
+      '<td><input class="input" data-field="impacts.'+i+'.actual" value="'+esc(im.actual)+'" '+(ro?'disabled':'')+'></td>' +
+      (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="impacts" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-2">' + inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('عنوان المبادرة','title',d.title,{readonly:ro}) + '</div>' +
+    '<div class="field-grid cols-2">' +
+      '<div class="field"><label>الفئة المستهدفة</label>'+radioGroup('targetGroup', ['المعلمين','المتعلمين','المعلمين والمتعلمين'], d.targetGroup)+'</div>' +
+      inputField('تاريخ التنفيذ','execDate',d.execDate,{type:'date',readonly:ro}) +
+    '</div>' +
+    '<div class="field"><label>نوع المبادرة</label>'+checkboxGroup('types', ['مسابقة','جائزة','كلمة تحفيزية','برنامج تكريم','زيارة تحفيزية'], d.types)+'</div>' +
+    inputField('الاستراتيجية المستخدمة (من بنك استراتيجيات التحفيز)','strategy',d.strategy,{readonly:ro}) +
+    inputField('وصف المبادرة','description',d.description,{type:'textarea',readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> مؤشرات قياس الأثر</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>المؤشر</th><th>القيمة قبل المبادرة</th><th>المستهدف</th><th>الفعلي</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+impacts+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="impacts">+ إضافة مؤشر</button>')
+  );
+}
+
+/* ---------------------- ربط أحداث المحرّر ---------------------- */
+function getPath(obj, path){
+  const parts = path.split('.'); let cur = obj;
+  for (let i=0;i<parts.length;i++){ if (cur==null) return undefined; cur = cur[parts[i]]; }
+  return cur;
+}
+function setPath(obj, path, value){
+  const parts = path.split('.'); let cur = obj;
+  for (let i=0;i<parts.length-1;i++){
+    const key = parts[i];
+    if (cur[key]===undefined) cur[key] = (/^\d+$/.test(parts[i+1]) ? [] : {});
+    cur = cur[key];
+  }
+  cur[parts[parts.length-1]] = value;
+}
+function defaultRowFor(list){
+  switch(list){
+    case 'students': return blankStudentRow();
+    case 'participants': return { name:'', spec:'' };
+    case 'sessions': return blankSession();
+    case 'positives': return '';
+    case 'attendees': return { name:'', spec:'', present:true };
+    case 'agenda': return '';
+    case 'decisions': return { decision:'', responsible:'', deadline:'' };
+    case 'impacts': return { indicator:'', baseline:'', target:'', actual:'' };
+    default: return {};
+  }
+}
+
+function bindEditor(){
+  document.querySelectorAll('[data-field]').forEach(function(el){
+    const evt = (el.tagName==='SELECT') ? 'change' : 'input';
+    el.addEventListener(evt, function(){ setPath(EditorState.data, el.getAttribute('data-field'), el.value); });
+  });
+  document.querySelectorAll('[data-action="toggleChk"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const group = el.getAttribute('data-group'); const val = el.getAttribute('data-val');
+      let arr = getPath(EditorState.data, group) || [];
+      arr = el.checked ? arr.concat([val]) : arr.filter(function(v){ return v!==val; });
+      setPath(EditorState.data, group, arr);
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="setRadio"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      setPath(EditorState.data, el.getAttribute('data-group'), el.getAttribute('data-val'));
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="toggleAttend"]').forEach(function(el){
+    el.addEventListener('change', function(){ EditorState.data.attendees[+el.getAttribute('data-idx')].present = el.checked; });
+  });
+  document.querySelectorAll('[data-action="addRow"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const list = el.getAttribute('data-list');
+      EditorState.data[list] = (EditorState.data[list]||[]).concat([ defaultRowFor(list) ]);
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="removeRow"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const list = el.getAttribute('data-list'); const idx = +el.getAttribute('data-idx');
+      EditorState.data[list].splice(idx,1);
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="clearPad"]').forEach(function(el){
+    el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
+  });
+  const resign = document.querySelector('[data-action="resign"]');
+  if (resign) resign.addEventListener('click', function(){ EditorState.prepSig=null; render(); bindEditor(); });
+
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){ await persistEditor('draft'); });
+  document.querySelector('[data-action="submitForm"]').addEventListener('click', async function(){ await persistEditor('pending'); });
+
+  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
+}
+
+async function persistEditor(targetStatus){
+  if (targetStatus==='pending'){
+    const padKey = 'pad_preparer';
+    const pad = Pads[padKey];
+    const hasNewSig = pad && !pad.isEmpty();
+    if (!EditorState.prepSig && !hasNewSig){
+      toast('يرجى التوقيع قبل إرسال النموذج للاعتماد.'); return;
+    }
+    if (hasNewSig) EditorState.prepSig = pad.toDataUrl();
+  } else {
+    const pad = Pads['pad_preparer'];
+    if (pad && !pad.isEmpty()) EditorState.prepSig = pad.toDataUrl();
+  }
+
+  const payload = {
+    form_type: EditorState.formType, school: EditorState.school,
+    created_by: EditorState.createdBy, created_by_name: EditorState.createdByName,
+    payload: EditorState.data, status: targetStatus, preparer_signature: EditorState.prepSig,
+    principal_signature: EditorState.principalSig, principal_comment: targetStatus==='pending' ? null : EditorState.returnComment,
+    submitted_at: targetStatus==='pending' ? nowIso() : null, approved_at: EditorState.approved_at || null
+  };
+  try{
+    if (EditorState.id){ await DB.updateSubmission(EditorState.id, payload); }
+    else { const created = await DB.createSubmission(payload); EditorState.id = created.id; }
+    toast(targetStatus==='pending' ? 'تم إرسال النموذج إلى مدير المدرسة للاعتماد.' : 'تم حفظ المسودة بنجاح.');
+    go('dashboard');
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------------------- شاشة العرض (قراءة فقط) ---------------------- */
+let ViewCache = {};
+async function screenView(id){
+  const s = await DB.getSubmission(id); ViewCache = s;
+  const def = formDef(s.form_type);
+  let body = '';
+  switch(s.form_type){
+    case 'groupPlan': body = renderGroupPlan(s.payload, true); break;
+    case 'indicatorReport': body = renderIndicatorReport(s.payload, true); break;
+    case 'individualAgreement': body = renderIndividualAgreement(s.payload, true); break;
+    case 'modelLesson': body = renderModelLesson(s.payload, true); break;
+    case 'plcMeetingMinutes': body = renderPlcMeeting(s.payload, true); break;
+    case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
+  }
+  const stamp = s.status==='approved' ? (
+    '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? new Date(s.approved_at).toLocaleDateString('ar-SA'): '') +'</div></div></div>'
+  ) : '';
+  return (
+    '<div class="sheet-wrap">' +
+      '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
+        '<span style="display:flex;gap:8px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="printForm">طباعة</button>' +
+        '<button class="btn btn-gold btn-sm" data-action="exportPdf" data-filename="'+esc(def.title)+'">تصدير PDF</button>' +
+        '</span></div>' +
+      statusStrip(s.status) +
+      '<div class="form-sheet">' + stamp +
+        '<div class="sheet-header"><div class="titles"><h1>'+esc(def.title)+'</h1><div class="sub">دعم التحصيل الدراسي — '+esc(s.school)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
+        body +
+        '<div class="sig-footer">' +
+          '<div><div class="who">توقيع المُعد: '+esc(s.created_by_name)+'</div>'+buildSignaturePad('v_prep', s.preparer_signature, true)+'</div>' +
+          '<div><div class="who">اعتماد مدير المدرسة</div>'+buildSignaturePad('v_principal', s.principal_signature, true)+(s.approved_at?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">اعتُمد بتاريخ '+fmtDateTime(s.approved_at)+'</div>':'')+'</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindView(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
+  document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
+  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
+}
+
+/* ---------------------- شاشة مراجعة مدير المدرسة ---------------------- */
+let ReviewCache = {};
+async function screenReview(id){
+  const s = await DB.getSubmission(id); ReviewCache = s;
+  const def = formDef(s.form_type);
+  let body = '';
+  switch(s.form_type){
+    case 'groupPlan': body = renderGroupPlan(s.payload, true); break;
+    case 'indicatorReport': body = renderIndicatorReport(s.payload, true); break;
+    case 'individualAgreement': body = renderIndividualAgreement(s.payload, true); break;
+    case 'modelLesson': body = renderModelLesson(s.payload, true); break;
+    case 'plcMeetingMinutes': body = renderPlcMeeting(s.payload, true); break;
+    case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
+  }
+  return (
+    '<div class="sheet-bar no-print"><div style="display:flex;gap:8px;align-items:center;"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></div>' +
+      '<button class="btn btn-gold btn-sm" data-action="exportPdf" data-filename="'+esc(def.title)+'">تصدير PDF</button></div>' +
+    '<div class="layout-2col">' +
+      '<div class="form-sheet">' +
+        '<div class="sheet-header"><div class="titles"><h1>'+esc(def.title)+'</h1><div class="sub">إعداد: '+esc(s.created_by_name)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
+        body +
+        '<div class="sig-footer"><div><div class="who">توقيع المُعد</div>'+buildSignaturePad('rv_prep', s.preparer_signature, true)+'</div></div>' +
+      '</div>' +
+      '<div class="review-panel no-print">' +
+        '<h3>اعتماد مدير المدرسة</h3>' +
+        '<div class="review-grid">' +
+          '<div class="field"><label>ملاحظات (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع أو أي ملاحظة..."></textarea></div>' +
+          '<div class="field"><label>التوقيع الإلكتروني لمدير المدرسة</label>' + buildSignaturePad('approve', null, false) + '</div>' +
+          '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
+          '<button class="btn btn-danger btn-block" data-action="returnSub">إرجاع للتعديل</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindReview(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
+  document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
+  document.querySelectorAll('[data-action="clearPad"]').forEach(function(el){
+    el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
+  });
+  document.querySelector('[data-action="approveSub"]').addEventListener('click', async function(){
+    const pad = Pads['pad_approve'];
+    if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); return; }
+    try{
+      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null });
+      toast('تم اعتماد النموذج بختم رسمي.');
+      go('view', { id: ReviewCache.id });
+    }catch(e){ toast(e.message); }
+  });
+  document.querySelector('[data-action="returnSub"]').addEventListener('click', async function(){
+    const comment = document.getElementById('reviewComment').value.trim();
+    if (!comment){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
+    try{
+      await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment });
+      toast('تم إرجاع النموذج للمُعد للتعديل.');
+      go('dashboard');
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ---------------------- أحداث عامة (نَقر على بطاقات اللوحة) ---------------------- */
+function bindGlobalAction(el){
+  const action = el.getAttribute('data-action');
+  if (action==='logout'){ el.addEventListener('click', logout); }
+  else if (action==='goPicker'){ el.addEventListener('click', function(){ go('picker'); }); }
+  else if (action==='openEdit'){ el.addEventListener('click', async function(){ const s = await DB.getSubmission(el.getAttribute('data-id')); openEditor(s.form_type, s); }); }
+  else if (action==='openView'){ el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); }); }
+  else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
+  else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
+}
+
+/* ---------------------- نقطة الانطلاق ---------------------- */
+(function init(){
+  const u = loadUserSession();
+  if (u){ State.user = u; go('dashboard'); }
+  else { go('login'); }
+})();
+</script>
 </body>
 </html>
