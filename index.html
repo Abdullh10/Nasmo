@@ -558,14 +558,18 @@ const DB = {
         headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({ email: authEmailFor(username), password: password })
       });
-      if (!res.ok) return null;
+      if (!res.ok){
+        const errData = await res.json().catch(function(){ return null; });
+        const msg = errData && (errData.error_description || errData.msg || errData.error);
+        throw new Error(msg ? ('فشل تسجيل الدخول: ' + msg) : 'اسم المستخدم أو كلمة المرور غير صحيحة.');
+      }
       const data = await res.json();
       AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
       try{
         const rows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(data.user.id));
-        if (!rows || !rows[0]) { clearAuth(); return null; }
+        if (!rows || !rows[0]) { clearAuth(); throw new Error('تم تسجيل الدخول، لكن لا يوجد ملف مستخدم (profile) مطابق في قاعدة البيانات.'); }
         return rows[0];
-      }catch(e){ clearAuth(); return null; }
+      }catch(e){ clearAuth(); throw e; }
     }
     const users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
     const found = users.find(function(u){ return u.username===username && u.password===password; });
@@ -1203,12 +1207,15 @@ function screenLogin(){
         '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
         '<div class="hint-box">' +
-          '<b>للتجربة السريعة:</b><br>' +
-          'حساب منسق المجتمع المهني — اسم المستخدم: <span class="mono">coordinator</span> / كلمة المرور: <span class="mono">1234</span><br>' +
-          'حساب مدير المدرسة — اسم المستخدم: <span class="mono">principal</span> / كلمة المرور: <span class="mono">1234</span><br>' +
-          'حساب معلم (رفع شواهد) — اسم المستخدم: <span class="mono">teacher</span> / كلمة المرور: <span class="mono">1234</span><br>' +
-          'حساب مدير نظام (إدارة المستخدمين) — اسم المستخدم: <span class="mono">admin</span> / كلمة المرور: <span class="mono">1234</span>' +
-          (isRemote() ? '<br><br>وضع التشغيل الحالي: <b>سحابي (Supabase)</b>' : '<br><br>وضع التشغيل الحالي: <b>تجريبي محلي (هذا المتصفح فقط)</b>') +
+          (isRemote() ?
+            ('وضع التشغيل الحالي: <b>سحابي (Supabase)</b><br>استخدم بيانات حسابك الحقيقي المُنشأ في Supabase.') :
+            ('<b>للتجربة السريعة:</b><br>' +
+            'حساب منسق المجتمع المهني — اسم المستخدم: <span class="mono">coordinator</span> / كلمة المرور: <span class="mono">1234</span><br>' +
+            'حساب مدير المدرسة — اسم المستخدم: <span class="mono">principal</span> / كلمة المرور: <span class="mono">1234</span><br>' +
+            'حساب معلم (رفع شواهد) — اسم المستخدم: <span class="mono">teacher</span> / كلمة المرور: <span class="mono">1234</span><br>' +
+            'حساب مدير نظام (إدارة المستخدمين) — اسم المستخدم: <span class="mono">admin</span> / كلمة المرور: <span class="mono">1234</span>' +
+            '<br><br>وضع التشغيل الحالي: <b>تجريبي محلي (هذا المتصفح فقط)</b>')
+          ) +
         '</div>' +
       '</div>' +
     '</div>'
