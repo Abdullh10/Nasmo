@@ -640,7 +640,11 @@ const DB = {
         headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({ email: authEmailFor(obj.username), password: obj.password })
       });
-      if (!signupRes.ok) throw new Error('فشل إنشاء حساب المصادقة، تأكد أن اسم المستخدم غير مستخدم مسبقًا.');
+      if (!signupRes.ok){
+        const errData = await signupRes.json().catch(function(){ return null; });
+        const msg = errData && (errData.msg || errData.error_description || errData.error);
+        throw new Error(msg ? ('فشل إنشاء حساب المصادقة: ' + msg) : 'فشل إنشاء حساب المصادقة، تأكد أن اسم المستخدم غير مستخدم مسبقًا.');
+      }
       const signupData = await signupRes.json();
       const newId = (signupData.user && signupData.user.id) || signupData.id;
       if (!newId) throw new Error('تعذّر إنشاء حساب المصادقة.');
