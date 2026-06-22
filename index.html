@@ -1062,6 +1062,32 @@ const DB = {
     localStorage.setItem(LS_GOALS, JSON.stringify(list));
     return true;
   },
+  async clearData(types, school){
+    types = types || [];
+    if (isRemote()){
+      const tableMap = { submissions:'submissions', notifications:'notifications', tasks:'tasks', goals:'plc_goals', indicator_status:'indicator_status' };
+      for (const t of types){
+        const table = tableMap[t];
+        if (!table) continue;
+        await remoteFetch(table + '?school=eq.' + encodeURIComponent(school), { method:'DELETE' });
+      }
+      return;
+    }
+    const arrayKeyMap = { submissions:LS_SUBS, notifications:LS_NOTIFICATIONS, tasks:LS_TASKS, goals:LS_GOALS };
+    types.forEach(function(t){
+      if (t==='indicator_status'){
+        const all = JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}');
+        delete all[school];
+        localStorage.setItem(LS_INDSTATUS, JSON.stringify(all));
+        return;
+      }
+      const key = arrayKeyMap[t];
+      if (!key) return;
+      const all = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(all)) return;
+      localStorage.setItem(key, JSON.stringify(all.filter(function(row){ return row.school!==school; })));
+    });
+  },
   async exportFullBackup(){
     if (isRemote()){
       const [profiles, communities, submissions, notifications, tasks, goals, appSettings, indicatorStatus, siteSettings] = await Promise.all([
@@ -2182,6 +2208,19 @@ async function screenAdminSettings(){
           '<p style="color:var(--muted);font-size:12px;margin-top:8px;">سيُحدّث الاسترجاع السجلات المطابقة في النسخة الاحتياطية أو يضيفها إن لم تكن موجودة، دون حذف أي بيانات حالية غير موجودة في النسخة.</p>' +
         '</div>' +
       '</div>' +
+    '</div>' +
+    '<div class="program-card">' +
+      '<div class="ph"><h3>تصفير البيانات التجريبية</h3><p>لحذف بيانات تجريبية أو خاطئة أدخلتها أثناء التجربة (مدرسة "'+esc(State.user.school)+'" فقط). حدِّد الأنواع المطلوب حذفها — هذا الإجراء نهائي ولا يمكن التراجع عنه، ويُنصح بتنزيل نسخة احتياطية كاملة قبل المتابعة.</p></div>' +
+      '<div style="padding:16px 18px;">' +
+        '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdSubmissions"> النماذج المُرسلة (جميع النماذج الثمانية)</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdNotifications"> التنبيهات والرسائل</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdTasks"> المهام</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdGoals"> خطة التحسين الفصلية (الأهداف)</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdIndicators"> حالة مؤشرات الدليل التنفيذي</label>' +
+        '</div>' +
+        '<button class="btn btn-danger" data-action="clearTestData">حذف البيانات المحدَّدة نهائيًا</button>' +
+      '</div>' +
     '</div>'
   );
 }
@@ -2252,6 +2291,24 @@ function bindAdminSettings(){
       restoreInput.value = '';
     };
     reader.readAsText(file, 'UTF-8');
+  });
+  const clearBtn = document.querySelector('[data-action="clearTestData"]');
+  if (clearBtn) clearBtn.addEventListener('click', async function(){
+    const map = { submissions:'cdSubmissions', notifications:'cdNotifications', tasks:'cdTasks', goals:'cdGoals', indicator_status:'cdIndicators' };
+    const labels = { submissions:'النماذج المُرسلة', notifications:'التنبيهات والرسائل', tasks:'المهام', goals:'خطة التحسين الفصلية', indicator_status:'حالة مؤشرات الدليل التنفيذي' };
+    const types = Object.keys(map).filter(function(t){ const el = document.getElementById(map[t]); return el && el.checked; });
+    if (!types.length){ toast('يرجى تحديد نوع واحد على الأقل لحذفه.'); return; }
+    const list = types.map(function(t){ return '- ' + labels[t]; }).join('\n');
+    if (!confirm('سيتم حذف نهائيًا من مدرسة "'+State.user.school+'":\n'+list+'\n\nهذا الإجراء لا يمكن التراجع عنه. هل تريد الاستمرار؟')) return;
+    if (!confirm('تأكيد أخير: هل أنت متأكد من حذف هذه البيانات نهائيًا؟')) return;
+    clearBtn.disabled = true;
+    try{
+      await DB.clearData(types, State.user.school);
+      types.forEach(function(t){ const el = document.getElementById(map[t]); if (el) el.checked = false; });
+      toast('تم حذف البيانات المحدَّدة بنجاح.');
+      render();
+    }catch(e){ toast('تعذّر حذف البيانات: ' + e.message); }
+    clearBtn.disabled = false;
   });
 }
 async function screenDashboard(){
