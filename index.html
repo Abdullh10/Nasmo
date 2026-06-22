@@ -92,6 +92,7 @@ a{ color:var(--teal-dark); }
 .topnav-right{ display:flex; align-items:center; gap:10px; }
 .user-pill{ display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.08); padding:6px 12px; border-radius:30px; font-size:13px; }
 .user-pill .role-tag{ background:var(--gold); color:#1d1300; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:20px; }
+.conn-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; background:#9ca3af; box-shadow:0 0 0 2px rgba(255,255,255,.18); flex-shrink:0; }
 .icon-btn{ background:rgba(255,255,255,.08); border:none; color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; position:relative; }
 .icon-btn:hover{ background:rgba(255,255,255,.18); }
 .icon-btn svg{ width:17px; height:17px; }
@@ -450,6 +451,25 @@ create policy "site_settings_write" on site_settings for all using ( my_role() =
 
 function isRemote(){ return !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY); }
 
+/* مؤشر اتصال لوحة مدير النظام: نقطة خضراء عند الاتصال الفعلي بقاعدة Supabase
+   ونقطة حمراء عند تعذّر الوصول إليها، يتم تحديثها مباشرة في DOM دون إعادة رسم الصفحة. */
+let ConnStatus = { online: null };
+async function checkConnectivity(){
+  if (!isRemote()){ ConnStatus.online = false; applyConnDot(); return; }
+  try{
+    const res = await fetch(CONFIG.SUPABASE_URL + '/auth/v1/health', { method:'GET' });
+    ConnStatus.online = !!res.ok;
+  }catch(e){ ConnStatus.online = false; }
+  applyConnDot();
+}
+function applyConnDot(){
+  const dot = document.getElementById('connStatusDot');
+  if (!dot) return;
+  if (ConnStatus.online === true){ dot.style.background = '#22c55e'; dot.title = 'متصل بقاعدة البيانات السحابية'; }
+  else if (ConnStatus.online === false){ dot.style.background = '#ef4444'; dot.title = 'غير متصل بقاعدة البيانات السحابية'; }
+  else { dot.style.background = '#9ca3af'; dot.title = 'جارٍ التحقق من حالة الاتصال...'; }
+}
+
 /* مصادقة حقيقية عبر Supabase Auth: نربط كل اسم مستخدم ببريد وهمي ثابت
    حتى تعمل واجهة الدخول الحالية (اسم مستخدم/كلمة مرور) دون تغيير،
    بينما تُصدر Supabase جلسة JWT فعلية يميّز بها auth.uid() داخل سياسات RLS. */
@@ -574,6 +594,17 @@ function localSeed(){
     };
     localStorage.setItem(LS_SUBS, JSON.stringify([demo1, demo2, demo3]));
   }
+}
+
+/* تحديث-أو-إدراج سجل عند استرجاع نسخة احتياطية: يحاول التعديل عبر مطابقة matchPath،
+   وإن لم يجد سجلًا مطابقًا (مصفوفة فارغة) يُنشئ سجلًا جديدًا بنفس البيانات. */
+async function upsertByMatch(table, matchPath, row){
+  try{
+    const patched = await remoteFetch(table + '?' + matchPath, { method:'PATCH', body: row, prefer:'return=representation' });
+    if (patched && patched.length) return { ok:true };
+    const created = await remoteFetch(table, { method:'POST', body: row, prefer:'return=representation' });
+    return { ok: !!(created && created.length) };
+  }catch(e){ return { ok:false, error: e.message }; }
 }
 
 const DB = {
@@ -874,6 +905,77 @@ const DB = {
     const idx = list.findIndex(function(n){ return n.id===id; });
     if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(list)); return list[idx]; }
     return null;
+  },
+  async exportFullBackup(){
+    if (isRemote()){
+      const [profiles, communities, submissions, notifications, appSettings, indicatorStatus, siteSettings] = await Promise.all([
+        remoteFetch('profiles?order=created_at.desc'),
+        remoteFetch('communities?order=created_at.asc'),
+        remoteFetch('submissions?order=created_at.desc'),
+        remoteFetch('notifications?order=created_at.desc'),
+        remoteFetch('app_settings'),
+        remoteFetch('indicator_status'),
+        remoteFetch('site_settings')
+      ]);
+      return {
+        version: 1, exported_at: nowIso(),
+        data: {
+          profiles: profiles||[], communities: communities||[], submissions: submissions||[],
+          notifications: notifications||[], app_settings: appSettings||[], indicator_status: indicatorStatus||[],
+          site_settings: siteSettings||[]
+        }
+      };
+    }
+    return {
+      version: 1, exported_at: nowIso(),
+      data: {
+        profiles: JSON.parse(localStorage.getItem(LS_USERS) || '[]'),
+        communities: JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]'),
+        submissions: JSON.parse(localStorage.getItem(LS_SUBS) || '[]'),
+        notifications: JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]'),
+        app_settings: JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'),
+        indicator_status: JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}'),
+        site_settings: JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}')
+      }
+    };
+  },
+  async restoreFullBackup(backup){
+    const data = (backup && backup.data) || {};
+    const report = { profiles:0, communities:0, submissions:0, notifications:0, app_settings:0, indicator_status:0, site_settings:0, errors: [] };
+    if (isRemote()){
+      const byId = async function(table, key, rows){
+        for (const row of (rows||[])){
+          const r = await upsertByMatch(table, 'id=eq.' + encodeURIComponent(row.id), row);
+          if (r.ok) report[key]++; else report.errors.push(table + ':' + row.id + ' ' + (r.error||''));
+        }
+      };
+      await byId('profiles', 'profiles', data.profiles);
+      await byId('communities', 'communities', data.communities);
+      await byId('submissions', 'submissions', data.submissions);
+      await byId('notifications', 'notifications', data.notifications);
+      for (const row of (data.app_settings||[])){
+        const r = await upsertByMatch('app_settings', 'school=eq.' + encodeURIComponent(row.school), row);
+        if (r.ok) report.app_settings++; else report.errors.push('app_settings:' + row.school + ' ' + (r.error||''));
+      }
+      for (const row of (data.indicator_status||[])){
+        const match = 'school=eq.' + encodeURIComponent(row.school) + '&indicator_id=eq.' + encodeURIComponent(row.indicator_id);
+        const r = await upsertByMatch('indicator_status', match, row);
+        if (r.ok) report.indicator_status++; else report.errors.push('indicator_status:' + row.school + '/' + row.indicator_id + ' ' + (r.error||''));
+      }
+      for (const row of (data.site_settings||[])){
+        const r = await upsertByMatch('site_settings', 'id=eq.' + encodeURIComponent(row.id||'global'), row);
+        if (r.ok) report.site_settings++; else report.errors.push('site_settings:' + (row.id||'global') + ' ' + (r.error||''));
+      }
+      return report;
+    }
+    if (data.profiles){ localStorage.setItem(LS_USERS, JSON.stringify(data.profiles)); report.profiles = data.profiles.length; }
+    if (data.communities){ localStorage.setItem(LS_COMMUNITIES, JSON.stringify(data.communities)); report.communities = data.communities.length; }
+    if (data.submissions){ localStorage.setItem(LS_SUBS, JSON.stringify(data.submissions)); report.submissions = data.submissions.length; }
+    if (data.notifications){ localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(data.notifications)); report.notifications = data.notifications.length; }
+    if (data.app_settings){ localStorage.setItem(LS_SETTINGS, JSON.stringify(data.app_settings)); report.app_settings = Object.keys(data.app_settings).length; }
+    if (data.indicator_status){ localStorage.setItem(LS_INDSTATUS, JSON.stringify(data.indicator_status)); report.indicator_status = Object.keys(data.indicator_status).length; }
+    if (data.site_settings){ localStorage.setItem(LS_SITE_SETTINGS, JSON.stringify(data.site_settings)); report.site_settings = 1; }
+    return report;
   }
 };
 
@@ -1143,6 +1245,7 @@ async function render(){
 function renderShell(app, innerHtml){
   app.innerHTML = topNav() + '<div class="shell">' + innerHtml + '</div>';
   bindTopNav();
+  if (State.user && State.user.role==='admin'){ applyConnDot(); checkConnectivity(); }
 }
 
 function topNav(){
@@ -1181,7 +1284,7 @@ function topNav(){
         '<div class="topnav-title">'+esc(SiteSettings.program_title)+'<small>'+esc(State.user.school)+(SiteSettings.academic_year?' · العام الدراسي '+esc(SiteSettings.academic_year):'')+'</small></div>' +
       '</div>' +
       '<div class="topnav-right">' +
-        '<div class="user-pill"><span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+roleLabel+'</span></div>' +
+        '<div class="user-pill">'+(State.user.role==='admin'?'<span id="connStatusDot" class="conn-dot"></span>':'')+'<span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+roleLabel+'</span></div>' +
         '<div class="notif-wrap">' +
           '<button class="icon-btn" title="التنبيهات" data-action="toggleNotif">'+BELL_SVG+(unreadCount?('<span class="notif-badge">'+(unreadCount>9?'9+':unreadCount)+'</span>'):'')+'</button>' +
           panelHtml +
@@ -1415,6 +1518,17 @@ async function screenAdminSettings(){
         '<div class="field"><label>اسم المدرسة الجديد</label><input class="input" id="ssNewSchool" placeholder="اكتب الاسم الجديد"></div>' +
         '<button class="btn btn-gold" data-action="renameSchool">تطبيق التغيير على جميع السجلات</button>' +
       '</div>' +
+    '</div>' +
+    '<div class="program-card">' +
+      '<div class="ph"><h3>النسخ الاحتياطي</h3><p>نزّل نسخة احتياطية كاملة من جميع بيانات النظام (الحسابات، المجتمعات المهنية، النماذج، التنبيهات، الإعدادات) بصيغة JSON، أو استرجع نسخة سابقة عند الحاجة.</p></div>' +
+      '<div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">' +
+        '<div><button class="btn btn-primary" id="exportBackupBtn" data-action="exportBackup">تنزيل نسخة احتياطية كاملة</button></div>' +
+        '<div>' +
+          '<input type="file" id="restoreBackupInput" accept=".json" style="display:none;">' +
+          '<button class="btn btn-gold" data-action="triggerRestoreBackup">استرجاع نسخة احتياطية من ملف</button>' +
+          '<p style="color:var(--muted);font-size:12px;margin-top:8px;">سيُحدّث الاسترجاع السجلات المطابقة في النسخة الاحتياطية أو يضيفها إن لم تكن موجودة، دون حذف أي بيانات حالية غير موجودة في النسخة.</p>' +
+        '</div>' +
+      '</div>' +
     '</div>'
   );
 }
@@ -1445,6 +1559,46 @@ function bindAdminSettings(){
       toast('تم تغيير اسم المدرسة بنجاح.');
       render();
     }catch(e){ toast(e.message); }
+  });
+  const exportBtn = document.querySelector('[data-action="exportBackup"]');
+  if (exportBtn) exportBtn.addEventListener('click', async function(){
+    const prevText = exportBtn.textContent;
+    exportBtn.disabled = true; exportBtn.textContent = 'جارٍ تجهيز النسخة...';
+    try{
+      const backup = await DB.exportFullBackup();
+      const stamp = new Date().toISOString().slice(0,10);
+      downloadTextFile('نسخة_احتياطية_نسمو_'+stamp+'.json', JSON.stringify(backup, null, 2), 'application/json');
+      toast('تم تنزيل النسخة الاحتياطية بنجاح.');
+    }catch(e){ toast('تعذّر تجهيز النسخة الاحتياطية: ' + e.message); }
+    exportBtn.disabled = false; exportBtn.textContent = prevText;
+  });
+  const restoreTriggerBtn = document.querySelector('[data-action="triggerRestoreBackup"]');
+  const restoreInput = document.getElementById('restoreBackupInput');
+  if (restoreTriggerBtn && restoreInput) restoreTriggerBtn.addEventListener('click', function(){ restoreInput.click(); });
+  if (restoreInput) restoreInput.addEventListener('change', function(){
+    const file = restoreInput.files && restoreInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(){
+      let backup;
+      try{ backup = JSON.parse(String(reader.result)); }catch(e){ toast('ملف النسخة الاحتياطية غير صالح.'); restoreInput.value=''; return; }
+      if (!backup || !backup.data){ toast('ملف النسخة الاحتياطية غير صالح.'); restoreInput.value=''; return; }
+      const dateLabel = backup.exported_at ? fmtDateTime(backup.exported_at) : 'غير معروف';
+      if (!confirm('سيتم استرجاع نسخة احتياطية بتاريخ '+dateLabel+' وتحديث السجلات المطابقة في النظام الحالي أو إضافتها. لن يتم حذف أي بيانات حالية غير موجودة في النسخة. هل تريد الاستمرار؟')){ restoreInput.value=''; return; }
+      toast('جارٍ استرجاع النسخة الاحتياطية، قد يستغرق ذلك بعض الوقت...');
+      try{
+        const report = await DB.restoreFullBackup(backup);
+        if (report.errors && report.errors.length){
+          toast('تم الاسترجاع مع بعض الأخطاء ('+report.errors.length+'). راجع الكونسول للتفاصيل.');
+          console.warn('Backup restore errors:', report.errors);
+        } else {
+          toast('تم استرجاع النسخة الاحتياطية بنجاح.');
+        }
+        render();
+      }catch(e){ toast('تعذّر استرجاع النسخة الاحتياطية: ' + e.message); }
+      restoreInput.value = '';
+    };
+    reader.readAsText(file, 'UTF-8');
   });
 }
 async function screenDashboard(){
@@ -2673,6 +2827,7 @@ function bindGlobalAction(el){
     document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
     render();
   }).catch(function(){});
+  setInterval(function(){ if (State.user && State.user.role==='admin') checkConnectivity(); }, 20000);
 })();
 </script>
 </body>
