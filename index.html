@@ -532,6 +532,7 @@ async function remoteFetch(path, opts){
 /* ---------------------- طبقة البيانات (محلي / سحابي) ---------------------- */
 const LS_USERS = "dtd_users_v1";
 const LS_SUBS  = "dtd_submissions_v1";
+const LS_LAST_CREDS_BATCH = "dtd_last_creds_batch_v1";
 const LS_SETTINGS  = "dtd_settings_v1";
 const LS_INDSTATUS = "dtd_indicator_status_v1";
 const LS_COMMUNITIES = "dtd_communities_v1";
@@ -1821,7 +1822,12 @@ function bindTeacherSession(){
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
 let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[] };
-let CredsPrint = { school:'', items:[] };
+let CredsPrint = loadLastCredsBatch();
+function loadLastCredsBatch(){
+  try{ const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH)); if (saved && saved.items && saved.items.length) return saved; }catch(e){}
+  return { school:'', items:[] };
+}
+function saveLastCredsBatch(){ localStorage.setItem(LS_LAST_CREDS_BATCH, JSON.stringify(CredsPrint)); }
 function csvEscape(v){
   v = String(v==null?'':v);
   return /[",\n]/.test(v) ? ('"' + v.replace(/"/g,'""') + '"') : v;
@@ -1887,6 +1893,7 @@ async function importTeacherRows(dataRows){
   toast('تم استيراد '+created.length+' معلمًا بنجاح.');
   AdminUI.pasteOpen = false;
   CredsPrint = { school: State.user.school, items: created };
+  saveLastCredsBatch();
   go('credsPrint');
 }
 function isTeacherImportHeaderRow(first){
@@ -1995,6 +2002,7 @@ async function screenAdminUsers(){
         '<button class="btn btn-ghost btn-sm" data-action="triggerTeacherImport">رفع ملف المعلمين</button>' +
         '<input type="file" id="teacherImportInput" accept=".csv" style="display:none;">' +
         '<button class="btn btn-ghost btn-sm" data-action="openPasteImport">لصق بيانات المعلمين</button>' +
+        (CredsPrint.items && CredsPrint.items.length ? '<button class="btn btn-ghost btn-sm" data-action="printLastCredsBatch">طباعة آخر دفعة استيراد ('+CredsPrint.items.length+')</button>' : '') +
         '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
       '</div>' +
     '</div>' +
@@ -2113,6 +2121,8 @@ function bindAdminUsers(){
 
   const pasteBtn = document.querySelector('[data-action="openPasteImport"]');
   if (pasteBtn) pasteBtn.addEventListener('click', function(){ AdminUI.pasteOpen = true; render(); bindAdminUsers(); });
+  const lastBatchBtn = document.querySelector('[data-action="printLastCredsBatch"]');
+  if (lastBatchBtn) lastBatchBtn.addEventListener('click', function(){ go('credsPrint'); });
   const pasteCloseEls = document.querySelectorAll('[data-action="closeModalBg2"]');
   pasteCloseEls.forEach(function(el){ el.addEventListener('click', function(){ AdminUI.pasteOpen = false; render(); bindAdminUsers(); }); });
   const pasteConfirmBtn = document.querySelector('[data-action="confirmPasteImport"]');
