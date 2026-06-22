@@ -1901,7 +1901,8 @@ async function importTeacherRows(dataRows){
   toast(parts.join(' — '));
   if (!created.length) return;
   AdminUI.pasteOpen = false;
-  CredsPrint = { school: State.user.school, items: created };
+  const merged = (CredsPrint.items||[]).filter(function(it){ return !created.some(function(c){ return c.username===it.username; }); }).concat(created);
+  CredsPrint = { school: State.user.school, items: merged };
   saveLastCredsBatch();
   go('credsPrint');
 }
@@ -1941,6 +1942,7 @@ function screenCredsPrint(){
     '<div class="sheet-bar no-print" style="margin-bottom:16px;justify-content:space-between;">' +
       '<button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
       '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="clearCredsBatch">مسح القائمة</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="downloadCredsCsv">تنزيل Excel</button>' +
         '<button class="btn btn-primary btn-sm" data-action="printCreds">طباعة بطاقات الدخول</button>' +
       '</div>' +
@@ -1960,6 +1962,13 @@ function bindCredsPrint(){
   if (csvBtn) csvBtn.addEventListener('click', function(){
     const rows = [['الاسم','اسم المستخدم','كلمة المرور']].concat((CredsPrint.items||[]).map(function(it){ return [it.full_name, it.username, it.password]; }));
     downloadTextFile('بيانات_دخول_المعلمين.csv', toCsv(rows));
+  });
+  const clearBtn = document.querySelector('[data-action="clearCredsBatch"]');
+  if (clearBtn) clearBtn.addEventListener('click', function(){
+    if (!confirm('هل تريد مسح قائمة بيانات الدخول المحفوظة؟ لن تستطيع استرجاعها بعد المسح.')) return;
+    CredsPrint = { school:'', items:[] };
+    localStorage.removeItem(LS_LAST_CREDS_BATCH);
+    go('dashboard');
   });
 }
 async function screenAdminUsers(){
@@ -2011,7 +2020,7 @@ async function screenAdminUsers(){
         '<button class="btn btn-ghost btn-sm" data-action="triggerTeacherImport">رفع ملف المعلمين</button>' +
         '<input type="file" id="teacherImportInput" accept=".csv" style="display:none;">' +
         '<button class="btn btn-ghost btn-sm" data-action="openPasteImport">لصق بيانات المعلمين</button>' +
-        (CredsPrint.items && CredsPrint.items.length ? '<button class="btn btn-ghost btn-sm" data-action="printLastCredsBatch">طباعة آخر دفعة استيراد ('+CredsPrint.items.length+')</button>' : '') +
+        (CredsPrint.items && CredsPrint.items.length ? '<button class="btn btn-ghost btn-sm" data-action="printLastCredsBatch">طباعة بيانات الدخول المحفوظة ('+CredsPrint.items.length+')</button>' : '') +
         '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
       '</div>' +
     '</div>' +
