@@ -468,7 +468,7 @@ let ConnStatus = { online: null };
 async function checkConnectivity(){
   if (!isRemote()){ ConnStatus.online = false; applyConnDot(); return; }
   try{
-    const res = await fetch(CONFIG.SUPABASE_URL + '/auth/v1/health', { method:'GET' });
+    const res = await fetch(CONFIG.SUPABASE_URL + '/auth/v1/health', { method:'GET', headers: { "apikey": CONFIG.SUPABASE_ANON_KEY } });
     ConnStatus.online = !!res.ok;
   }catch(e){ ConnStatus.online = false; }
   applyConnDot();
