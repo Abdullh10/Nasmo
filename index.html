@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0B2A4A">
 <title>منصة دعم التحصيل الدراسي والفاعلية الجماعية للمعلمين</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=Noto+Kufi+Arabic:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -27,11 +27,11 @@
 html,body{margin:0;padding:0;}
 body{
   background:var(--bg); color:var(--text);
-  font-family:'Tajawal',sans-serif;
+  font-family:'Cairo',sans-serif;
   font-size:15px; line-height:1.65;
   min-height:100vh;
 }
-h1,h2,h3,h4{ font-family:'Noto Kufi Arabic',sans-serif; margin:0; color:var(--navy); }
+h1,h2,h3,h4{ font-family:'Cairo',sans-serif; font-weight:800; margin:0; color:var(--navy); }
 .mono{ font-family:'JetBrains Mono',monospace; direction:ltr; unicode-bidi:embed; }
 button{ font-family:inherit; cursor:pointer; }
 input,select,textarea{ font-family:inherit; font-size:14.5px; }
@@ -53,7 +53,7 @@ a{ color:var(--teal-dark); }
   background:linear-gradient(90deg,var(--navy),var(--teal),var(--gold));
 }
 .brand{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
-.brand-mark{ width:46px; height:46px; flex:none; object-fit:contain; }
+.brand-mark{ width:64px; height:64px; flex:none; object-fit:contain; }
 .brand-title{ font-size:15px; font-weight:800; color:var(--navy); line-height:1.3;}
 .brand-sub{ font-size:12px; color:var(--muted); }
 .login-h{ font-size:20px; margin:18px 0 4px; }
@@ -87,13 +87,32 @@ a{ color:var(--teal-dark); }
   position:sticky; top:0; z-index:30; box-shadow:0 2px 10px rgba(0,0,0,.12);
 }
 .topnav-brand{ display:flex; align-items:center; gap:10px; }
-.topnav-title{ font-family:'Noto Kufi Arabic'; font-weight:800; font-size:15.5px; }
-.topnav-title small{ display:block; font-family:'Tajawal'; font-weight:400; font-size:11px; color:#B9C6D6; }
+.topnav-title{ font-family:'Cairo'; font-weight:800; font-size:15.5px; }
+.topnav-title small{ display:block; font-family:'Cairo'; font-weight:400; font-size:11px; color:#B9C6D6; }
 .topnav-right{ display:flex; align-items:center; gap:10px; }
 .user-pill{ display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.08); padding:6px 12px; border-radius:30px; font-size:13px; }
 .user-pill .role-tag{ background:var(--gold); color:#1d1300; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:20px; }
-.icon-btn{ background:rgba(255,255,255,.08); border:none; color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; }
+.icon-btn{ background:rgba(255,255,255,.08); border:none; color:#fff; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; position:relative; }
 .icon-btn:hover{ background:rgba(255,255,255,.18); }
+.icon-btn svg{ width:17px; height:17px; }
+.notif-wrap{ position:relative; }
+.notif-badge{ position:absolute; top:-3px; left:-3px; background:var(--danger); color:#fff; font-size:10px; font-weight:800; min-width:16px; height:16px; line-height:16px; border-radius:8px; text-align:center; padding:0 4px; }
+.notif-panel{ position:absolute; top:48px; left:0; width:340px; max-width:90vw; background:#fff; color:var(--text); border-radius:12px; box-shadow:0 16px 40px rgba(0,0,0,.28); z-index:70; overflow:hidden; }
+.notif-panel-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border); }
+.notif-panel-head h4{ font-size:14px; }
+.notif-list{ max-height:380px; overflow-y:auto; }
+.notif-item{ padding:11px 14px; border-bottom:1px solid var(--border); font-size:13px; cursor:pointer; }
+.notif-item:hover{ background:var(--surface-2); }
+.notif-item.unread{ background:#EFF6FB; }
+.notif-item .ntitle{ font-weight:800; margin-bottom:2px; color:var(--navy); }
+.notif-item .nbody{ color:var(--text); font-size:12.5px; line-height:1.5; }
+.notif-item .nmeta{ color:var(--muted); font-size:11px; margin-top:5px; }
+.notif-empty{ padding:24px 14px; text-align:center; color:var(--muted); font-size:13px; }
+.notif-type-tag{ display:inline-block; font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:10px; margin-bottom:5px; }
+.notif-type-meeting{ background:#E8F0FB; color:var(--navy-3); }
+.notif-type-submission{ background:var(--pending-bg); color:var(--pending); }
+.notif-type-demo{ background:#F1E9FB; color:#6B2FB8; }
+.notif-type-general{ background:var(--surface-2); color:var(--muted); }
 
 .shell{ max-width:1180px; margin:0 auto; padding:24px 20px 60px; }
 
@@ -233,7 +252,7 @@ textarea.input{ resize:vertical; min-height:64px; }
   background:repeating-radial-gradient(circle, transparent 0 96%, rgba(184,134,11,.07) 97%);
 }
 .stamp::before{ content:""; position:absolute; inset:7px; border:1.5px solid var(--gold); border-radius:50%; }
-.stamp .txt{ font-family:'Noto Kufi Arabic'; font-weight:800; font-size:13px; line-height:1.3; }
+.stamp .txt{ font-family:'Cairo'; font-weight:800; font-size:13px; line-height:1.3; }
 .stamp .sm{ font-size:8.5px; font-family:'JetBrains Mono'; margin-top:3px; }
 @keyframes stampIn{ 0%{ transform:rotate(-14deg) scale(2.4); opacity:0;} 60%{ opacity:1;} 100%{ transform:rotate(-14deg) scale(1); opacity:.92;} }
 .stamp.animate{ animation:stampIn .45s ease-out; }
@@ -314,6 +333,22 @@ create table profiles (
   school text not null,
   community_id uuid references communities(id),
   specialty text,
+  phone text,
+  created_at timestamptz default now()
+);
+
+create table notifications (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  sender_id uuid references profiles(id),
+  sender_name text,
+  target_type text not null check (target_type in ('school','community','user')),
+  target_id uuid,
+  type text not null default 'general' check (type in ('meeting','submission','demo','general')),
+  title text not null,
+  body text,
+  due_date date,
+  read_by jsonb default '[]'::jsonb,
   created_at timestamptz default now()
 );
 
@@ -379,6 +414,7 @@ const LS_SUBS  = "dtd_submissions_v1";
 const LS_SETTINGS  = "dtd_settings_v1";
 const LS_INDSTATUS = "dtd_indicator_status_v1";
 const LS_COMMUNITIES = "dtd_communities_v1";
+const LS_NOTIFICATIONS = "dtd_notifications_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -623,6 +659,39 @@ const DB = {
     communities = communities.filter(function(c){ return c.id!==id; });
     localStorage.setItem(LS_COMMUNITIES, JSON.stringify(communities));
     return true;
+  },
+  async listNotifications(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'notifications?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      const rows = await remoteFetch(path);
+      return rows || [];
+    }
+    let list = JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]');
+    if (filter.school) list = list.filter(function(n){ return n.school===filter.school; });
+    return list.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  },
+  async createNotification(obj){
+    obj.id = uid(); obj.created_at = nowIso(); obj.read_by = obj.read_by || [];
+    if (isRemote()){
+      const rows = await remoteFetch('notifications', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(list));
+    return obj;
+  },
+  async updateNotification(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('notifications?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]');
+    const idx = list.findIndex(function(n){ return n.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(list)); return list[idx]; }
+    return null;
   }
 };
 
@@ -703,11 +772,26 @@ function indicatorPeriodLabel(ind){
 }
 
 /* ---------------------- الحالة العامة والتوجيه ---------------------- */
-const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms', adminTab:'users' };
+const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms', adminTab:'users', notifications:[], communitiesCache:[] };
+
+/* ---------------------- التنبيهات والرسائل ---------------------- */
+let NotifUI = { open:false, compose:false };
+const NOTIF_TYPE_LABEL = { meeting:'تذكير اجتماع', submission:'تسليم عمل', demo:'حصة توضيحية', general:'عام' };
+const LOGOUT_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+const BELL_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+function visibleNotifications(all, user){
+  return (all||[]).filter(function(n){
+    if (n.target_type==='school') return true;
+    if (n.target_type==='community') return !!user.community_id && n.target_id===user.community_id;
+    if (n.target_type==='user') return n.target_id===user.id;
+    return false;
+  }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+}
+function isNotifUnread(n, userId){ return (n.read_by||[]).indexOf(userId) === -1; }
 
 function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); }
 function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
-function logout(){ sessionStorage.removeItem('dtd_session'); State.user=null; go('login'); }
+function logout(){ sessionStorage.removeItem('dtd_session'); State.user=null; NotifUI.open=false; NotifUI.compose=false; go('login'); }
 
 function go(screen, params){ State.screen = screen; State.params = params || {}; render(); window.scrollTo(0,0); }
 
@@ -853,6 +937,10 @@ function openEditor(formType, submission){
 async function render(){
   const app = document.getElementById('app');
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
+  if (State.user){
+    State.notifications = await DB.listNotifications({ school: State.user.school });
+    State.communitiesCache = (State.user.role==='admin' || State.user.role==='coordinator') ? await DB.listCommunities({}) : [];
+  }
   try{
     switch(State.screen){
       case 'login': app.innerHTML = screenLogin(); bindLogin(); break;
@@ -869,22 +957,133 @@ async function render(){
 
 function renderShell(app, innerHtml){
   app.innerHTML = topNav() + '<div class="shell">' + innerHtml + '</div>';
+  bindTopNav();
 }
 
 function topNav(){
   const roleLabel = ROLE_LABEL[State.user.role] || State.user.role;
+  const visible = visibleNotifications(State.notifications||[], State.user);
+  const unreadCount = visible.filter(function(n){ return isNotifUnread(n, State.user.id); }).length;
+  const canCompose = State.user.role==='admin' || State.user.role==='coordinator';
+
+  const panelHtml = NotifUI.open ? (
+    '<div class="notif-panel">' +
+      '<div class="notif-panel-head"><h4>التنبيهات</h4>' +
+        (canCompose ? '<button class="btn btn-ghost btn-sm" data-action="composeNotif">+ إرسال تنبيه</button>' : '') +
+      '</div>' +
+      '<div class="notif-list">' +
+        (visible.length ? visible.map(function(n){
+          const unread = isNotifUnread(n, State.user.id);
+          return (
+            '<div class="notif-item '+(unread?'unread':'')+'" data-action="readNotif" data-id="'+n.id+'">' +
+              '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
+              '<div class="ntitle">'+esc(n.title)+'</div>' +
+              (n.body ? '<div class="nbody">'+esc(n.body)+'</div>' : '') +
+              '<div class="nmeta">'+esc(n.sender_name||'')+(n.due_date?(' · الموعد: '+esc(n.due_date)):'')+' · '+fmtDateTime(n.created_at)+'</div>' +
+            '</div>'
+          );
+        }).join('') : '<div class="notif-empty">لا توجد تنبيهات حتى الآن.</div>') +
+      '</div>' +
+    '</div>'
+  ) : '';
+
+  const composeHtml = NotifUI.compose ? notifComposeModal() : '';
+
   return (
     '<div class="topnav no-print">' +
       '<div class="topnav-brand">' +
-        '<img class="brand-mark" style="width:38px;height:38px;" src="'+RCJY_LOGO+'" alt="شعار الهيئة الملكية للجبيل وينبع">' +
+        '<img class="brand-mark" style="width:46px;height:46px;" src="'+RCJY_LOGO+'" alt="شعار الهيئة الملكية للجبيل وينبع">' +
         '<div class="topnav-title">منصة دعم التحصيل الدراسي<small>'+esc(State.user.school)+'</small></div>' +
       '</div>' +
       '<div class="topnav-right">' +
         '<div class="user-pill"><span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+roleLabel+'</span></div>' +
-        '<button class="icon-btn" title="تسجيل الخروج" data-action="logout">⎋</button>' +
+        '<div class="notif-wrap">' +
+          '<button class="icon-btn" title="التنبيهات" data-action="toggleNotif">'+BELL_SVG+(unreadCount?('<span class="notif-badge">'+(unreadCount>9?'9+':unreadCount)+'</span>'):'')+'</button>' +
+          panelHtml +
+        '</div>' +
+        '<button class="icon-btn" title="تسجيل الخروج" data-action="logout">'+LOGOUT_SVG+'</button>' +
+      '</div>' +
+    '</div>' +
+    composeHtml
+  );
+}
+function notifComposeModal(){
+  const communities = State.communitiesCache || [];
+  const isAdmin = State.user.role==='admin';
+  const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
+  return (
+    '<div class="modal-bg" data-action="closeNotifComposeBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>إرسال تنبيه جديد</h3>' +
+        '<div class="field"><label>نوع التنبيه</label><select class="input" id="ncType">' +
+          Object.keys(NOTIF_TYPE_LABEL).map(function(k){ return '<option value="'+k+'">'+NOTIF_TYPE_LABEL[k]+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>العنوان</label><input class="input" id="ncTitle" placeholder="مثال: تذكير باجتماع المجتمع المهني"></div>' +
+        '<div class="field"><label>نص الرسالة</label><textarea class="input" id="ncBody" rows="3" placeholder="تفاصيل التنبيه..."></textarea></div>' +
+        '<div class="field"><label>الموعد (اختياري)</label><input class="input" type="date" id="ncDue"></div>' +
+        (isAdmin ?
+          ('<div class="field"><label>الجهة المستهدفة</label><select class="input" id="ncTarget">' +
+            '<option value="school">كل أعضاء المدرسة</option>' +
+            communities.map(function(c){ return '<option value="community:'+c.id+'">مجتمع: '+esc(c.name)+'</option>'; }).join('') +
+          '</select></div>')
+          : ('<div class="field"><label>الجهة المستهدفة</label><input class="input" value="'+(myCommunity?(esc(myCommunity.name)+' (أعضاء مجتمعك المهني)'):'لا يوجد مجتمع مرتبط بحسابك')+'" disabled></div>')
+        ) +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="sendNotif">إرسال</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeNotifCompose">إلغاء</button>' +
+        '</div>' +
       '</div>' +
     '</div>'
   );
+}
+function bindTopNav(){
+  const logoutBtn = document.querySelector('[data-action="logout"]');
+  if (logoutBtn) logoutBtn.addEventListener('click', logout);
+
+  const bellBtn = document.querySelector('[data-action="toggleNotif"]');
+  if (bellBtn) bellBtn.addEventListener('click', function(){ NotifUI.open = !NotifUI.open; if (!NotifUI.open) NotifUI.compose=false; render(); });
+
+  document.querySelectorAll('[data-action="readNotif"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const id = el.getAttribute('data-id');
+      const n = (State.notifications||[]).find(function(x){ return x.id===id; });
+      if (!n) return;
+      const readBy = n.read_by || [];
+      if (readBy.indexOf(State.user.id) === -1){
+        try{ await DB.updateNotification(id, { read_by: readBy.concat([State.user.id]) }); render(); }catch(e){}
+      }
+    });
+  });
+
+  const composeBtn = document.querySelector('[data-action="composeNotif"]');
+  if (composeBtn) composeBtn.addEventListener('click', function(){ NotifUI.compose=true; render(); });
+  const closeComposeBtn = document.querySelector('[data-action="closeNotifCompose"]');
+  if (closeComposeBtn) closeComposeBtn.addEventListener('click', function(){ NotifUI.compose=false; render(); });
+  const closeComposeBg = document.querySelector('[data-action="closeNotifComposeBg"]');
+  if (closeComposeBg) closeComposeBg.addEventListener('click', function(){ NotifUI.compose=false; render(); });
+  const sendBtn = document.querySelector('[data-action="sendNotif"]');
+  if (sendBtn) sendBtn.addEventListener('click', async function(){
+    const type = document.getElementById('ncType').value;
+    const title = document.getElementById('ncTitle').value.trim();
+    const body = document.getElementById('ncBody').value.trim();
+    const due = document.getElementById('ncDue').value;
+    if (!title){ toast('يرجى إدخال عنوان التنبيه.'); return; }
+    let target_type, target_id;
+    if (State.user.role==='admin'){
+      const targetVal = document.getElementById('ncTarget').value;
+      if (targetVal==='school'){ target_type='school'; target_id=null; }
+      else { target_type='community'; target_id = targetVal.split(':')[1]; }
+    } else {
+      if (!State.user.community_id){ toast('لا يوجد مجتمع مهني مرتبط بحسابك لإرسال تنبيه له.'); return; }
+      target_type='community'; target_id = State.user.community_id;
+    }
+    try{
+      await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:target_type, target_id:target_id, type:type, title:title, body:body, due_date: due||null });
+      toast('تم إرسال التنبيه.');
+      NotifUI.compose=false; NotifUI.open=true;
+      render();
+    }catch(e){ toast(e.message); }
+  });
 }
 
 /* ----- شاشة الدخول ----- */
@@ -1110,7 +1309,6 @@ async function screenTeacherSession(subId, idx){
 }
 function bindTeacherSession(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
-  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
   document.querySelectorAll('[data-field]').forEach(function(el){
     el.addEventListener('input', function(){
       TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx][el.getAttribute('data-field')] = el.value;
@@ -1150,6 +1348,71 @@ function bindTeacherSession(){
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
 let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null };
+function csvEscape(v){
+  v = String(v==null?'':v);
+  return /[",\n]/.test(v) ? ('"' + v.replace(/"/g,'""') + '"') : v;
+}
+function toCsv(rows){ return rows.map(function(r){ return r.map(csvEscape).join(','); }).join('\r\n'); }
+function parseCsv(text){
+  text = text.replace(/^﻿/, '');
+  const rows = []; let row = [], field = '', inQuotes = false;
+  for (let i=0;i<text.length;i++){
+    const ch = text[i];
+    if (inQuotes){
+      if (ch === '"'){ if (text[i+1] === '"'){ field+='"'; i++; } else { inQuotes=false; } }
+      else field += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ','){ row.push(field); field=''; }
+      else if (ch === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if (ch === '\r'){ /* تجاوز */ }
+      else field += ch;
+    }
+  }
+  if (field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(c){ return c.trim()!==''; }); });
+}
+function downloadTextFile(filename, text, mime){
+  const blob = new Blob(['﻿'+text], { type: (mime||'text/csv')+';charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+async function importTeachersFromCsv(text){
+  const rows = parseCsv(text);
+  if (!rows.length){ toast('الملف فارغ.'); return; }
+  let dataRows = rows;
+  const first = (rows[0][0]||'').trim();
+  if (first === 'الاسم' || first.toLowerCase() === 'name'){ dataRows = rows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات معلمين في الملف.'); return; }
+
+  const existingUsers = await DB.listUsers({});
+  const existingUsernames = existingUsers.map(function(u){ return u.username; });
+  const created = [];
+  for (let i=0;i<dataRows.length;i++){
+    const r = dataRows[i];
+    const fullName = (r[0]||'').trim();
+    const specialty = (r[1]||'').trim();
+    const phone = (r[2]||'').trim();
+    if (!fullName) continue;
+    let base = phone.replace(/[^0-9]/g,'') || 'teacher';
+    let candidate = base, n = 1;
+    while (existingUsernames.indexOf(candidate) > -1){ candidate = base + '_' + (n++); }
+    existingUsernames.push(candidate);
+    const password = String(Math.floor(100000 + Math.random()*900000));
+    try{
+      await DB.createUser({ username:candidate, password:password, full_name:fullName, role:'teacher', school:State.user.school, community_id:null, specialty:specialty, phone:phone });
+      created.push({ full_name:fullName, username:candidate, password:password });
+    }catch(e){ /* تجاوز السجل المتعارض والمتابعة للسجل التالي */ }
+  }
+  if (!created.length){ toast('لم يتم استيراد أي معلم، يرجى مراجعة تنسيق الملف.'); return; }
+  toast('تم استيراد '+created.length+' معلمًا بنجاح. سيتم تنزيل بيانات الدخول الخاصة بهم.');
+  const credRows = [['الاسم','اسم المستخدم','كلمة المرور']].concat(created.map(function(c){ return [c.full_name, c.username, c.password]; }));
+  downloadTextFile('بيانات_دخول_المعلمين_المستوردين.csv', toCsv(credRows));
+  render(); bindAdminUsers();
+}
 async function screenAdminUsers(){
   const users = await DB.listUsers({});
   const communities = await DB.listCommunities({});
@@ -1174,7 +1437,15 @@ async function screenAdminUsers(){
   const modal = AdminUI.modalOpen ? userModal(users, communities) : '';
 
   return (
-    '<div class="section-head"><h2>المستخدمون</h2><button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button></div>' +
+    '<div class="section-head"><h2>المستخدمون</h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="downloadTeacherTemplate">تنزيل نموذج Excel للمعلمين</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="triggerTeacherImport">رفع ملف المعلمين</button>' +
+        '<input type="file" id="teacherImportInput" accept=".csv" style="display:none;">' +
+        '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
+      '</div>' +
+    '</div>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم المعلم والتخصص ورقم الجوال، ثم ارفعه لإنشاء حسابات المعلمين دفعة واحدة. بعد الاستيراد، وزّعهم على المجتمعات المهنية من خلال تعديل كل حساب.</p>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد مستخدمون.</td></tr>') + '</tbody>' +
@@ -1201,6 +1472,7 @@ function userModal(users, communities){
           communities.map(function(c){ return '<option value="'+c.id+'" '+(selectedCommunity===c.id?'selected':'')+'>'+esc(c.name)+' — '+esc(c.school)+'</option>'; }).join('') +
         '</select></div>' +
         '<div class="field"><label>التخصص (اختياري)</label><input class="input" id="umSpecialty" value="'+esc(editing?editing.specialty||'':'')+'"></div>' +
+        '<div class="field"><label>رقم الجوال (اختياري)</label><input class="input" id="umPhone" value="'+esc(editing?editing.phone||'':'')+'"></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="saveUser" data-id="'+(editing?editing.id:'')+'">حفظ</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeModal">إلغاء</button>' +
@@ -1235,19 +1507,36 @@ function bindAdminUsers(){
     const school = document.getElementById('umSchool').value.trim();
     const communityId = document.getElementById('umCommunity').value;
     const specialty = document.getElementById('umSpecialty').value.trim();
+    const phone = document.getElementById('umPhone').value.trim();
     if (!fullName || !username || !school || (!AdminUI.editingId && !password)){ toast('يرجى تعبئة جميع الحقول المطلوبة.'); return; }
     try{
       if (AdminUI.editingId){
-        const patch = { full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty };
+        const patch = { full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty, phone:phone };
         if (password) patch.password = password;
         await DB.updateUser(AdminUI.editingId, patch);
         toast('تم تحديث بيانات المستخدم.');
       } else {
-        await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty });
+        await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty, phone:phone });
         toast('تمت إضافة المستخدم بنجاح.');
       }
       AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers();
     }catch(e){ toast(e.message); }
+  });
+
+  const templateBtn = document.querySelector('[data-action="downloadTeacherTemplate"]');
+  if (templateBtn) templateBtn.addEventListener('click', function(){
+    const rows = [['الاسم','التخصص','رقم الجوال'], ['أحمد العتيبي','رياضيات','0501234567']];
+    downloadTextFile('نموذج_رفع_المعلمين.csv', toCsv(rows));
+  });
+  const importBtn = document.querySelector('[data-action="triggerTeacherImport"]');
+  const importInput = document.getElementById('teacherImportInput');
+  if (importBtn && importInput) importBtn.addEventListener('click', function(){ importInput.click(); });
+  if (importInput) importInput.addEventListener('change', function(){
+    const file = importInput.files && importInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(){ await importTeachersFromCsv(String(reader.result)); };
+    reader.readAsText(file, 'UTF-8');
   });
 }
 
@@ -1801,8 +2090,6 @@ function bindEditor(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){ await persistEditor('draft'); });
   document.querySelector('[data-action="submitForm"]').addEventListener('click', async function(){ await persistEditor('pending'); });
-
-  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
 }
 
 async function persistEditor(targetStatus){
@@ -1874,7 +2161,6 @@ function bindView(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
-  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
 }
 
 /* ---------------------- شاشة مراجعة مدير المدرسة ---------------------- */
@@ -1914,7 +2200,6 @@ async function screenReview(id){
 }
 function bindReview(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
-  document.querySelector('[data-action="logout"]').addEventListener('click', logout);
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
   document.querySelectorAll('[data-action="clearPad"]').forEach(function(el){
     el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
@@ -1942,8 +2227,7 @@ function bindReview(){
 /* ---------------------- أحداث عامة (نَقر على بطاقات اللوحة) ---------------------- */
 function bindGlobalAction(el){
   const action = el.getAttribute('data-action');
-  if (action==='logout'){ el.addEventListener('click', logout); }
-  else if (action==='goPicker'){ el.addEventListener('click', function(){ go('picker'); }); }
+  if (action==='goPicker'){ el.addEventListener('click', function(){ go('picker'); }); }
   else if (action==='openEdit'){ el.addEventListener('click', async function(){ const s = await DB.getSubmission(el.getAttribute('data-id')); openEditor(s.form_type, s); }); }
   else if (action==='openView'){ el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); }); }
   else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
