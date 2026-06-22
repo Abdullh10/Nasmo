@@ -286,12 +286,23 @@ textarea.input{ resize:vertical; min-height:64px; }
 /* ---------- print ---------- */
 @media print{
   body{ background:#fff; }
-  .no-print{ display:none !important; }
+  .no-print, .toast{ display:none !important; }
   .shell{ padding:0; max-width:none; }
   .form-sheet{ box-shadow:none; border:none; padding:0; }
   .sheet-wrap{ max-width:none; }
 }
 .footer-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; }
+.creds-print-page{ background:#fff; padding:8px; }
+.creds-print-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+.creds-card{ border:1px dashed #9aa3ad; border-radius:6px; padding:8px 10px; break-inside:avoid; page-break-inside:avoid; }
+.creds-card-school{ font-size:10px; color:var(--muted); }
+.creds-card-name{ font-weight:800; font-size:13px; margin:2px 0 6px; }
+.creds-card-row{ display:flex; justify-content:space-between; gap:8px; font-size:11.5px; padding:1px 0; }
+.creds-card-row span{ color:var(--muted); }
+@media print{
+  .creds-print-grid{ grid-template-columns:repeat(3, 1fr); }
+  .creds-card{ border:1px dashed #777; }
+}
 </style>
 </head>
 <body>
@@ -1237,6 +1248,7 @@ async function render(){
       case 'view': renderShell(app, await screenView(State.params.id)); bindView(); break;
       case 'review': renderShell(app, await screenReview(State.params.id)); bindReview(); break;
       case 'teacherSession': renderShell(app, await screenTeacherSession(State.params.subId, State.params.idx)); bindTeacherSession(); break;
+      case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
   }catch(e){ renderShell(app, '<p class="error-text">'+esc(e.message)+'</p>'); }
@@ -1809,6 +1821,7 @@ function bindTeacherSession(){
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
 let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[] };
+let CredsPrint = { school:'', items:[] };
 function csvEscape(v){
   v = String(v==null?'':v);
   return /[",\n]/.test(v) ? ('"' + v.replace(/"/g,'""') + '"') : v;
@@ -1871,10 +1884,10 @@ async function importTeacherRows(dataRows){
     }catch(e){ /* تجاوز السجل المتعارض والمتابعة للسجل التالي */ }
   }
   if (!created.length){ toast('لم يتم استيراد أي معلم، يرجى مراجعة تنسيق البيانات.'); return; }
-  toast('تم استيراد '+created.length+' معلمًا بنجاح. سيتم تنزيل بيانات الدخول الخاصة بهم.');
-  const credRows = [['الاسم','اسم المستخدم','كلمة المرور','الايميل']].concat(created.map(function(c){ return [c.full_name, c.username, c.password, c.email]; }));
-  downloadTextFile('بيانات_دخول_المعلمين_المستوردين.csv', toCsv(credRows));
-  render(); bindAdminUsers();
+  toast('تم استيراد '+created.length+' معلمًا بنجاح.');
+  AdminUI.pasteOpen = false;
+  CredsPrint = { school: State.user.school, items: created };
+  go('credsPrint');
 }
 function isTeacherImportHeaderRow(first){
   first = (first||'').trim();
@@ -1895,6 +1908,43 @@ async function importTeachersFromPaste(text){
   if (isTeacherImportHeaderRow(rows[0][0])){ dataRows = rows.slice(1); }
   if (!dataRows.length){ toast('لا توجد بيانات معلمين في النص الملصق.'); return; }
   await importTeacherRows(dataRows);
+}
+function screenCredsPrint(){
+  const items = CredsPrint.items || [];
+  const cards = items.map(function(it){
+    return (
+      '<div class="creds-card">' +
+        '<div class="creds-card-school">'+esc(CredsPrint.school||'')+'</div>' +
+        '<div class="creds-card-name">'+esc(it.full_name)+'</div>' +
+        '<div class="creds-card-row"><span>اسم المستخدم</span><b>'+esc(it.username)+'</b></div>' +
+        '<div class="creds-card-row"><span>كلمة المرور</span><b>'+esc(it.password)+'</b></div>' +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="sheet-bar no-print" style="margin-bottom:16px;justify-content:space-between;">' +
+      '<button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="downloadCredsCsv">تنزيل Excel</button>' +
+        '<button class="btn btn-primary btn-sm" data-action="printCreds">طباعة بطاقات الدخول</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="creds-print-page">' +
+      '<h3 style="text-align:center;margin:0 0 4px;">بطاقات بيانات الدخول للمعلمين</h3>' +
+      '<p style="text-align:center;color:var(--muted);font-size:12px;margin:0 0 16px;">'+esc(CredsPrint.school||'')+' · '+fmtDateTime(nowIso())+' — يُنصح بقص كل بطاقة وتسليمها للمعلم المعنيّ بسرية دون اطلاع الآخرين على بياناته.</p>' +
+      '<div class="creds-print-grid">' + (cards || '<p style="text-align:center;">لا توجد بيانات لعرضها.</p>') + '</div>' +
+    '</div>'
+  );
+}
+function bindCredsPrint(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  const printBtn = document.querySelector('[data-action="printCreds"]');
+  if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
+  const csvBtn = document.querySelector('[data-action="downloadCredsCsv"]');
+  if (csvBtn) csvBtn.addEventListener('click', function(){
+    const rows = [['الاسم','اسم المستخدم','كلمة المرور']].concat((CredsPrint.items||[]).map(function(it){ return [it.full_name, it.username, it.password]; }));
+    downloadTextFile('بيانات_دخول_المعلمين.csv', toCsv(rows));
+  });
 }
 async function screenAdminUsers(){
   const users = await DB.listUsers({});
