@@ -407,6 +407,10 @@ create table tasks (
   teacher_notes text,
   evidence_files jsonb default '[]'::jsonb,
   completed_at timestamptz,
+  principal_status text check (principal_status in ('approved','returned')),
+  principal_rating int check (principal_rating between 1 and 5),
+  principal_note text,
+  principal_reviewed_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -445,8 +449,31 @@ create table plc_goals (
   current_value numeric,
   due_date date,
   status text not null default 'active' check (status in ('active','achieved','missed')),
+  category text not null default 'academic' check (category in ('academic','teacherSupport','knowledgeSharing')),
   created_by uuid references profiles(id),
   created_by_name text,
+  principal_status text check (principal_status in ('approved','returned')),
+  principal_rating int check (principal_rating between 1 and 5),
+  principal_note text,
+  principal_reviewed_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table practice_shares (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  community_id uuid references communities(id),
+  created_by uuid references profiles(id),
+  created_by_name text,
+  category text not null default 'teacherSupport' check (category in ('academic','teacherSupport','knowledgeSharing')),
+  title text not null,
+  description text,
+  attachment_note text,
+  status text not null default 'pending' check (status in ('pending','approved','returned')),
+  principal_rating int check (principal_rating between 1 and 5),
+  principal_note text,
+  principal_reviewed_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -468,6 +495,7 @@ alter table indicator_status enable row level security;
 alter table site_settings enable row level security;
 alter table tasks enable row level security;
 alter table plc_goals enable row level security;
+alter table practice_shares enable row level security;
 
 create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
 create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
@@ -494,6 +522,8 @@ create policy "tasks_all" on tasks for all using ( school = my_school() or my_ro
 
 create policy "plc_goals_all" on plc_goals for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
+create policy "practice_shares_all" on practice_shares for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
 -- ميزة "المهام" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا
 -- من قبل، نفّذ فقط الجزء الخاص بجدول tasks وسياسته أعلاه (create table tasks...
 -- و alter table tasks... و create policy "tasks_all"...) في SQL Editor مرة واحدة.
@@ -501,6 +531,39 @@ create policy "plc_goals_all" on plc_goals for all using ( school = my_school() 
 -- ميزة "خطط التحسين الفصلية" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase
 -- موجودًا من قبل، نفّذ فقط الجزء الخاص بجدول plc_goals وسياسته أعلاه (create table
 -- plc_goals... و alter table plc_goals... و create policy "plc_goals_all"...) في SQL Editor مرة واحدة.
+
+-- ميزة "اعتماد وتقييم المدير للمهام وخطط التحسين + بنك تبادل الخبرات" أُضيفت بعد
+-- إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا من قبل (لديك جدولا tasks و
+-- plc_goals بالفعل)، نفّذ هذه الأوامر مرة واحدة في SQL Editor لإضافة الأعمدة
+-- الجديدة وجدول بنك تبادل الخبرات:
+-- alter table tasks add column if not exists principal_status text check (principal_status in ('approved','returned'));
+-- alter table tasks add column if not exists principal_rating int check (principal_rating between 1 and 5);
+-- alter table tasks add column if not exists principal_note text;
+-- alter table tasks add column if not exists principal_reviewed_at timestamptz;
+-- alter table plc_goals add column if not exists category text not null default 'academic' check (category in ('academic','teacherSupport','knowledgeSharing'));
+-- alter table plc_goals add column if not exists principal_status text check (principal_status in ('approved','returned'));
+-- alter table plc_goals add column if not exists principal_rating int check (principal_rating between 1 and 5);
+-- alter table plc_goals add column if not exists principal_note text;
+-- alter table plc_goals add column if not exists principal_reviewed_at timestamptz;
+-- create table practice_shares (
+--   id uuid primary key default gen_random_uuid(),
+--   school text not null,
+--   community_id uuid references communities(id),
+--   created_by uuid references profiles(id),
+--   created_by_name text,
+--   category text not null default 'teacherSupport' check (category in ('academic','teacherSupport','knowledgeSharing')),
+--   title text not null,
+--   description text,
+--   attachment_note text,
+--   status text not null default 'pending' check (status in ('pending','approved','returned')),
+--   principal_rating int check (principal_rating between 1 and 5),
+--   principal_note text,
+--   principal_reviewed_at timestamptz,
+--   created_at timestamptz default now(),
+--   updated_at timestamptz default now()
+-- );
+-- alter table practice_shares enable row level security;
+-- create policy "practice_shares_all" on practice_shares for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -591,6 +654,7 @@ const LS_NOTIFICATIONS = "dtd_notifications_v1";
 const LS_SITE_SETTINGS = "dtd_site_settings_v1";
 const LS_TASKS = "dtd_tasks_v1";
 const LS_GOALS = "dtd_goals_v1";
+const LS_PRACTICE = "dtd_practice_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -1062,10 +1126,59 @@ const DB = {
     localStorage.setItem(LS_GOALS, JSON.stringify(list));
     return true;
   },
+  async listPracticeShares(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'practice_shares?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      try{
+        const rows = await remoteFetch(path);
+        return rows || [];
+      }catch(e){
+        console.warn('practice_shares table not available yet (run the SQL migration to enable the experience-sharing bank):', e.message);
+        return [];
+      }
+    }
+    let list = JSON.parse(localStorage.getItem(LS_PRACTICE) || '[]');
+    if (filter.school) list = list.filter(function(p){ return p.school===filter.school; });
+    return list.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  },
+  async createPracticeShare(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('practice_shares', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem(LS_PRACTICE) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_PRACTICE, JSON.stringify(list));
+    return obj;
+  },
+  async updatePracticeShare(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('practice_shares?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_PRACTICE) || '[]');
+    const idx = list.findIndex(function(p){ return p.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_PRACTICE, JSON.stringify(list)); return list[idx]; }
+    return null;
+  },
+  async deletePracticeShare(id){
+    if (isRemote()){
+      await remoteFetch('practice_shares?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_PRACTICE) || '[]');
+    list = list.filter(function(p){ return p.id!==id; });
+    localStorage.setItem(LS_PRACTICE, JSON.stringify(list));
+    return true;
+  },
   async clearData(types, school){
     types = types || [];
     if (isRemote()){
-      const tableMap = { submissions:'submissions', notifications:'notifications', tasks:'tasks', goals:'plc_goals', indicator_status:'indicator_status' };
+      const tableMap = { submissions:'submissions', notifications:'notifications', tasks:'tasks', goals:'plc_goals', indicator_status:'indicator_status', practice:'practice_shares' };
       for (const t of types){
         const table = tableMap[t];
         if (!table) continue;
@@ -1073,7 +1186,7 @@ const DB = {
       }
       return;
     }
-    const arrayKeyMap = { submissions:LS_SUBS, notifications:LS_NOTIFICATIONS, tasks:LS_TASKS, goals:LS_GOALS };
+    const arrayKeyMap = { submissions:LS_SUBS, notifications:LS_NOTIFICATIONS, tasks:LS_TASKS, goals:LS_GOALS, practice:LS_PRACTICE };
     types.forEach(function(t){
       if (t==='indicator_status'){
         const all = JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}');
@@ -1205,6 +1318,29 @@ function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
 const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام' };
 
+/* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
+const PRINCIPAL_STATUS_LABEL = { approved:'معتمد ومقيَّم', returned:'مرتجع للتعديل' };
+const GOAL_CATEGORY_LABEL = { academic:'تحصيل دراسي', teacherSupport:'دعم المعلمين', knowledgeSharing:'تبادل الخبرات' };
+const GOAL_TEMPLATES = [
+  { category:'academic', title:'رفع نسبة الطلاب المحققين لنسبة 50% فأعلى في الاختبار التشخيصي', unit:'%' },
+  { category:'academic', title:'خفض نسبة الطلاب المتعثرين دراسيًا في المادة', unit:'%' },
+  { category:'academic', title:'رفع متوسط أداء الطلاب في اختبارات الفترة', unit:'%' },
+  { category:'academic', title:'رفع نسبة إنجاز خطط الدروس النموذجية المنفذة', unit:'%' },
+  { category:'teacherSupport', title:'رفع نسبة حضور المعلمين لاجتماعات المجتمع المهني', unit:'%' },
+  { category:'teacherSupport', title:'رفع نسبة المعلمين المستفيدين من الدعم الفردي (الزيارات الصفية)', unit:'%' },
+  { category:'teacherSupport', title:'زيادة عدد ورش العمل التدريبية الداخلية المقدَّمة للمعلمين', unit:'ورشة' },
+  { category:'teacherSupport', title:'رفع مستوى رضا المعلمين عن الدعم المهني المقدَّم', unit:'%' },
+  { category:'knowledgeSharing', title:'زيادة عدد الممارسات التدريسية المتبادلة بين المعلمين', unit:'ممارسة' },
+  { category:'knowledgeSharing', title:'رفع نسبة المعلمين المشاركين في حلقات تبادل الخبرات', unit:'%' },
+  { category:'knowledgeSharing', title:'زيادة عدد الزيارات الصفية التبادلية بين المعلمين', unit:'زيارة' }
+];
+function principalReviewBadgeHtml(item){
+  if (!item.principal_status) return '<span class="badge pending">بانتظار تقييم المدير</span>';
+  const cls = item.principal_status==='approved' ? 'approved' : 'returned';
+  const stars = item.principal_rating ? (' '+'★'.repeat(item.principal_rating)+'☆'.repeat(5-item.principal_rating)) : '';
+  return '<span class="badge '+cls+'">'+PRINCIPAL_STATUS_LABEL[item.principal_status]+stars+'</span>';
+}
+
 /* ---------------------- مؤشرات الدليل التنفيذي للبرنامج ---------------------- */
 const PROGRAM_DEFS = [
   { id:'collectiveEfficacy', title:'الفعالية الجماعية للمعلمين', subtitle:'Collective Teachers Efficacy',
@@ -1223,6 +1359,7 @@ const INDICATOR_DEFS = [
   { id:'ce5', program:'collectiveEfficacy', label:'عقد حلقة نقاش في كل مجتمع تعلم مهني حول موضوع تربوي يحدده المجتمع المهني.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:8, weekEnd:8, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت الحصة حسب التخصص.' },
   { id:'ce6', program:'collectiveEfficacy', label:'عقد ورشة عمل في كل مجتمع تعلم مهني لمناقشة نتائج منتصف الفصل، واقتراح فرص تحسينها.', execResp:'مجتمع التعلم المهني', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:10, weekEnd:15, formType:'indicatorReport', targetCount:2, note:'مراعاة الفترة الزمنية التي يتم فيها تحديد فترة التقويم.' },
   { id:'ce7', program:'collectiveEfficacy', label:'تجميع ورفع ملفات برنامج دعم التحصيل الدراسي.', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:16, weekEnd:16, formType:null, targetCount:null, note:'يتم الرفع على OneDrive.' },
+  { id:'ce8', program:'collectiveEfficacy', label:'تفعيل بنك تبادل الخبرات بين المعلمين، بحيث يوثّق كل معلم ممارسة تدريسية ناجحة واحدة على الأقل خلال الفصل الدراسي.', execResp:'المعلمون / منسقو المجتمعات المهنية', followResp:'إدارة المدرسة', weekStart:5, weekEnd:16, formType:null, targetCount:null, note:'تُوثَّق الممارسات في بنك تبادل الخبرات داخل المنصة، ويعتمدها مدير المدرسة.' },
 
   { id:'rti1', program:'rti', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
   { id:'rti2', program:'rti', label:'تحديد حصة بمسمى (داعم) ضمن الحصص الأسبوعية للمواد المهارية (الرياضيات – اللغة العربية – العلوم – اللغة الإنجليزية).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:1, formType:null, targetCount:null, note:'هذا المؤشر خاص بالمرحلة الابتدائية.' },
@@ -1232,6 +1369,7 @@ const INDICATOR_DEFS = [
   { id:'rti6', program:'rti', label:'تنفيذ اختبار (داعم) التجريبي للاختبار النهائي في جميع المواد الخاضعة لنظام الاختبار النهائي.', execResp:'المعلم', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:15, weekEnd:15, formType:null, targetCount:null, note:'الاختبار يكون في المادة المقطوعة من الأسبوع (1) إلى نهاية الأسبوع (9).' },
   { id:'rti7', program:'rti', label:'تنفيذ خطة علاجية (فردية) داخل الصف للطلاب الذين لم يحققوا نسبة 50%، بمتابعتهم وتقديم الدعم اللازم لمعالجة الضعف.', execResp:'المعلم / الموجه الطلابي', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:17, weekEnd:18, formType:'individualAgreement', targetCount:1, note:'' },
   { id:'rti8', program:'rti', label:'تجميع ورفع ملفات برنامج دعم التحصيل الدراسي (معالجة التعثر الدراسي).', execResp:'إدارة المدرسة', followResp:'قسم الشؤون التعليمية والتدريب', weekStart:16, weekEnd:16, formType:null, targetCount:null, note:'يتم الرفع على OneDrive.' },
+  { id:'rti9', program:'rti', label:'تقديم متابعة علاجية إضافية (فردية) للطلاب الذين لم يحققوا التحسن المطلوب بعد تنفيذ الخطة العلاجية الأولى.', execResp:'المعلم / الموجه الطلابي', followResp:'إدارة المدرسة / الإشراف التربوي', weekStart:18, weekEnd:18, formType:null, targetCount:null, note:'تُبنى على نتائج الخطة العلاجية الفردية، وتُوثَّق ضمن ملف إنجاز الطالب.' },
 
   { id:'mo1', program:'motivation', label:'التوعية الإعلامية الرقمية داخل المدرسة وخارجها بأهمية البرنامج.', execResp:'إدارة المدرسة', followResp:'الإعلام التربوي / قسم الشؤون التعليمية والتدريب', weekStart:1, weekEnd:15, formType:null, targetCount:null, note:'' },
   { id:'mo2', program:'motivation', label:'عقد حلقة نقاش في مجتمعات التعلم المهنية حول موضوع (التحفيز وإثارة الدافعية).', execResp:'منسقو المجتمعات المهنية', followResp:'إدارة المدرسة', weekStart:5, weekEnd:5, formType:'indicatorReport', targetCount:2, note:'حضور مدير المدرسة أو من ينوب عنه، وتزويد الإشراف التربوي بوقت التنفيذ.' },
@@ -1398,6 +1536,39 @@ function inputField(label, name, value, opts){
   }
   return '<div class="field"><label>'+esc(label)+'</label><input class="input" type="'+type+'" data-field="'+name+'" value="'+esc(value||'')+'" '+ro+' placeholder="'+(opts.placeholder?esc(opts.placeholder):'')+'"></div>';
 }
+function teacherSelectHtml(label, fieldPath, value, teachers, ro){
+  if (ro) return inputField(label, fieldPath, value, {readonly:true});
+  teachers = teachers || [];
+  const isManual = EditorState.manualTeacherFields.has(fieldPath) || !!(value && !teachers.some(function(t){ return t.full_name===value; }));
+  const opts = teachers.map(function(t){
+    return '<option value="'+esc(t.full_name)+'" '+((!isManual && value===t.full_name)?'selected':'')+'>'+esc(t.full_name)+'</option>';
+  }).join('');
+  const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم المعلم">' : '';
+  return (
+    '<div class="field"><label>'+esc(label)+'</label>' +
+      '<select class="input" data-action="teacherSelect" data-target="'+fieldPath+'">' +
+        '<option value="">— اختر المعلم —</option>' + opts +
+        '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
+      '</select>' +
+      manualInput +
+    '</div>'
+  );
+}
+function teacherSelectInlineHtml(fieldPath, value, teachers, ro){
+  if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
+  teachers = teachers || [];
+  const isManual = EditorState.manualTeacherFields.has(fieldPath) || !!(value && !teachers.some(function(t){ return t.full_name===value; }));
+  const opts = teachers.map(function(t){
+    return '<option value="'+esc(t.full_name)+'" '+((!isManual && value===t.full_name)?'selected':'')+'>'+esc(t.full_name)+'</option>';
+  }).join('');
+  const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب الاسم">' : '';
+  return (
+    '<select class="input" data-action="teacherSelect" data-target="'+fieldPath+'">' +
+      '<option value="">— اختر المعلم —</option>' + opts +
+      '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
+    '</select>' + manualInput
+  );
+}
 
 /* ---------------------- حالة تعديل النموذج الحالي (محرّر) ---------------------- */
 let EditorState = null; // { formType, id(optional), data, status, prepSig, school, createdByName, createdBy }
@@ -1429,10 +1600,11 @@ function openEditor(formType, submission){
       id: submission.id, formType: submission.form_type, data: JSON.parse(JSON.stringify(submission.payload)),
       status: submission.status, prepSig: submission.preparer_signature, school: submission.school,
       createdByName: submission.created_by_name, createdBy: submission.created_by,
-      returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at
+      returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at,
+      manualTeacherFields: new Set(), teachers: []
     };
   } else {
-    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null };
+    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [] };
   }
   go('editor', { formType: formType });
 }
@@ -1452,12 +1624,13 @@ async function render(){
       case 'login': app.innerHTML = screenLogin(); bindLogin(); break;
       case 'dashboard': renderShell(app, await screenDashboard()); bindDashboard(); break;
       case 'picker': renderShell(app, screenPicker()); bindPicker(); break;
-      case 'editor': renderShell(app, screenEditor()); bindEditor(); break;
+      case 'editor': renderShell(app, await screenEditor()); bindEditor(); break;
       case 'view': renderShell(app, await screenView(State.params.id)); bindView(); break;
       case 'review': renderShell(app, await screenReview(State.params.id)); bindReview(); break;
       case 'teacherSession': renderShell(app, await screenTeacherSession(State.params.subId, State.params.idx)); bindTeacherSession(); break;
       case 'taskDetail': renderShell(app, await screenTaskDetail(State.params.taskId, State.params.readonly)); bindTaskDetail(); break;
       case 'communityReport': renderShell(app, await screenCommunityReport(State.params.id)); bindCommunityReport(); break;
+      case 'practiceBank': renderShell(app, await screenPracticeBank()); bindPracticeBank(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
@@ -1650,6 +1823,8 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين الفصلية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
+      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
+      '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
     '</div>'
   );
 }
@@ -2055,12 +2230,13 @@ async function screenCoordinatorGoals(){
     const statusClass = g.status==='achieved' ? 'approved' : g.status==='missed' ? 'returned' : 'pending';
     return (
       '<tr>' +
-        '<td><b>'+esc(g.title)+'</b><div style="color:var(--muted);font-size:12px;">الفصل '+esc(SEMESTER_LABELS[g.semester]||g.semester||'—')+'</div></td>' +
+        '<td><b>'+esc(g.title)+'</b><div style="color:var(--muted);font-size:12px;">الفصل '+esc(SEMESTER_LABELS[g.semester]||g.semester||'—')+' · '+esc(GOAL_CATEGORY_LABEL[g.category]||GOAL_CATEGORY_LABEL.academic)+'</div></td>' +
         '<td>'+esc(g.baseline_value!=null && g.baseline_value!=='' ? g.baseline_value : '—')+' ← '+esc(g.target_value!=null && g.target_value!=='' ? g.target_value : '—')+' '+esc(g.measure_unit||'')+'</td>' +
         '<td>'+esc(g.current_value!=null && g.current_value!=='' ? g.current_value : '—')+'</td>' +
         '<td>'+pct+'</td>' +
         '<td>'+(g.due_date?fmtDate(g.due_date):'—')+'</td>' +
         '<td><span class="badge '+statusClass+'">'+statusLabel+'</span></td>' +
+        '<td>'+principalReviewBadgeHtml(g)+(g.principal_note?('<div style="color:var(--muted);font-size:11.5px;margin-top:3px;">'+esc(g.principal_note)+'</div>'):'')+'</td>' +
         '<td class="row-actions"><button class="btn btn-ghost btn-sm" data-action="editGoal" data-id="'+g.id+'">تعديل</button><button class="btn btn-ghost btn-sm" data-action="deleteGoal" data-id="'+g.id+'">حذف</button></td>' +
       '</tr>'
     );
@@ -2084,14 +2260,14 @@ async function screenCoordinatorGoals(){
     '</div>' +
     (State.user.community_id ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الموعد</th><th>الحالة</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا توجد أهداف بعد.</td></tr>') + '</tbody>' +
+      '<thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الموعد</th><th>الحالة</th><th>تقييم المدير</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="8">لا توجد أهداف بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal
   );
 }
 function goalComposeModal(goal){
-  const g = goal || { title:'', measure_unit:'', baseline_value:'', target_value:'', current_value:'', due_date:'', semester:'', status:'active' };
+  const g = goal || { title:'', measure_unit:'', baseline_value:'', target_value:'', current_value:'', due_date:'', semester:'', status:'active', category:'academic' };
   return (
     '<div class="modal-bg" data-action="closeGoalModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
@@ -2099,6 +2275,16 @@ function goalComposeModal(goal){
         '<div class="field"><label>عنوان الهدف</label><input class="input" id="glTitle" value="'+esc(g.title)+'" placeholder="مثال: رفع نسبة إنجاز خطط الدروس النموذجية"></div>' +
         '<div class="field"><label>الفصل الدراسي</label><select class="input" id="glSemester">' +
           ['1','2','3'].map(function(v){ return '<option value="'+v+'" '+(v===g.semester?'selected':'')+'>الفصل '+SEMESTER_LABELS[v]+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>تصنيف الهدف</label><select class="input" id="glCategory">' +
+          Object.keys(GOAL_CATEGORY_LABEL).map(function(k){ return '<option value="'+k+'" '+(k===(g.category||'academic')?'selected':'')+'>'+GOAL_CATEGORY_LABEL[k]+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>اختر هدفًا جاهزًا من المكتبة (اختياري)</label><select class="input" id="glTemplate">' +
+          '<option value="">— اختر هدفًا جاهزًا —</option>' +
+          Object.keys(GOAL_CATEGORY_LABEL).map(function(cat){
+            const opts = GOAL_TEMPLATES.map(function(t,i){ return t.category===cat ? ('<option value="'+i+'">'+esc(t.title)+'</option>') : ''; }).join('');
+            return opts ? ('<optgroup label="'+GOAL_CATEGORY_LABEL[cat]+'">'+opts+'</optgroup>') : '';
+          }).join('') +
         '</select></div>' +
         '<div class="field"><label>وحدة القياس (اختياري)</label><input class="input" id="glUnit" value="'+esc(g.measure_unit||'')+'" placeholder="مثال: %، عدد الزيارات..."></div>' +
         '<div class="field-grid cols-3">' +
@@ -2128,6 +2314,15 @@ function bindCoordinatorGoals(){
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   const closeBg = document.querySelector('[data-action="closeGoalModalBg"]');
   if (closeBg) closeBg.addEventListener('click', closeModal);
+  const templateSel = document.getElementById('glTemplate');
+  if (templateSel) templateSel.addEventListener('change', function(){
+    if (templateSel.value==='') return;
+    const tpl = GOAL_TEMPLATES[+templateSel.value];
+    if (!tpl) return;
+    document.getElementById('glTitle').value = tpl.title;
+    document.getElementById('glUnit').value = tpl.unit;
+    document.getElementById('glCategory').value = tpl.category;
+  });
   document.querySelectorAll('[data-action="editGoal"]').forEach(function(el){
     el.addEventListener('click', function(){ GoalsUI.modalOpen = true; GoalsUI.editId = el.getAttribute('data-id'); render(); bindCoordinatorGoals(); });
   });
@@ -2148,8 +2343,9 @@ function bindCoordinatorGoals(){
     const current = document.getElementById('glCurrent').value;
     const due_date = document.getElementById('glDue').value;
     const status = document.getElementById('glStatus').value;
+    const category = document.getElementById('glCategory').value;
     const patch = {
-      title:title, semester:semester, measure_unit:measure_unit||null,
+      title:title, semester:semester, measure_unit:measure_unit||null, category:category,
       baseline_value: baseline===''?null:Number(baseline),
       target_value: target===''?null:Number(target),
       current_value: current===''?null:Number(current),
@@ -2165,6 +2361,285 @@ function bindCoordinatorGoals(){
       }
       GoalsUI.modalOpen = false; GoalsUI.editId = null;
       render(); bindCoordinatorGoals();
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- لوحة مدير المدرسة: مراجعة المهام المكتملة وخطط التحسين واعتمادها وتقييمها ----- */
+let PrincipalReviewUI = { goalReviewId:null };
+async function screenPrincipalReview(){
+  const communities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const tasks = (await DB.listTasks({ school: State.user.school })).filter(function(t){ return t.status==='done'; });
+  const goals = await DB.listGoals({ school: State.user.school });
+
+  const sortedTasks = tasks.slice().sort(function(a,b){
+    return ((a.principal_status?1:0) - (b.principal_status?1:0)) || (new Date(b.completed_at||b.created_at) - new Date(a.completed_at||a.created_at));
+  });
+  const taskRows = sortedTasks.map(function(t){
+    const c = communities.find(function(x){ return x.id===t.community_id; });
+    return (
+      '<tr>' +
+        '<td><b>'+esc(t.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(c?c.name:'—')+'</div></td>' +
+        '<td>'+esc(t.assigned_to_name||'')+'</td>' +
+        '<td>'+esc(t.created_by_name||'')+'</td>' +
+        '<td>'+(t.completed_at?fmtDateTime(t.completed_at):'—')+'</td>' +
+        '<td>'+principalReviewBadgeHtml(t)+'</td>' +
+        '<td class="row-actions"><button class="btn btn-gold btn-sm" data-action="viewTask" data-id="'+t.id+'">مراجعة وتقييم</button></td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const sortedGoals = goals.slice().sort(function(a,b){
+    return ((a.principal_status?1:0) - (b.principal_status?1:0)) || (new Date(b.updated_at||b.created_at) - new Date(a.updated_at||a.created_at));
+  });
+  const goalRows = sortedGoals.map(function(g){
+    const c = communities.find(function(x){ return x.id===g.community_id; });
+    const rate = goalProgressRate(g);
+    return (
+      '<tr>' +
+        '<td><b>'+esc(g.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(c?c.name:'—')+' · '+esc(GOAL_CATEGORY_LABEL[g.category]||GOAL_CATEGORY_LABEL.academic)+'</div></td>' +
+        '<td>'+esc(g.created_by_name||'')+'</td>' +
+        '<td>'+pctLabel(rate)+'</td>' +
+        '<td>'+principalReviewBadgeHtml(g)+'</td>' +
+        '<td class="row-actions"><button class="btn btn-gold btn-sm" data-action="reviewGoal" data-id="'+g.id+'">تقييم</button></td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const reviewGoal = PrincipalReviewUI.goalReviewId ? goals.find(function(g){ return g.id===PrincipalReviewUI.goalReviewId; }) : null;
+  const modal = reviewGoal ? goalReviewModalHtml(reviewGoal) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>المهام المكتملة (بانتظار الاعتماد والتقييم)</h2></div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>المهمة</th><th>المعلم</th><th>المنسق المُكلِّف</th><th>تاريخ الإكمال</th><th>تقييم المدير</th><th></th></tr></thead>' +
+      '<tbody>' + (taskRows || '<tr class="empty-row"><td colspan="6">لا توجد مهام مكتملة بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    '<div class="section-head" style="margin-top:24px;"><h2>خطط التحسين الفصلية وأهداف المجتمعات المهنية</h2></div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>الهدف</th><th>المنسق</th><th>نسبة التحقق</th><th>تقييم المدير</th><th></th></tr></thead>' +
+      '<tbody>' + (goalRows || '<tr class="empty-row"><td colspan="5">لا توجد أهداف مسجَّلة بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    modal
+  );
+}
+function goalReviewModalHtml(g){
+  return (
+    '<div class="modal-bg" data-action="closeGoalReviewModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>تقييم الهدف: '+esc(g.title)+'</h3>' +
+        (g.principal_status ? ('<p>'+principalReviewBadgeHtml(g)+'</p>') : '') +
+        '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="glRating">' +
+          [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(g.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="glNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(g.principal_note||'')+'</textarea></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-gold btn-block" data-action="approveGoal">✓ اعتماد وتقييم</button>' +
+          '<button class="btn btn-danger btn-block" data-action="returnGoal">إرجاع للتعديل</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeGoalReviewModal">إغلاق</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindPrincipalReview(){
+  document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
+  });
+  document.querySelectorAll('[data-action="reviewGoal"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalReviewUI.goalReviewId = el.getAttribute('data-id'); render(); bindPrincipalReview(); });
+  });
+  const closeModal = function(){ PrincipalReviewUI.goalReviewId = null; render(); bindPrincipalReview(); };
+  const closeBtn = document.querySelector('[data-action="closeGoalReviewModal"]');
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  const closeBg = document.querySelector('[data-action="closeGoalReviewModalBg"]');
+  if (closeBg) closeBg.addEventListener('click', closeModal);
+  const approveBtn = document.querySelector('[data-action="approveGoal"]');
+  if (approveBtn) approveBtn.addEventListener('click', async function(){
+    const rating = +document.getElementById('glRating').value;
+    const note = document.getElementById('glNote').value.trim();
+    try{
+      await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      toast('تم اعتماد وتقييم الهدف.');
+      PrincipalReviewUI.goalReviewId = null;
+      render(); bindPrincipalReview();
+    }catch(e){ toast(e.message); }
+  });
+  const returnBtn = document.querySelector('[data-action="returnGoal"]');
+  if (returnBtn) returnBtn.addEventListener('click', async function(){
+    const rating = +document.getElementById('glRating').value;
+    const note = document.getElementById('glNote').value.trim();
+    if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
+    try{
+      await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      toast('تم إرجاع الهدف إلى المنسق للتعديل.');
+      PrincipalReviewUI.goalReviewId = null;
+      render(); bindPrincipalReview();
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- بنك تبادل الخبرات: مشاركة الممارسات التدريسية الناجحة بين المعلمين، واعتماد مدير المدرسة وتقييمه لها ----- */
+let PracticeBankUI = { composeOpen:false, reviewId:null };
+async function screenPracticeBank(){
+  const shares = await DB.listPracticeShares({ school: State.user.school });
+  const canShare = State.user.role==='coordinator' || State.user.role==='teacher';
+  const isPrincipal = State.user.role==='principal';
+  const mine = shares.filter(function(s){ return s.created_by===State.user.id; });
+  const pending = shares.filter(function(s){ return s.status==='pending'; });
+  const approved = shares.filter(function(s){ return s.status==='approved'; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+
+  const mineRows = mine.slice().sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); }).map(function(s){
+    return (
+      '<tr>' +
+        '<td><b>'+esc(s.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+'</div></td>' +
+        '<td>'+fmtDate(s.created_at)+'</td>' +
+        '<td>'+(s.status==='pending' ? '<span class="badge pending">بانتظار اعتماد المدير</span>' : principalReviewBadgeHtml(s))+'</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const pendingRows = pending.map(function(s){
+    return (
+      '<tr>' +
+        '<td><b>'+esc(s.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+'</div></td>' +
+        '<td>'+esc(s.created_by_name||'')+'</td>' +
+        '<td>'+fmtDate(s.created_at)+'</td>' +
+        '<td class="row-actions"><button class="btn btn-gold btn-sm" data-action="reviewPractice" data-id="'+s.id+'">مراجعة وتقييم</button></td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const approvedCards = approved.map(function(s){
+    const stars = s.principal_rating ? ('★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)) : '';
+    return (
+      '<div class="program-card">' +
+        '<div class="ph"><h3>'+esc(s.title)+'</h3><p>'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+' · '+esc(s.created_by_name||'')+' · '+fmtDate(s.created_at)+(stars?(' · '+stars):'')+'</p></div>' +
+        (s.description ? ('<p style="font-size:13.5px;color:var(--ink);">'+esc(s.description)+'</p>') : '') +
+        (s.attachment_note ? ('<p style="font-size:12.5px;color:var(--muted);">'+esc(s.attachment_note)+'</p>') : '') +
+      '</div>'
+    );
+  }).join('');
+
+  const reviewShare = PracticeBankUI.reviewId ? shares.find(function(s){ return s.id===PracticeBankUI.reviewId; }) : null;
+  const modal = (PracticeBankUI.composeOpen ? practiceComposeModalHtml() : '') + (reviewShare ? practiceReviewModalHtml(reviewShare) : '');
+
+  return (
+    '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
+    '<h2 style="font-size:20px;margin-bottom:4px;">بنك تبادل الخبرات بين المعلمين</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+' — مساحة لمشاركة الممارسات التدريسية الناجحة وتبادل الخبرات بين المعلمين والمجتمعات المهنية.</div>' +
+    (canShare ? '<div class="section-head"><h2>مشاركاتي</h2><button class="btn btn-primary" data-action="newPractice">+ مشاركة ممارسة جديدة</button></div>' : '') +
+    (canShare ? (
+      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+        '<thead><tr><th>الممارسة</th><th>تاريخ المشاركة</th><th>الحالة</th></tr></thead>' +
+        '<tbody>' + (mineRows || '<tr class="empty-row"><td colspan="3">لم تشارك أي ممارسة بعد.</td></tr>') + '</tbody>' +
+      '</table></div></div>'
+    ) : '') +
+    (isPrincipal ? (
+      '<div class="section-head" style="margin-top:24px;"><h2>ممارسات بانتظار الاعتماد</h2></div>' +
+      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+        '<thead><tr><th>الممارسة</th><th>المعلم/المنسق</th><th>التاريخ</th><th></th></tr></thead>' +
+        '<tbody>' + (pendingRows || '<tr class="empty-row"><td colspan="4">لا توجد ممارسات بانتظار الاعتماد.</td></tr>') + '</tbody>' +
+      '</table></div></div>'
+    ) : '') +
+    '<div class="section-head" style="margin-top:24px;"><h2>الممارسات المعتمدة (معرض المدرسة)</h2></div>' +
+    (approvedCards || '<p style="color:var(--muted);font-size:13.5px;">لا توجد ممارسات معتمدة بعد.</p>') +
+    modal
+  );
+}
+function practiceComposeModalHtml(){
+  return (
+    '<div class="modal-bg" data-action="closePracticeModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>مشاركة ممارسة تدريسية ناجحة</h3>' +
+        '<div class="field"><label>عنوان الممارسة</label><input class="input" id="pkTitle" placeholder="مثال: استراتيجية التعلم التعاوني في حصة الرياضيات"></div>' +
+        '<div class="field"><label>التصنيف</label><select class="input" id="pkCategory">' +
+          Object.keys(GOAL_CATEGORY_LABEL).map(function(k){ return '<option value="'+k+'" '+(k==='teacherSupport'?'selected':'')+'>'+GOAL_CATEGORY_LABEL[k]+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>وصف الممارسة وأثرها</label><textarea class="input" id="pkDesc" placeholder="صف الممارسة، وكيف نفّذتها، وما الأثر الذي لاحظته على الطلاب أو المعلمين..."></textarea></div>' +
+        '<div class="field"><label>ملاحظة عن الشواهد المرفقة (اختياري)</label><input class="input" id="pkAttach" placeholder="مثال: صور من الحصة مرفقة في ملف المجتمع المهني..."></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="sendPractice">مشاركة الممارسة</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closePracticeModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function practiceReviewModalHtml(s){
+  return (
+    '<div class="modal-bg" data-action="closePracticeReviewModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>مراجعة الممارسة: '+esc(s.title)+'</h3>' +
+        '<p style="color:var(--muted);font-size:13.5px;">'+esc(s.description||'')+'</p>' +
+        '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="pkRating">' +
+          [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(s.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="pkNote" placeholder="اكتب ملاحظتك...">'+esc(s.principal_note||'')+'</textarea></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-gold btn-block" data-action="approvePractice">✓ اعتماد وعرضها في معرض المدرسة</button>' +
+          '<button class="btn btn-danger btn-block" data-action="returnPractice">إرجاع للتعديل</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closePracticeReviewModal">إغلاق</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function bindPracticeBank(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  const newBtn = document.querySelector('[data-action="newPractice"]');
+  if (newBtn) newBtn.addEventListener('click', function(){ PracticeBankUI.composeOpen = true; render(); bindPracticeBank(); });
+  const closeCompose = function(){ PracticeBankUI.composeOpen = false; render(); bindPracticeBank(); };
+  const closeComposeBtn = document.querySelector('[data-action="closePracticeModal"]');
+  if (closeComposeBtn) closeComposeBtn.addEventListener('click', closeCompose);
+  const closeComposeBg = document.querySelector('[data-action="closePracticeModalBg"]');
+  if (closeComposeBg) closeComposeBg.addEventListener('click', closeCompose);
+  const sendBtn = document.querySelector('[data-action="sendPractice"]');
+  if (sendBtn) sendBtn.addEventListener('click', async function(){
+    const title = document.getElementById('pkTitle').value.trim();
+    if (!title){ toast('يرجى إدخال عنوان الممارسة.'); return; }
+    const category = document.getElementById('pkCategory').value;
+    const description = document.getElementById('pkDesc').value.trim();
+    const attachment_note = document.getElementById('pkAttach').value.trim();
+    try{
+      await DB.createPracticeShare({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, category:category, title:title, description:description, attachment_note: attachment_note||null, status:'pending' });
+      toast('تم مشاركة الممارسة، وستُعرض للجميع بعد اعتماد مدير المدرسة.');
+      PracticeBankUI.composeOpen = false;
+      render(); bindPracticeBank();
+    }catch(e){ toast(e.message); }
+  });
+  document.querySelectorAll('[data-action="reviewPractice"]').forEach(function(el){
+    el.addEventListener('click', function(){ PracticeBankUI.reviewId = el.getAttribute('data-id'); render(); bindPracticeBank(); });
+  });
+  const closeReview = function(){ PracticeBankUI.reviewId = null; render(); bindPracticeBank(); };
+  const closeReviewBtn = document.querySelector('[data-action="closePracticeReviewModal"]');
+  if (closeReviewBtn) closeReviewBtn.addEventListener('click', closeReview);
+  const closeReviewBg = document.querySelector('[data-action="closePracticeReviewModalBg"]');
+  if (closeReviewBg) closeReviewBg.addEventListener('click', closeReview);
+  const approveBtn = document.querySelector('[data-action="approvePractice"]');
+  if (approveBtn) approveBtn.addEventListener('click', async function(){
+    const rating = +document.getElementById('pkRating').value;
+    const note = document.getElementById('pkNote').value.trim();
+    try{
+      await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      toast('تم اعتماد الممارسة وعرضها في معرض المدرسة.');
+      PracticeBankUI.reviewId = null;
+      render(); bindPracticeBank();
+    }catch(e){ toast(e.message); }
+  });
+  const returnBtn = document.querySelector('[data-action="returnPractice"]');
+  if (returnBtn) returnBtn.addEventListener('click', async function(){
+    const rating = +document.getElementById('pkRating').value;
+    const note = document.getElementById('pkNote').value.trim();
+    if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
+    try{
+      await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      toast('تم إرجاع الممارسة للتعديل.');
+      PracticeBankUI.reviewId = null;
+      render(); bindPracticeBank();
     }catch(e){ toast(e.message); }
   });
 }
@@ -2333,6 +2808,9 @@ async function screenDashboard(){
   if (State.dashTab==='goals' && State.user.role==='coordinator'){
     return await screenCoordinatorGoals();
   }
+  if (State.dashTab==='principalReview' && State.user.role==='principal'){
+    return await screenPrincipalReview();
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -2418,6 +2896,7 @@ function bindDashboard(){
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='communitiesEval' && State.user.role==='principal') bindPrincipalCommunities();
   else if (State.dashTab==='goals' && State.user.role==='coordinator') bindCoordinatorGoals();
+  else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
   else if (State.dashTab==='indicators') bindIndicators();
 }
 
@@ -2563,6 +3042,22 @@ async function screenTaskDetail(taskId, readonly){
   const files = TaskDetailCache.evidence_files.map(function(f, i){
     return '<div class="evidence-thumb"><img src="'+f+'">' + (ro ? '' : '<button type="button" class="rmv-ev" data-action="rmvTaskEvidence" data-i="'+i+'">✕</button>') + '</div>';
   }).join('');
+  const isPrincipal = State.user.role==='principal';
+  const canReview = isPrincipal && t.status==='done';
+  const reviewPanel = canReview ? (
+    '<div class="review-panel no-print" style="margin-top:16px;">' +
+      '<h3>تقييم مدير المدرسة لإنجاز المهمة</h3>' +
+      (t.principal_status ? ('<p style="margin:0 0 10px;">'+principalReviewBadgeHtml(t)+'</p>') : '') +
+      '<div class="review-grid">' +
+        '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="taskRating">' +
+          [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(t.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="taskNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(t.principal_note||'')+'</textarea></div>' +
+        '<button class="btn btn-gold btn-block" data-action="approveTask">✓ اعتماد وتقييم</button>' +
+        '<button class="btn btn-danger btn-block" data-action="returnTask">إرجاع للتعديل</button>' +
+      '</div>' +
+    '</div>'
+  ) : (t.principal_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة</h3><p style="margin:0 0 6px;">'+principalReviewBadgeHtml(t)+'</p>'+(t.principal_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.principal_note)+'</p>'):'')+'</div>') : '');
   return (
     '<div class="sheet-wrap">' +
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
@@ -2581,6 +3076,7 @@ async function screenTaskDetail(taskId, readonly){
           '<button class="btn btn-primary" data-action="completeTask">حفظ وتمييز المهمة كمكتملة</button>' +
         '</div>'
       ) +
+      reviewPanel +
     '</div>'
   );
 }
@@ -2611,6 +3107,27 @@ function bindTaskDetail(){
     try{
       await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso() });
       toast('تم حفظ المهمة وتمييزها كمكتملة.');
+      go('dashboard');
+    }catch(e){ toast(e.message); }
+  });
+  const approveTaskBtn = document.querySelector('[data-action="approveTask"]');
+  if (approveTaskBtn) approveTaskBtn.addEventListener('click', async function(){
+    const rating = +document.getElementById('taskRating').value;
+    const note = document.getElementById('taskNote').value.trim();
+    try{
+      await DB.updateTask(TaskDetailCache.id, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      toast('تم اعتماد وتقييم المهمة.');
+      go('dashboard');
+    }catch(e){ toast(e.message); }
+  });
+  const returnTaskBtn = document.querySelector('[data-action="returnTask"]');
+  if (returnTaskBtn) returnTaskBtn.addEventListener('click', async function(){
+    const rating = +document.getElementById('taskRating').value;
+    const note = document.getElementById('taskNote').value.trim();
+    if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
+    try{
+      await DB.updateTask(TaskDetailCache.id, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso(), status:'pending' });
+      toast('تم إرجاع المهمة إلى المعلم للتعديل.');
       go('dashboard');
     }catch(e){ toast(e.message); }
   });
@@ -3272,19 +3789,24 @@ function statusStrip(status){
 }
 
 /* ----- محرّر النموذج ----- */
-function screenEditor(){
+async function screenEditor(){
   const def = formDef(EditorState.formType);
   const readonly = false;
+  const teacherForms = ['individualAgreement','modelLesson','plcMeetingMinutes','indicatorReport','peerObservation'];
+  if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
+    EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){ return u.role==='teacher'; });
+  }
+  const teachers = EditorState.teachers;
   let body = '';
   switch(EditorState.formType){
     case 'groupPlan': body = renderGroupPlan(EditorState.data, readonly); break;
-    case 'indicatorReport': body = renderIndicatorReport(EditorState.data, readonly); break;
-    case 'individualAgreement': body = renderIndividualAgreement(EditorState.data, readonly); break;
-    case 'modelLesson': body = renderModelLesson(EditorState.data, readonly); break;
-    case 'plcMeetingMinutes': body = renderPlcMeeting(EditorState.data, readonly); break;
+    case 'indicatorReport': body = renderIndicatorReport(EditorState.data, readonly, teachers); break;
+    case 'individualAgreement': body = renderIndividualAgreement(EditorState.data, readonly, teachers); break;
+    case 'modelLesson': body = renderModelLesson(EditorState.data, readonly, teachers); break;
+    case 'plcMeetingMinutes': body = renderPlcMeeting(EditorState.data, readonly, teachers); break;
     case 'motivationInitiative': body = renderMotivation(EditorState.data, readonly); break;
     case 'plcSelfEval': body = renderPlcSelfEval(EditorState.data, readonly); break;
-    case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly); break;
+    case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly, teachers); break;
   }
 
   const returnBox = EditorState.status==='returned' && EditorState.returnComment
@@ -3351,11 +3873,11 @@ function renderGroupPlan(d, ro){
   );
 }
 
-function renderIndicatorReport(d, ro){
+function renderIndicatorReport(d, ro, teachers){
   const rows = d.participants.map(function(p,i){
     return (
       '<tr><td style="width:36px;">'+(i+1)+'</td>' +
-        '<td><input class="input" data-field="participants.'+i+'.name" value="'+esc(p.name)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td>'+teacherSelectInlineHtml('participants.'+i+'.name', p.name, teachers, ro)+'</td>' +
         '<td><input class="input" data-field="participants.'+i+'.spec" value="'+esc(p.spec)+'" '+(ro?'disabled':'')+'></td>' +
         (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="participants" data-idx="'+i+'">✕</button></td>') +
       '</tr>'
@@ -3379,13 +3901,13 @@ function renderIndicatorReport(d, ro){
   );
 }
 
-function renderIndividualAgreement(d, ro){
+function renderIndividualAgreement(d, ro, teachers){
   const sessions = d.sessions.map(function(s,i){
     return (
       '<div class="session-card">' +
         '<div class="session-head"><span class="ttl">جلسة متابعة ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="sessions" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
         '<div class="field-grid cols-2">' +
-          inputField('اسم المعلم','sessions.'+i+'.teacher',s.teacher,{readonly:ro}) +
+          teacherSelectHtml('اسم المعلم','sessions.'+i+'.teacher',s.teacher,teachers,ro) +
           inputField('المادة','sessions.'+i+'.subject',s.subject,{readonly:ro}) +
         '</div>' +
         inputField('التاريخ','sessions.'+i+'.date',s.date,{type:'date',readonly:ro}) +
@@ -3408,7 +3930,7 @@ function renderIndividualAgreement(d, ro){
   );
 }
 
-function renderModelLesson(d, ro){
+function renderModelLesson(d, ro, teachers){
   const positives = d.positives.map(function(p,i){
     return (
       '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">' +
@@ -3424,7 +3946,7 @@ function renderModelLesson(d, ro){
       inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('الحصة','period',d.period,{readonly:ro}) +
     '</div>' +
     '<div class="field-grid cols-2">' +
-      inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) + inputField('المعلم المنفذ','teacher',d.teacher,{readonly:ro}) +
+      inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) + teacherSelectHtml('المعلم المنفذ','teacher',d.teacher,teachers,ro) +
     '</div>' +
     inputField('الأهداف/الإستراتيجيات/الأساليب المستهدفة','objectives',d.objectives,{type:'textarea',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> إيجابيات الموقف التعليمي</div>' +
@@ -3432,10 +3954,10 @@ function renderModelLesson(d, ro){
   );
 }
 
-function renderPlcMeeting(d, ro){
+function renderPlcMeeting(d, ro, teachers){
   const attRows = d.attendees.map(function(a,i){
     return (
-      '<tr><td><input class="input" data-field="attendees.'+i+'.name" value="'+esc(a.name)+'" '+(ro?'disabled':'')+'></td>' +
+      '<tr><td>'+teacherSelectInlineHtml('attendees.'+i+'.name', a.name, teachers, ro)+'</td>' +
         '<td><input class="input" data-field="attendees.'+i+'.spec" value="'+esc(a.spec)+'" '+(ro?'disabled':'')+'></td>' +
         '<td style="text-align:center;"><input type="checkbox" data-action="toggleAttend" data-idx="'+i+'" '+(a.present?'checked':'')+' '+(ro?'disabled':'')+'></td>' +
         (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="attendees" data-idx="'+i+'">✕</button></td>') +
@@ -3521,7 +4043,7 @@ function renderPlcSelfEval(d, ro){
   );
 }
 
-function renderPeerObservation(d, ro){
+function renderPeerObservation(d, ro, teachers){
   const strengths = (d.strengths||[]).map(function(p,i){
     return (
       '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">' +
@@ -3545,7 +4067,7 @@ function renderPeerObservation(d, ro){
       inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('المعلم الملاحِظ','observerName',d.observerName,{readonly:ro}) +
     '</div>' +
     '<div class="field-grid cols-2">' +
-      inputField('المعلم المُلاحَظ','observedTeacher',d.observedTeacher,{readonly:ro}) + inputField('المادة','subject',d.subject,{readonly:ro}) +
+      teacherSelectHtml('المعلم المُلاحَظ','observedTeacher',d.observedTeacher,teachers,ro) + inputField('المادة','subject',d.subject,{readonly:ro}) +
     '</div>' +
     '<div class="field-grid cols-2">' +
       inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) + inputField('موضوع الحصة','lessonTopic',d.lessonTopic,{readonly:ro}) +
@@ -3609,6 +4131,19 @@ function bindEditor(){
   document.querySelectorAll('[data-action="setRadio"]').forEach(function(el){
     el.addEventListener('change', function(){
       setPath(EditorState.data, el.getAttribute('data-group'), el.getAttribute('data-val'));
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="teacherSelect"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const target = el.getAttribute('data-target');
+      if (el.value === '__manual__'){
+        EditorState.manualTeacherFields.add(target);
+        setPath(EditorState.data, target, '');
+      } else {
+        EditorState.manualTeacherFields.delete(target);
+        setPath(EditorState.data, target, el.value);
+      }
       render(); bindEditor();
     });
   });
@@ -3785,6 +4320,7 @@ function bindGlobalAction(el){
   else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
   else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
   else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); go('dashboard'); }); }
+  else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
