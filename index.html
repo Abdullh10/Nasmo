@@ -1018,8 +1018,13 @@ const DB = {
     if (isRemote()){
       let path = 'plc_goals?order=created_at.desc';
       if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
-      const rows = await remoteFetch(path);
-      return rows || [];
+      try{
+        const rows = await remoteFetch(path);
+        return rows || [];
+      }catch(e){
+        console.warn('plc_goals table not available yet (run the SQL migration to enable goal tracking):', e.message);
+        return [];
+      }
     }
     let list = JSON.parse(localStorage.getItem(LS_GOALS) || '[]');
     if (filter.school) list = list.filter(function(g){ return g.school===filter.school; });
