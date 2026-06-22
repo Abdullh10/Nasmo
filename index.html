@@ -314,6 +314,15 @@ const CONFIG = {
 };
 
 /* SQL_SCHEMA (نفّذها في SQL Editor داخل Supabase عند التفعيل):
+   المصادقة حقيقية عبر Supabase Auth (auth.users)؛ profiles.id يطابق auth.users.id،
+   ويُستخدم بريد وهمي ثابت بصيغة <username>@nasmo.local تلقائيًا من الكود.
+
+drop table if exists notifications;
+drop table if exists submissions;
+drop table if exists indicator_status;
+drop table if exists app_settings;
+drop table if exists profiles;
+drop table if exists communities;
 
 create table communities (
   id uuid primary key default gen_random_uuid(),
@@ -325,9 +334,8 @@ create table communities (
 );
 
 create table profiles (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key references auth.users(id) on delete cascade,
   username text unique not null,
-  password text not null,
   full_name text not null,
   role text not null check (role in ('coordinator','principal','teacher','admin')),
   school text not null,
@@ -384,29 +392,93 @@ create table indicator_status (
   unique (school, indicator_id)
 );
 
--- فعّل RLS وأضف سياسات تسمح لأي مستخدم مُصادَق بالقراءة/الكتابة ضمن مدرسته،
--- أو استخدم anon key مبدئيًا للتجربة الداخلية فقط ثم شدّد الصلاحيات قبل النشر العام.
+-- دوال مساعدة (security definer) لقراءة دور/مدرسة المستخدم الحالي من JWT دون تكرار سياسات profiles على نفسها:
+create or replace function my_role() returns text language sql security definer stable as $$
+  select role from profiles where id = auth.uid()
+$$;
+create or replace function my_school() returns text language sql security definer stable as $$
+  select school from profiles where id = auth.uid()
+$$;
 
--- حساب مدير نظام أولي لتسجيل الدخول لأول مرة (عدّل كلمة المرور بعد الدخول):
-insert into profiles (username, password, full_name, role, school)
-values ('admin', '1234', 'مدير نظام المنصة', 'admin', 'مدرسة العلا الثانوية');
+alter table profiles enable row level security;
+alter table communities enable row level security;
+alter table notifications enable row level security;
+alter table submissions enable row level security;
+alter table app_settings enable row level security;
+alter table indicator_status enable row level security;
+
+create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
+create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
+create policy "profiles_update" on profiles for update using ( id = auth.uid() or my_role() = 'admin' ) with check ( id = auth.uid() or my_role() = 'admin' );
+create policy "profiles_delete" on profiles for delete using ( my_role() = 'admin' );
+
+create policy "communities_select" on communities for select using ( school = my_school() or my_role() = 'admin' );
+create policy "communities_write" on communities for all using ( my_role() = 'admin' ) with check ( my_role() = 'admin' );
+
+create policy "notifications_select" on notifications for select using ( school = my_school() or my_role() = 'admin' );
+create policy "notifications_insert" on notifications for insert with check ( school = my_school() or my_role() = 'admin' );
+create policy "notifications_update" on notifications for update using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+create policy "submissions_all" on submissions for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+create policy "app_settings_all" on app_settings for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+create policy "indicator_status_all" on indicator_status for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+-- تفعيل حساب المدير الأول (مرة واحدة فقط):
+-- 1) من لوحة Supabase: Authentication > Users > Add user
+--    البريد: admin@nasmo.local   كلمة المرور: اختر كلمة قوية   فعّل "Auto Confirm User"
+--    ثم انسخ الـ UUID الخاص بالمستخدم الجديد.
+-- 2) نفّذ هنا (بدّل <UUID> بالقيمة المنسوخة):
+-- insert into profiles (id, username, full_name, role, school)
+-- values ('<UUID>', 'admin', 'مدير نظام المنصة', 'admin', 'مدرسة العلا الثانوية');
 */
 
 function isRemote(){ return !!(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY); }
 
+/* مصادقة حقيقية عبر Supabase Auth: نربط كل اسم مستخدم ببريد وهمي ثابت
+   حتى تعمل واجهة الدخول الحالية (اسم مستخدم/كلمة مرور) دون تغيير،
+   بينما تُصدر Supabase جلسة JWT فعلية يميّز بها auth.uid() داخل سياسات RLS. */
+let AUTH = { accessToken: null, refreshToken: null };
+function authEmailFor(username){ return username.trim().toLowerCase() + '@nasmo.local'; }
+function persistAuth(){ sessionStorage.setItem('dtd_auth', JSON.stringify(AUTH)); }
+function loadAuth(){ try{ const a = JSON.parse(sessionStorage.getItem('dtd_auth')); if (a) AUTH = a; }catch(e){} }
+function clearAuth(){ AUTH = { accessToken:null, refreshToken:null }; sessionStorage.removeItem('dtd_auth'); }
+async function refreshAuthToken(){
+  if (!AUTH.refreshToken) return false;
+  try{
+    const res = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: AUTH.refreshToken })
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
+    persistAuth();
+    return true;
+  }catch(e){ return false; }
+}
+
 async function remoteFetch(path, opts){
   opts = opts || {};
-  const headers = {
-    "apikey": CONFIG.SUPABASE_ANON_KEY,
-    "Authorization": "Bearer " + CONFIG.SUPABASE_ANON_KEY,
-    "Content-Type": "application/json"
+  const doFetch = async function(){
+    const headers = {
+      "apikey": CONFIG.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + (AUTH.accessToken || CONFIG.SUPABASE_ANON_KEY),
+      "Content-Type": "application/json"
+    };
+    if (opts.prefer) headers["Prefer"] = opts.prefer;
+    return fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
+      method: opts.method || "GET",
+      headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
   };
-  if (opts.prefer) headers["Prefer"] = opts.prefer;
-  const res = await fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
-    method: opts.method || "GET",
-    headers: headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined
-  });
+  let res = await doFetch();
+  if (res.status === 401 && AUTH.refreshToken){
+    if (await refreshAuthToken()) res = await doFetch();
+  }
   if (!res.ok) { throw new Error("تعذّر الاتصال بقاعدة البيانات السحابية (" + res.status + ")"); }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
@@ -480,8 +552,20 @@ function localSeed(){
 const DB = {
   async login(username, password){
     if (isRemote()){
-      const rows = await remoteFetch('profiles?username=eq.' + encodeURIComponent(username) + '&password=eq.' + encodeURIComponent(password));
-      return (rows && rows[0]) || null;
+      clearAuth();
+      const res = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/token?grant_type=password", {
+        method: "POST",
+        headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmailFor(username), password: password })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
+      try{
+        const rows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(data.user.id));
+        if (!rows || !rows[0]) { clearAuth(); return null; }
+        return rows[0];
+      }catch(e){ clearAuth(); return null; }
     }
     const users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
     const found = users.find(function(u){ return u.username===username && u.password===password; });
@@ -547,6 +631,17 @@ const DB = {
   async createUser(obj){
     obj.created_at = nowIso();
     if (isRemote()){
+      const signupRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/signup", {
+        method: "POST",
+        headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmailFor(obj.username), password: obj.password })
+      });
+      if (!signupRes.ok) throw new Error('فشل إنشاء حساب المصادقة، تأكد أن اسم المستخدم غير مستخدم مسبقًا.');
+      const signupData = await signupRes.json();
+      const newId = (signupData.user && signupData.user.id) || signupData.id;
+      if (!newId) throw new Error('تعذّر إنشاء حساب المصادقة.');
+      obj.id = newId;
+      delete obj.password;
       const rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'return=representation' });
       return rows && rows[0];
     }
@@ -559,6 +654,7 @@ const DB = {
   },
   async updateUser(id, patch){
     if (isRemote()){
+      delete patch.password; // لا يمكن تغيير كلمة مرور مستخدم آخر عبر REST بمفتاح anon فقط
       const rows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
       return rows && rows[0];
     }
@@ -797,9 +893,9 @@ function visibleNotifications(all, user){
 }
 function isNotifUnread(n, userId){ return (n.read_by||[]).indexOf(userId) === -1; }
 
-function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); }
+function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); persistAuth(); }
 function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
-function logout(){ sessionStorage.removeItem('dtd_session'); State.user=null; NotifUI.open=false; NotifUI.compose=false; go('login'); }
+function logout(){ sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false; go('login'); }
 
 function go(screen, params){ State.screen = screen; State.params = params || {}; render(); window.scrollTo(0,0); }
 
@@ -1470,7 +1566,8 @@ function userModal(users, communities){
         '<h3>'+(editing?'تعديل مستخدم':'إضافة مستخدم جديد')+'</h3>' +
         '<div class="field"><label>الاسم الكامل</label><input class="input" id="umFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="umUsername" value="'+esc(editing?editing.username:'')+'" '+(editing?'disabled':'')+'></div>' +
-        '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':'')+'"></div>' +
+        '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':'')+'" '+(editing&&isRemote()?'disabled':'')+'></div>' +
+        (editing && isRemote() ? '<p style="color:var(--muted);font-size:12px;margin:-10px 0 16px;">لا يمكن تغيير كلمة المرور من هنا في وضع التشغيل السحابي. لإعادة تعيينها يلزم حذف الحساب وإضافته من جديد.</p>' : '') +
         '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
           ['coordinator','principal','teacher','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
         '</select></div>' +
@@ -1563,7 +1660,7 @@ async function screenAdminCommunities(){
       ? ('<div class="ind-row">' +
            '<div class="ind-main"><div class="lbl">قائد المجتمع: '+esc(leader.full_name)+'</div>' +
              '<div class="sub">اسم المستخدم: <span class="mono">'+esc(leader.username)+'</span></div></div>' +
-           '<div class="ind-side"><button class="btn btn-ghost btn-sm" data-action="exportLeaderCreds" data-id="'+leader.id+'">تصدير بيانات الدخول</button></div>' +
+           '<div class="ind-side">'+(isRemote() ? '<span style="color:var(--muted);font-size:11.5px;">كلمة المرور تُعرض فقط عند إنشاء الحساب</span>' : '<button class="btn btn-ghost btn-sm" data-action="exportLeaderCreds" data-id="'+leader.id+'">تصدير بيانات الدخول</button>')+'</div>' +
          '</div>')
       : ('<div class="ind-row">' +
            '<div class="ind-main"><div class="lbl">لا يوجد قائد معيَّن لهذا المجتمع.</div></div>' +
@@ -2245,6 +2342,7 @@ function bindGlobalAction(el){
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
 (function init(){
+  loadAuth();
   const u = loadUserSession();
   if (u){ State.user = u; go('dashboard'); }
   else { go('login'); }
