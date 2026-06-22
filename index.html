@@ -44,20 +44,20 @@ a{ color:var(--teal-dark); }
 
 /* ---------- login ---------- */
 .login-card{
-  width:100%; max-width:430px; background:var(--surface);
-  border-radius:16px; box-shadow:var(--shadow); padding:36px 32px 28px;
+  width:100%; max-width:520px; background:var(--surface);
+  border-radius:18px; box-shadow:var(--shadow); padding:44px 40px 34px;
   border:1px solid var(--border); position:relative; overflow:hidden;
 }
 .login-card::before{
   content:""; position:absolute; inset:0 0 auto 0; height:6px;
   background:linear-gradient(90deg,var(--navy),var(--teal),var(--gold));
 }
-.brand{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
-.brand-mark{ width:64px; height:64px; flex:none; object-fit:contain; }
-.brand-title{ font-size:15px; font-weight:800; color:var(--navy); line-height:1.3;}
-.brand-sub{ font-size:12px; color:var(--muted); }
-.login-h{ font-size:20px; margin:18px 0 4px; }
-.login-p{ color:var(--muted); font-size:13.5px; margin-bottom:20px; }
+.brand{ display:flex; align-items:center; gap:16px; margin-bottom:8px; }
+.brand-mark{ width:92px; height:92px; flex:none; object-fit:contain; }
+.brand-title{ font-size:18px; font-weight:800; color:var(--navy); line-height:1.3;}
+.brand-sub{ font-size:14px; color:var(--muted); }
+.login-h{ font-size:23px; margin:20px 0 5px; }
+.login-p{ color:var(--muted); font-size:14.5px; margin-bottom:22px; }
 .field{ margin-bottom:14px; }
 .field label{ display:block; font-size:13px; color:var(--navy-2); font-weight:700; margin-bottom:6px; }
 .input,select.input,textarea.input{
@@ -1476,7 +1476,7 @@ function screenLogin(){
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
         '<div class="hint-box">' +
           (isRemote() ?
-            ('وضع التشغيل الحالي: <b>سحابي (Supabase)</b><br>استخدم بيانات حسابك الحقيقي المُنشأ في Supabase.') :
+            ('برمجة الأستاذ عبدالله حمدي') :
             ('<b>للتجربة السريعة:</b><br>' +
             'حساب منسق المجتمع المهني — اسم المستخدم: <span class="mono">coordinator</span> / كلمة المرور: <span class="mono">1234</span><br>' +
             'حساب مدير المدرسة — اسم المستخدم: <span class="mono">principal</span> / كلمة المرور: <span class="mono">1234</span><br>' +
