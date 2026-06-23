@@ -501,6 +501,7 @@ create table students (
   section text,
   national_id text,
   notes text,
+  assigned_teacher_ids jsonb default '[]'::jsonb,
   created_at timestamptz default now()
 );
 
@@ -611,6 +612,12 @@ create policy "students_all" on students for all using ( school = my_school() or
 -- );
 -- alter table students enable row level security;
 -- create policy "students_all" on students for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+-- ميزة "رفع بيانات الطلاب وإسنادهم لعدة معلمين من لوحة مدير النظام" أُضيفت بعد
+-- إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا من قبل ولديك جدول students
+-- بالفعل، نفّذ هذا الأمر مرة واحدة في SQL Editor لإضافة عمود إسناد المعلمين
+-- (يخزَّن كمصفوفة JSON من معرّفات المعلمين لإتاحة إسناد الطالب لأكثر من معلم):
+-- alter table students add column if not exists assigned_teacher_ids jsonb default '[]'::jsonb;
 
 -- لإتاحة رفع الشواهد (صور/PDF/Word) في تبادل الخبرات، نفّذ هذا الأمر مرة واحدة:
 -- alter table practice_shares add column if not exists attachments jsonb default '[]'::jsonb;
@@ -3086,6 +3093,7 @@ function adminTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
       '<button class="tab '+(State.adminTab==='users'?'active':'')+'" data-action="adminTab" data-tab="users">المستخدمون</button>' +
+      '<button class="tab '+(State.adminTab==='students'?'active':'')+'" data-action="adminTab" data-tab="students">بيانات الطلاب</button>' +
       '<button class="tab '+(State.adminTab==='communities'?'active':'')+'" data-action="adminTab" data-tab="communities">المجتمعات المهنية</button>' +
       '<button class="tab '+(State.adminTab==='settings'?'active':'')+'" data-action="adminTab" data-tab="settings">إعدادات النظام</button>' +
     '</div>'
@@ -3231,7 +3239,7 @@ async function screenDashboard(){
       '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
       '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين، والمجتمعات المهنية</div>' +
       adminTabsHtml() +
-      (State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : await screenAdminUsers())
+      (State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : State.adminTab==='students' ? await screenAdminStudents() : await screenAdminUsers())
     );
   }
   if (State.dashTab==='community' && State.user.role==='coordinator'){
@@ -3329,7 +3337,7 @@ async function screenDashboard(){
 function bindDashboard(){
   document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
   if (State.user.role==='teacher') bindTeacherTasks();
-  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else bindAdminUsers(); }
+  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='communitiesEval' && State.user.role==='principal') bindPrincipalCommunities();
@@ -4005,6 +4013,390 @@ function bindAdminUsers(){
       for (let i=0;i<ids.length;i++){ await DB.deleteUser(ids[i]); }
       toast('تم حذف '+ids.length+' مستخدمًا.');
       AdminUI.selectedIds = []; render(); bindAdminUsers();
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- لوحة مدير النظام: بيانات الطلاب (رفع ملفات + إسناد لعدة معلمين) ----- */
+let AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', teacherSort:'alpha', pendingTeacherIds:[] };
+function distinctSorted(arr, field){
+  const set = new Set();
+  arr.forEach(function(x){ const v=(x[field]||'').trim(); if (v) set.add(v); });
+  return Array.from(set).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+}
+function compareGradeSection(a,b){
+  const g = (a.grade||'').localeCompare(b.grade||'','ar');
+  if (g) return g;
+  const s = (a.section||'').localeCompare(b.section||'','ar');
+  if (s) return s;
+  return (a.full_name||'').localeCompare(b.full_name||'','ar');
+}
+function teacherNamesForStudent(s, teachers){
+  const ids = Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids : [];
+  return ids.map(function(id){ const t = teachers.find(function(tt){ return tt.id===id; }); return t ? t.full_name : null; }).filter(Boolean);
+}
+function teacherChecklistHtml(teachers, communities, selectedIds, mode, chkClass){
+  selectedIds = selectedIds || [];
+  if (!teachers.length) return '<p style="color:var(--muted);font-size:13px;">لا يوجد معلمون مسجَّلون في هذه المدرسة بعد.</p>';
+  function row(t){
+    const checked = selectedIds.indexOf(t.id)>-1;
+    return (
+      '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13.5px;">' +
+        '<input type="checkbox" class="'+chkClass+'" data-teacher-id="'+t.id+'" '+(checked?'checked':'')+'>' +
+        '<span>'+esc(t.full_name)+(t.specialty?' <span style="color:var(--muted);font-size:12px;">— '+esc(t.specialty)+'</span>':'')+'</span>' +
+      '</label>'
+    );
+  }
+  if (mode==='community'){
+    const groups = communities.slice().sort(function(a,b){ return (a.name||'').localeCompare(b.name||'','ar'); });
+    let html = '';
+    groups.forEach(function(c){
+      const members = teachers.filter(function(t){ return t.community_id===c.id; }).sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+      if (!members.length) return;
+      html += '<div style="font-weight:700;color:var(--navy-2);font-size:12.5px;margin:10px 0 4px;">'+esc(c.name)+'</div>' + members.map(row).join('');
+    });
+    const unlinked = teachers.filter(function(t){ return !t.community_id; }).sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+    if (unlinked.length) html += '<div style="font-weight:700;color:var(--navy-2);font-size:12.5px;margin:10px 0 4px;">بدون مجتمع مهني</div>' + unlinked.map(row).join('');
+    return html || '<p style="color:var(--muted);font-size:13px;">لا يوجد معلمون مسجَّلون في هذه المدرسة بعد.</p>';
+  }
+  return teachers.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); }).map(row).join('');
+}
+function teacherSortToggleHtml(){
+  const alpha = AdminStudentUI.teacherSort!=='community';
+  return (
+    '<div style="display:flex;gap:6px;margin-bottom:8px;">' +
+      '<button type="button" class="btn btn-sm" data-action="adminStudentTeacherSort" data-mode="alpha" style="'+(alpha?'background:var(--navy);color:#fff;border:none;':'background:transparent;color:var(--navy);border:1.5px solid var(--border);')+'">ترتيب أبجدي</button>' +
+      '<button type="button" class="btn btn-sm" data-action="adminStudentTeacherSort" data-mode="community" style="'+(!alpha?'background:var(--navy);color:#fff;border:none;':'background:transparent;color:var(--navy);border:1.5px solid var(--border);')+'">ترتيب بالمجتمع المهني</button>' +
+    '</div>'
+  );
+}
+async function screenAdminStudents(){
+  const students = await DB.listStudents({ school: State.user.school });
+  const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher'; });
+  const communities = await DB.listCommunities({ school: State.user.school });
+
+  AdminStudentUI.selectedIds = AdminStudentUI.selectedIds.filter(function(id){ return students.some(function(s){ return s.id===id; }); });
+
+  const grades = distinctSorted(students, 'grade');
+  const sections = distinctSorted(students, 'section');
+
+  let filtered = students.slice();
+  if (AdminStudentUI.gradeFilter) filtered = filtered.filter(function(s){ return (s.grade||'')===AdminStudentUI.gradeFilter; });
+  if (AdminStudentUI.sectionFilter) filtered = filtered.filter(function(s){ return (s.section||'')===AdminStudentUI.sectionFilter; });
+  filtered.sort(compareGradeSection);
+
+  const allSelected = filtered.length>0 && filtered.every(function(s){ return AdminStudentUI.selectedIds.indexOf(s.id)>-1; });
+
+  const rows = filtered.map(function(s){
+    const checked = AdminStudentUI.selectedIds.indexOf(s.id)>-1;
+    const tNames = teacherNamesForStudent(s, teachers);
+    const assignedAttr = (Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids : []).join(',');
+    return (
+      '<tr>' +
+        '<td><input type="checkbox" class="adminStudentChk" data-id="'+s.id+'" '+(checked?'checked':'')+'></td>' +
+        '<td class="mono">'+esc(s.national_id||'—')+'</td>' +
+        '<td><b>'+esc(s.full_name)+'</b></td>' +
+        '<td>'+esc(s.grade||'—')+'</td>' +
+        '<td>'+esc(s.section||'—')+'</td>' +
+        '<td>'+(tNames.length?esc(tNames.join('، ')):'<span style="color:var(--muted);">— لم يُسنَد —</span>')+'</td>' +
+        '<td class="row-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="editAdminStudent" data-id="'+s.id+'" data-assigned="'+assignedAttr+'">تعديل</button>' +
+          '<button class="btn btn-danger btn-sm" data-action="deleteAdminStudent" data-id="'+s.id+'">حذف</button>' +
+        '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const modal = AdminStudentUI.modalOpen ? adminStudentModal(students, teachers, communities) : '';
+  const pasteModal = AdminStudentUI.pasteOpen ? adminStudentPasteImportModal() : '';
+  const assignModal = AdminStudentUI.assignOpen ? adminStudentAssignModal(teachers, communities) : '';
+
+  const bulkBar = AdminStudentUI.selectedIds.length>0 ? (
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card-2,#f4f6f8);border:1px solid var(--border,#e2e6ea);border-radius:10px;padding:10px 12px;margin-bottom:12px;">' +
+      '<b>المحدد: '+AdminStudentUI.selectedIds.length+'</b>' +
+      '<button class="btn btn-ghost btn-sm" data-action="openAdminStudentAssign">إسناد لمعلمين</button>' +
+      '<button class="btn btn-danger btn-sm" data-action="bulkDeleteAdminStudents">حذف المحددين</button>' +
+      '<button class="btn btn-ghost btn-sm" data-action="bulkClearAdminStudentSelection">إلغاء التحديد</button>' +
+    '</div>'
+  ) : '';
+
+  const filterBar = (
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<select class="input" id="astGradeFilter" style="max-width:220px;">' +
+        '<option value="">كل المراحل</option>' +
+        grades.map(function(g){ return '<option value="'+esc(g)+'" '+(AdminStudentUI.gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+      '</select>' +
+      '<select class="input" id="astSectionFilter" style="max-width:220px;">' +
+        '<option value="">كل الشعب</option>' +
+        sections.map(function(s){ return '<option value="'+esc(s)+'" '+(AdminStudentUI.sectionFilter===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('') +
+      '</select>' +
+    '</div>'
+  );
+
+  return (
+    '<div class="section-head"><h2>بيانات الطلاب</h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="downloadAdminStudentTemplate">تنزيل نموذج Excel للطلاب</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="triggerAdminStudentImport">رفع ملف الطلاب</button>' +
+        '<input type="file" id="adminStudentImportInput" accept=".csv" style="display:none;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="openAdminStudentPasteImport">لصق بيانات الطلاب</button>' +
+        '<button class="btn btn-primary" data-action="newAdminStudent">+ إضافة طالب</button>' +
+      '</div>' +
+    '</div>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ السجل المدني والاسم والمرحلة والشعبة لكل طالب، ثم ارفعه لاستيراد بيانات الطلاب دفعة واحدة بدلًا من إدخالها يدويًا. تُستخدم هذه البيانات لإسناد الطلاب للمعلمين مستقبلًا عند إعداد الخطط العلاجية، ويمكن إسناد الطالب الواحد لأكثر من معلم في نفس الوقت. استخدم الفلاتر أدناه لترتيب القائمة بالمرحلة ثم الشعبة وتسهيل الوصول للطالب المطلوب.</p>' +
+    filterBar + bulkBar +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th><input type="checkbox" id="adminStudentSelectAllChk" '+(allSelected?'checked':'')+'></th><th>السجل المدني</th><th>الاسم</th><th>المرحلة</th><th>الشعبة</th><th>المعلمون المسندون</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    modal + pasteModal + assignModal
+  );
+}
+function adminStudentModal(students, teachers, communities){
+  const editing = AdminStudentUI.editingId ? students.find(function(s){ return s.id===AdminStudentUI.editingId; }) : null;
+  return (
+    '<div class="modal-bg" data-action="closeAdminStudentModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>'+(editing?'تعديل بيانات طالب':'إضافة طالب جديد')+'</h3>' +
+        '<div class="field"><label>السجل المدني (اختياري)</label><input class="input" id="astNationalId" value="'+esc(editing?editing.national_id||'':'')+'"></div>' +
+        '<div class="field"><label>اسم الطالب</label><input class="input" id="astFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
+        '<div class="field"><label>المرحلة</label><input class="input" id="astGrade" value="'+esc(editing?editing.grade||'':'')+'"></div>' +
+        '<div class="field"><label>الشعبة</label><input class="input" id="astSection" value="'+esc(editing?editing.section||'':'')+'"></div>' +
+        '<div class="field"><label>ملاحظات (اختياري)</label><textarea class="input" id="astNotes">'+esc(editing?editing.notes||'':'')+'</textarea></div>' +
+        '<div class="field"><label>إسناد الطالب لمعلم أو أكثر (لإعداد الخطط العلاجية)</label>' +
+          teacherSortToggleHtml() +
+          '<div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">' +
+            teacherChecklistHtml(teachers, communities, AdminStudentUI.pendingTeacherIds, AdminStudentUI.teacherSort, 'astTeacherChk') +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveAdminStudent">'+(editing?'حفظ التعديل':'إضافة الطالب')+'</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeAdminStudentModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function adminStudentAssignModal(teachers, communities){
+  const count = AdminStudentUI.selectedIds.length;
+  return (
+    '<div class="modal-bg" data-action="closeAdminStudentAssignModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>إسناد المعلمين للطلاب المحددين</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">حدِّد معلمًا أو أكثر لإسنادهم إلى '+count+' طالبًا محددًا. سيُضاف المعلمون المحدَّدون إلى الإسناد الحالي لكل طالب دون حذف أي إسناد سابق، فيمكن إسناد الطالب الواحد لأكثر من معلم.</p>' +
+        teacherSortToggleHtml() +
+        '<div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">' +
+          teacherChecklistHtml(teachers, communities, AdminStudentUI.pendingTeacherIds, AdminStudentUI.teacherSort, 'asgTeacherChk') +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="confirmAdminStudentAssign">إسناد المعلمين المحددين</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeAdminStudentAssignModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function adminStudentPasteImportModal(){
+  return (
+    '<div class="modal-bg" data-action="closeAdminStudentPasteModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>لصق بيانات الطلاب</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات هنا مباشرة من Excel (سطر لكل طالب، الأعمدة بالترتيب: السجل المدني، ثم الاسم، ثم المرحلة، ثم الشعبة). يمكن أن يكون السطر الأول عناوين الأعمدة، وسيتم تجاهله تلقائيًا.</p>' +
+        '<div class="field"><textarea class="input" id="adminStudentPasteText" rows="10" placeholder="مثال:&#10;1012345678	خالد العتيبي	الرابع الابتدائي	أ&#10;1023456789	سارة الغامدي	الرابع الابتدائي	ب" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="confirmAdminStudentPasteImport">استيراد</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeAdminStudentPasteModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function isAdminStudentImportHeaderRow(first){
+  first = (first||'').trim();
+  return first === 'السجل المدني' || first === 'رقم الهوية' || first === 'الهوية' || first.toLowerCase() === 'id' || first.toLowerCase() === 'national_id';
+}
+async function importAdminStudentRows(dataRows){
+  let created = 0, skipped = 0;
+  for (let i=0;i<dataRows.length;i++){
+    const r = dataRows[i];
+    const national_id = (r[0]||'').trim();
+    const fullName = (r[1]||'').trim();
+    if (!fullName){ skipped++; continue; }
+    const grade = (r[2]||'').trim();
+    const section = (r[3]||'').trim();
+    try{
+      await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name:fullName, grade:grade, section:section, national_id:national_id, notes:'', assigned_teacher_ids:[] });
+      created++;
+    }catch(e){ skipped++; }
+  }
+  if (!created){ toast('لم يتم العثور على بيانات طلاب صالحة، يرجى مراجعة تنسيق الملف أو النص.'); return; }
+  toast('تم استيراد '+created+' طالبًا بنجاح'+(skipped?(' (تم تجاوز '+skipped+' سطرًا بلا اسم)'):'')+'.');
+  AdminStudentUI.pasteOpen = false;
+  render(); bindAdminStudents();
+}
+async function importAdminStudentsFromCsv(text){
+  const rows = parseCsv(text);
+  if (!rows.length){ toast('الملف فارغ.'); return; }
+  let dataRows = rows;
+  if (isAdminStudentImportHeaderRow(rows[0][0])){ dataRows = rows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات طلاب في الملف.'); return; }
+  await importAdminStudentRows(dataRows);
+}
+function bindAdminStudents(){
+  const newBtn = document.querySelector('[data-action="newAdminStudent"]');
+  if (newBtn) newBtn.addEventListener('click', function(){
+    AdminStudentUI.modalOpen = true; AdminStudentUI.editingId = null; AdminStudentUI.pendingTeacherIds = [];
+    render(); bindAdminStudents();
+  });
+  document.querySelectorAll('[data-action="editAdminStudent"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      AdminStudentUI.modalOpen = true; AdminStudentUI.editingId = el.getAttribute('data-id');
+      AdminStudentUI.pendingTeacherIds = (el.getAttribute('data-assigned')||'').split(',').filter(Boolean);
+      render(); bindAdminStudents();
+    });
+  });
+  document.querySelectorAll('[data-action="deleteAdminStudent"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف بيانات هذا الطالب؟ سيُزال أيضًا من أي إسناد لمعلمين.')) return;
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
+      catch(e){ toast(e.message); }
+    });
+  });
+  const closeModal = function(){ AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[]; render(); bindAdminStudents(); };
+  const closeModalBg = document.querySelector('[data-action="closeAdminStudentModalBg"]');
+  if (closeModalBg) closeModalBg.addEventListener('click', closeModal);
+  const closeModalBtn = document.querySelector('[data-action="closeAdminStudentModal"]');
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
+
+  document.querySelectorAll('.astTeacherChk, .asgTeacherChk').forEach(function(el){
+    el.addEventListener('change', function(){
+      const id = el.getAttribute('data-teacher-id');
+      const idx = AdminStudentUI.pendingTeacherIds.indexOf(id);
+      if (el.checked && idx===-1) AdminStudentUI.pendingTeacherIds.push(id);
+      else if (!el.checked && idx>-1) AdminStudentUI.pendingTeacherIds.splice(idx,1);
+    });
+  });
+  document.querySelectorAll('[data-action="adminStudentTeacherSort"]').forEach(function(el){
+    el.addEventListener('click', function(){ AdminStudentUI.teacherSort = el.getAttribute('data-mode'); render(); bindAdminStudents(); });
+  });
+
+  const saveBtn = document.querySelector('[data-action="saveAdminStudent"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const full_name = document.getElementById('astFullName').value.trim();
+    if (!full_name){ toast('يرجى إدخال اسم الطالب.'); return; }
+    const national_id = document.getElementById('astNationalId').value.trim();
+    const grade = document.getElementById('astGrade').value.trim();
+    const section = document.getElementById('astSection').value.trim();
+    const notes = document.getElementById('astNotes').value.trim();
+    const assigned_teacher_ids = AdminStudentUI.pendingTeacherIds.slice();
+    try{
+      if (AdminStudentUI.editingId){
+        await DB.updateStudent(AdminStudentUI.editingId, { full_name, grade, section, national_id, notes, assigned_teacher_ids });
+        toast('تم حفظ تعديل بيانات الطالب.');
+      } else {
+        await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, national_id, notes, assigned_teacher_ids });
+        toast('تم إضافة الطالب بنجاح.');
+      }
+      AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[];
+      render(); bindAdminStudents();
+    }catch(e){ toast(e.message); }
+  });
+
+  const templateBtn = document.querySelector('[data-action="downloadAdminStudentTemplate"]');
+  if (templateBtn) templateBtn.addEventListener('click', function(){
+    const rows = [['السجل المدني','الاسم','المرحلة','الشعبة'], ['1012345678','خالد العتيبي','الرابع الابتدائي','أ']];
+    downloadTextFile('نموذج_رفع_بيانات_الطلاب.csv', toCsv(rows));
+  });
+  const importBtn = document.querySelector('[data-action="triggerAdminStudentImport"]');
+  const importInput = document.getElementById('adminStudentImportInput');
+  if (importBtn && importInput) importBtn.addEventListener('click', function(){ importInput.click(); });
+  if (importInput) importInput.addEventListener('change', function(){
+    const file = importInput.files && importInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(){ await importAdminStudentsFromCsv(String(reader.result)); };
+    reader.readAsText(file, 'UTF-8');
+  });
+  const openPasteBtn = document.querySelector('[data-action="openAdminStudentPasteImport"]');
+  if (openPasteBtn) openPasteBtn.addEventListener('click', function(){ AdminStudentUI.pasteOpen = true; render(); bindAdminStudents(); });
+  const closePaste = function(){ AdminStudentUI.pasteOpen = false; render(); bindAdminStudents(); };
+  const closePasteBg = document.querySelector('[data-action="closeAdminStudentPasteModalBg"]');
+  if (closePasteBg) closePasteBg.addEventListener('click', closePaste);
+  const closePasteBtn = document.querySelector('[data-action="closeAdminStudentPasteModal"]');
+  if (closePasteBtn) closePasteBtn.addEventListener('click', closePaste);
+  const confirmPasteBtn = document.querySelector('[data-action="confirmAdminStudentPasteImport"]');
+  if (confirmPasteBtn) confirmPasteBtn.addEventListener('click', async function(){
+    const text = document.getElementById('adminStudentPasteText').value;
+    const rows = parseFlexibleRows(text);
+    if (!rows.length){ toast('لم تُلصق أي بيانات.'); return; }
+    let dataRows = rows;
+    if (isAdminStudentImportHeaderRow(rows[0][0])) dataRows = rows.slice(1);
+    if (!dataRows.length){ toast('لا توجد بيانات طلاب في النص الملصق.'); return; }
+    await importAdminStudentRows(dataRows);
+  });
+
+  const gradeFilterEl = document.getElementById('astGradeFilter');
+  if (gradeFilterEl) gradeFilterEl.addEventListener('change', function(){ AdminStudentUI.gradeFilter = gradeFilterEl.value; render(); bindAdminStudents(); });
+  const sectionFilterEl = document.getElementById('astSectionFilter');
+  if (sectionFilterEl) sectionFilterEl.addEventListener('change', function(){ AdminStudentUI.sectionFilter = sectionFilterEl.value; render(); bindAdminStudents(); });
+
+  const selectAllChk = document.getElementById('adminStudentSelectAllChk');
+  if (selectAllChk) selectAllChk.addEventListener('change', function(){
+    document.querySelectorAll('.adminStudentChk').forEach(function(el){
+      const id = el.getAttribute('data-id');
+      const idx = AdminStudentUI.selectedIds.indexOf(id);
+      if (selectAllChk.checked && idx===-1) AdminStudentUI.selectedIds.push(id);
+      else if (!selectAllChk.checked && idx>-1) AdminStudentUI.selectedIds.splice(idx,1);
+    });
+    render(); bindAdminStudents();
+  });
+  document.querySelectorAll('.adminStudentChk').forEach(function(el){
+    el.addEventListener('change', function(){
+      const id = el.getAttribute('data-id');
+      const idx = AdminStudentUI.selectedIds.indexOf(id);
+      if (el.checked && idx===-1) AdminStudentUI.selectedIds.push(id);
+      else if (!el.checked && idx>-1) AdminStudentUI.selectedIds.splice(idx,1);
+      render(); bindAdminStudents();
+    });
+  });
+  const bulkClearBtn = document.querySelector('[data-action="bulkClearAdminStudentSelection"]');
+  if (bulkClearBtn) bulkClearBtn.addEventListener('click', function(){ AdminStudentUI.selectedIds = []; render(); bindAdminStudents(); });
+  const bulkDeleteBtn = document.querySelector('[data-action="bulkDeleteAdminStudents"]');
+  if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
+    const ids = AdminStudentUI.selectedIds.slice();
+    if (!ids.length) return;
+    if (!confirm('هل تريد حذف '+ids.length+' طالبًا محددًا؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    try{
+      for (let i=0;i<ids.length;i++){ await DB.deleteStudent(ids[i]); }
+      toast('تم حذف '+ids.length+' طالبًا.');
+      AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
+    }catch(e){ toast(e.message); }
+  });
+
+  const openAssignBtn = document.querySelector('[data-action="openAdminStudentAssign"]');
+  if (openAssignBtn) openAssignBtn.addEventListener('click', function(){ AdminStudentUI.assignOpen = true; AdminStudentUI.pendingTeacherIds = []; render(); bindAdminStudents(); });
+  const closeAssign = function(){ AdminStudentUI.assignOpen = false; AdminStudentUI.pendingTeacherIds = []; render(); bindAdminStudents(); };
+  const closeAssignBg = document.querySelector('[data-action="closeAdminStudentAssignModalBg"]');
+  if (closeAssignBg) closeAssignBg.addEventListener('click', closeAssign);
+  const closeAssignBtn = document.querySelector('[data-action="closeAdminStudentAssignModal"]');
+  if (closeAssignBtn) closeAssignBtn.addEventListener('click', closeAssign);
+  const confirmAssignBtn = document.querySelector('[data-action="confirmAdminStudentAssign"]');
+  if (confirmAssignBtn) confirmAssignBtn.addEventListener('click', async function(){
+    const teacherIds = AdminStudentUI.pendingTeacherIds.slice();
+    if (!teacherIds.length){ toast('يرجى تحديد معلم واحد على الأقل.'); return; }
+    const studentIds = AdminStudentUI.selectedIds.slice();
+    try{
+      const allStudents = await DB.listStudents({ school: State.user.school });
+      for (let i=0;i<studentIds.length;i++){
+        const s = allStudents.find(function(x){ return x.id===studentIds[i]; });
+        if (!s) continue;
+        const current = Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids.slice() : [];
+        teacherIds.forEach(function(tid){ if (current.indexOf(tid)===-1) current.push(tid); });
+        await DB.updateStudent(s.id, { assigned_teacher_ids: current });
+      }
+      toast('تم إسناد المعلمين المحددين لـ '+studentIds.length+' طالبًا.');
+      AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
+      render(); bindAdminStudents();
     }catch(e){ toast(e.message); }
   });
 }
