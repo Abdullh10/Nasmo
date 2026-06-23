@@ -194,7 +194,7 @@ table.list tr:hover td{ background:#FAFCFE; }
 .chk input{ accent-color:var(--teal); }
 .chk.checked{ background:#EAF6F5; border-color:var(--teal); color:var(--teal-dark); font-weight:700; }
 
-.dyn-table{ width:100%; border-collapse:collapse; margin-bottom:10px; }
+.dyn-table{ width:100%; min-width:840px; border-collapse:collapse; margin-bottom:10px; }
 .dyn-table th{ font-size:11.5px; color:var(--muted); text-align:right; padding:7px 8px; border-bottom:1.5px solid var(--border); }
 .dyn-table td{ padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
 .dyn-table input, .dyn-table textarea{ width:100%; }
@@ -1041,12 +1041,16 @@ const DB = {
   },
   async deleteCommunity(id){
     if (isRemote()){
+      await remoteFetch('profiles?community_id=eq.' + encodeURIComponent(id), { method:'PATCH', body:{ community_id:null } });
       await remoteFetch('communities?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
       return true;
     }
     let communities = JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]');
     communities = communities.filter(function(c){ return c.id!==id; });
     localStorage.setItem(LS_COMMUNITIES, JSON.stringify(communities));
+    let users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    users = users.map(function(u){ return u.community_id===id ? Object.assign({}, u, { community_id:null }) : u; });
+    localStorage.setItem(LS_USERS, JSON.stringify(users));
     return true;
   },
   async listNotifications(filter){
@@ -3499,8 +3503,8 @@ function bindTeacherSession(){
 let TaskDetailCache = null;
 async function screenTaskDetail(taskId, readonly){
   const t = await DB.getTask(taskId);
-  if (!TaskDetailCache || TaskDetailCache.id !== taskId){
-    TaskDetailCache = { id:t.id, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice() };
+  if (!TaskDetailCache || TaskDetailCache.id !== taskId || TaskDetailCache.completed_at !== t.completed_at){
+    TaskDetailCache = { id:t.id, completed_at:t.completed_at, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice() };
   }
   const isOwner = State.user.role==='teacher' && t.assigned_to===State.user.id;
   const ro = !!readonly || !isOwner;
@@ -3688,7 +3692,7 @@ async function importTeacherRows(dataRows){
   if (!created.length && !skippedExisting.length && !failed.length){ toast('لم يتم العثور على بيانات معلمين صالحة، يرجى مراجعة تنسيق الملف.'); return; }
   const parts = [];
   if (created.length) parts.push('تم استيراد '+created.length+' معلمًا بنجاح');
-  if (skippedExisting.length) parts.push('تم تجاوز '+skippedExisting.length+' (لديهم حساب موجود مسبقًا بنفس رقم الجوال): '+skippedExisting.slice(0,5).join('، ')+(skippedExisting.length>5?' ...':''));
+  if (skippedExisting.length) parts.push('تم تجاوز '+skippedExisting.length+' (لديهم حساب موجود مسبقًا بنفس اسم المستخدم المُستخرج): '+skippedExisting.slice(0,5).join('، ')+(skippedExisting.length>5?' ...':''));
   if (failed.length) parts.push('فشل إنشاء '+failed.length+': '+failed.slice(0,5).join('، ')+(failed.length>5?' ...':''));
   toast(parts.join(' — '));
   if (!created.length) return;
@@ -3924,8 +3928,14 @@ function bindAdminUsers(){
   if (importInput) importInput.addEventListener('change', function(){
     const file = importInput.files && importInput.files[0];
     if (!file) return;
+    if (AdminUI.importBusy) return;
+    AdminUI.importBusy = true;
+    if (importBtn){ importBtn.disabled = true; importBtn.textContent = 'جارٍ الاستيراد...'; }
     const reader = new FileReader();
-    reader.onload = async function(){ await importTeachersFromCsv(String(reader.result)); };
+    reader.onload = async function(){
+      try{ await importTeachersFromCsv(String(reader.result)); }
+      finally{ AdminUI.importBusy = false; importInput.value = ''; render(); bindAdminUsers(); }
+    };
     reader.readAsText(file, 'UTF-8');
   });
 
@@ -3937,10 +3947,18 @@ function bindAdminUsers(){
   pasteCloseEls.forEach(function(el){ el.addEventListener('click', function(){ AdminUI.pasteOpen = false; render(); bindAdminUsers(); }); });
   const pasteConfirmBtn = document.querySelector('[data-action="confirmPasteImport"]');
   if (pasteConfirmBtn) pasteConfirmBtn.addEventListener('click', async function(){
+    if (AdminUI.importBusy) return;
     const text = document.getElementById('pasteImportText').value;
     if (!text || !text.trim()){ toast('يرجى لصق البيانات أولًا.'); return; }
-    await importTeachersFromPaste(text);
-    AdminUI.pasteOpen = false; render(); bindAdminUsers();
+    AdminUI.importBusy = true;
+    pasteConfirmBtn.disabled = true;
+    pasteConfirmBtn.textContent = 'جارٍ الاستيراد...';
+    try{ await importTeachersFromPaste(text); }
+    finally{
+      AdminUI.importBusy = false;
+      AdminUI.pasteOpen = false;
+      render(); bindAdminUsers();
+    }
   });
 
   document.querySelectorAll('.userSelectChk').forEach(function(el){
