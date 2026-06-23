@@ -388,6 +388,8 @@ create table submissions (
   preparer_signature text,
   principal_signature text,
   principal_comment text,
+  principal_rating int check (principal_rating between 1 and 5),
+  principal_note text,
   submitted_at timestamptz,
   approved_at timestamptz,
   created_at timestamptz default now(),
@@ -604,6 +606,11 @@ create policy "students_all" on students for all using ( school = my_school() or
 
 -- لإتاحة رفع الشواهد (صور/PDF/Word) في تبادل الخبرات، نفّذ هذا الأمر مرة واحدة:
 -- alter table practice_shares add column if not exists attachments jsonb default '[]'::jsonb;
+
+-- لإتاحة تقييم المدير وتغذيته الراجعة عند اعتماد النماذج (إضافة إلى التوقيع
+-- والاعتماد)، نفّذ هذين الأمرين مرة واحدة:
+-- alter table submissions add column if not exists principal_rating int check (principal_rating between 1 and 5);
+-- alter table submissions add column if not exists principal_note text;
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -3410,9 +3417,12 @@ function bindTeacherTasks(){
 /* ----- شاشة المعلم: تعبئة جلسة متابعة محددة ورفع الشواهد ----- */
 let TeacherSessionCache = null;
 async function screenTeacherSession(subId, idx){
-  const s = await DB.getSubmission(subId);
+  if (!TeacherSessionCache || TeacherSessionCache.sub.id !== subId || TeacherSessionCache.idx !== idx){
+    const s = await DB.getSubmission(subId);
+    TeacherSessionCache = { sub: s, idx: idx };
+  }
+  const s = TeacherSessionCache.sub;
   const sess = s.payload.sessions[idx];
-  TeacherSessionCache = { sub: s, idx: idx };
   const files = (sess.evidenceFiles||[]).map(function(f, i){
     return '<div class="evidence-thumb"><img src="'+f+'"><button type="button" class="rmv-ev" data-action="rmvEvidence" data-i="'+i+'">✕</button></div>';
   }).join('');
@@ -3446,6 +3456,11 @@ function bindTeacherSession(){
       TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx][el.getAttribute('data-field')] = el.value;
     });
   });
+  function preserveUnsavedSig(){
+    const pad = Pads['pad_teacher_sess'];
+    const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
+    if (pad && !pad.isEmpty()) sess.sig = pad.toDataUrl();
+  }
   document.getElementById('evidenceInput').addEventListener('change', function(e){
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
     sess.evidenceFiles = sess.evidenceFiles || [];
@@ -3453,6 +3468,7 @@ function bindTeacherSession(){
       const reader = new FileReader();
       reader.onload = function(){
         sess.evidenceFiles.push(reader.result);
+        preserveUnsavedSig();
         render(); bindTeacherSession();
       };
       reader.readAsDataURL(file);
@@ -3462,6 +3478,7 @@ function bindTeacherSession(){
     el.addEventListener('click', function(){
       const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
       sess.evidenceFiles.splice(+el.getAttribute('data-i'), 1);
+      preserveUnsavedSig();
       render(); bindTeacherSession();
     });
   });
@@ -4722,6 +4739,12 @@ async function screenView(id){
   const stamp = s.status==='approved' ? (
     '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
   ) : '';
+  const evalBlock = (s.status==='approved' && (s.principal_rating || s.principal_note)) ? (
+    '<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة وتغذيته الراجعة</h3>' +
+      (s.principal_rating ? ('<p style="margin:0 0 6px;font-size:18px;">'+'★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)+'</p>') : '') +
+      (s.principal_note ? ('<p style="color:var(--muted);font-size:13px;">'+esc(s.principal_note)+'</p>') : '') +
+    '</div>'
+  ) : '';
   return (
     '<div class="sheet-wrap">' +
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
@@ -4738,6 +4761,7 @@ async function screenView(id){
           '<div><div class="who">اعتماد مدير المدرسة</div>'+buildSignaturePad('v_principal', s.principal_signature, true)+(s.approved_at?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">اعتُمد بتاريخ '+fmtDateTime(s.approved_at)+'</div>':'')+'</div>' +
         '</div>' +
       '</div>' +
+      evalBlock +
     '</div>'
   );
 }
@@ -4776,7 +4800,11 @@ async function screenReview(id){
       '<div class="review-panel no-print">' +
         '<h3>اعتماد مدير المدرسة</h3>' +
         '<div class="review-grid">' +
-          '<div class="field"><label>ملاحظات (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع أو أي ملاحظة..."></textarea></div>' +
+          '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
+          '<div class="field"><label>التقييم عند الاعتماد (1 إلى 5)</label><select class="input" id="reviewRating">' +
+            [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(s.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
           '<div class="field"><label>التوقيع الإلكتروني لمدير المدرسة</label>' + buildSignaturePad('approve', null, false) + '</div>' +
           '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
           '<button class="btn btn-danger btn-block" data-action="returnSub">إرجاع للتعديل</button>' +
@@ -4794,9 +4822,11 @@ function bindReview(){
   document.querySelector('[data-action="approveSub"]').addEventListener('click', async function(){
     const pad = Pads['pad_approve'];
     if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); return; }
+    const rating = +document.getElementById('reviewRating').value;
+    const note = document.getElementById('reviewNote').value.trim();
     try{
-      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null });
-      toast('تم اعتماد النموذج بختم رسمي.');
+      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
+      toast('تم اعتماد وتقييم النموذج بختم رسمي.');
       go('view', { id: ReviewCache.id });
     }catch(e){ toast(e.message); }
   });
