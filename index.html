@@ -1713,13 +1713,29 @@ function teacherSelectInlineHtml(fieldPath, value, teachers, ro){
     '</select>' + manualInput
   );
 }
+function studentOptionsHtml(students, value, isManual){
+  students = students || [];
+  const myId = State.user && State.user.id;
+  const assigned = [];
+  const others = [];
+  students.forEach(function(s){
+    const ids = Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids : [];
+    if (myId && ids.indexOf(myId)>-1) assigned.push(s); else others.push(s);
+  });
+  function opt(s){ return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>'; }
+  if (assigned.length && others.length){
+    return (
+      '<optgroup label="طلابي المسندون">' + assigned.map(opt).join('') + '</optgroup>' +
+      '<optgroup label="بقية طلاب المدرسة">' + others.map(opt).join('') + '</optgroup>'
+    );
+  }
+  return students.map(opt).join('');
+}
 function studentSelectHtml(label, fieldPath, value, students, ro){
   if (ro) return inputField(label, fieldPath, value, {readonly:true});
   students = students || [];
   const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = students.map(function(s){
-    return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>';
-  }).join('');
+  const opts = studentOptionsHtml(students, value, isManual);
   const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
   return (
     '<div class="field"><label>'+esc(label)+'</label>' +
@@ -1735,9 +1751,7 @@ function studentSelectInlineHtml(fieldPath, value, students, ro){
   if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
   students = students || [];
   const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = students.map(function(s){
-    return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>';
-  }).join('');
+  const opts = studentOptionsHtml(students, value, isManual);
   const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
   return (
     '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
@@ -2916,14 +2930,22 @@ function bindPracticeBank(){
 let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false };
 async function screenStudentRoster(){
   const students = await DB.listStudents({ school: State.user.school });
-  const sorted = students.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||''); });
+  const myId = State.user.id;
+  const sorted = students.slice().sort(function(a,b){
+    const aMine = Array.isArray(a.assigned_teacher_ids) && a.assigned_teacher_ids.indexOf(myId)>-1;
+    const bMine = Array.isArray(b.assigned_teacher_ids) && b.assigned_teacher_ids.indexOf(myId)>-1;
+    if (aMine!==bMine) return aMine ? -1 : 1;
+    return (a.full_name||'').localeCompare(b.full_name||'');
+  });
   const rows = sorted.map(function(s){
+    const isMine = Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(myId)>-1;
     return (
       '<tr>' +
         '<td><b>'+esc(s.full_name)+'</b></td>' +
         '<td>'+esc(s.grade||'—')+'</td>' +
         '<td>'+esc(s.section||'—')+'</td>' +
         '<td>'+esc(s.national_id||'—')+'</td>' +
+        '<td>'+(isMine?'<span class="badge approved">مُسند لي</span>':'<span style="color:var(--muted);">—</span>')+'</td>' +
         '<td>'+esc(s.created_by_name||'')+'</td>' +
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
@@ -2945,10 +2967,10 @@ async function screenStudentRoster(){
         '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة وتقليل الأخطاء. سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة وتقليل الأخطاء. سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة، والطلاب الذين أسندهم مدير النظام لك يظهرون أولًا ومُعلَّمون بـ"مُسند لي".</p>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>أضافه</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
+      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>الإسناد</th><th>أضافه</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal + pasteModal
   );
