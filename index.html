@@ -3928,8 +3928,14 @@ function bindAdminUsers(){
   if (importInput) importInput.addEventListener('change', function(){
     const file = importInput.files && importInput.files[0];
     if (!file) return;
+    if (AdminUI.importBusy) return;
+    AdminUI.importBusy = true;
+    if (importBtn){ importBtn.disabled = true; importBtn.textContent = 'جارٍ الاستيراد...'; }
     const reader = new FileReader();
-    reader.onload = async function(){ await importTeachersFromCsv(String(reader.result)); };
+    reader.onload = async function(){
+      try{ await importTeachersFromCsv(String(reader.result)); }
+      finally{ AdminUI.importBusy = false; importInput.value = ''; render(); bindAdminUsers(); }
+    };
     reader.readAsText(file, 'UTF-8');
   });
 
@@ -3941,10 +3947,18 @@ function bindAdminUsers(){
   pasteCloseEls.forEach(function(el){ el.addEventListener('click', function(){ AdminUI.pasteOpen = false; render(); bindAdminUsers(); }); });
   const pasteConfirmBtn = document.querySelector('[data-action="confirmPasteImport"]');
   if (pasteConfirmBtn) pasteConfirmBtn.addEventListener('click', async function(){
+    if (AdminUI.importBusy) return;
     const text = document.getElementById('pasteImportText').value;
     if (!text || !text.trim()){ toast('يرجى لصق البيانات أولًا.'); return; }
-    await importTeachersFromPaste(text);
-    AdminUI.pasteOpen = false; render(); bindAdminUsers();
+    AdminUI.importBusy = true;
+    pasteConfirmBtn.disabled = true;
+    pasteConfirmBtn.textContent = 'جارٍ الاستيراد...';
+    try{ await importTeachersFromPaste(text); }
+    finally{
+      AdminUI.importBusy = false;
+      AdminUI.pasteOpen = false;
+      render(); bindAdminUsers();
+    }
   });
 
   document.querySelectorAll('.userSelectChk').forEach(function(el){
