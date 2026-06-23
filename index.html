@@ -202,10 +202,12 @@ table.list tr:hover td{ background:#FAFCFE; }
 .chk input{ accent-color:var(--teal); }
 .chk.checked{ background:#EAF6F5; border-color:var(--teal); color:var(--teal-dark); font-weight:700; }
 
-.dyn-table{ width:100%; min-width:840px; border-collapse:collapse; margin-bottom:10px; }
-.dyn-table th{ font-size:11.5px; color:var(--muted); text-align:right; padding:7px 8px; border-bottom:1.5px solid var(--border); }
-.dyn-table td{ padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
-.dyn-table input, .dyn-table textarea{ width:100%; }
+.dyn-table{ width:100%; min-width:840px; table-layout:fixed; border-collapse:collapse; margin-bottom:10px; }
+.dyn-table th{ font-size:11.5px; color:var(--muted); text-align:right; padding:7px 8px; border-bottom:1.5px solid var(--border); overflow-wrap:break-word; }
+.dyn-table td{ padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:break-word; }
+.dyn-table input, .dyn-table textarea{ width:100%; box-sizing:border-box; }
+.dyn-table textarea.input{ min-height:54px; resize:vertical; }
+.dyn-table .checkbox-group{ max-width:100%; }
 .dyn-table .rmv{ background:none; border:none; color:var(--danger); font-size:16px; padding:2px 6px;}
 .add-row-btn{ font-size:12.5px; font-weight:700; color:var(--teal-dark); background:#EAF6F5; border:1px dashed var(--teal); padding:7px 14px; border-radius:8px; }
 
@@ -4945,7 +4947,7 @@ function renderGroupPlan(d, ro, students){
     '</div>' +
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الاسم</th><th>شواهد التشخيص</th><th>المهارات المستهدفة</th><th>الأساليب المطبقة</th><th>الشواهد التعليمية</th><th>مؤشر التقدم</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:11%;">الاسم</th><th style="width:15%;">شواهد التشخيص</th><th style="width:15%;">المهارات المستهدفة</th><th style="width:19.5%;">الأساليب المطبقة</th><th style="width:19.5%;">الشواهد التعليمية</th><th style="width:19%;">مؤشر التقدم</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
     inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'})
@@ -4972,7 +4974,7 @@ function renderIndicatorReport(d, ro, teachers){
     '</div>' +
     '<div class="field"><label>المؤشر</label>'+checkboxGroup('indicators', ['اجتماع','حضور','حلقة نقاش','حصر','لقاء جماعي','كلمة توعوية','مشاركة','مداولة تربوية','مناقشة النتائج','تكريم'], d.indicators)+'</div>' +
     '<div class="block-title"><span class="dot"></span> المشاركون</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>العدد</th><th>الاسم</th><th>التخصص</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:60px;">العدد</th><th style="width:40%;">الاسم</th><th>التخصص</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="participants">+ إضافة مشارك</button>') +
     '<div class="block-title"><span class="dot"></span> الوصف</div>' + inputField('','description', d.description, {type:'textarea', readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> التوصيات</div>' + inputField('','recommendations', d.recommendations, {type:'textarea', readonly:ro}) +
@@ -5031,7 +5033,7 @@ function renderBehavioralPlan(d, ro, students){
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="field"><label>هل تم إشعار ولي الأمر؟</label>'+radioGroup('parentNotified', ['نعم','لا'], d.parentNotified)+'</div>' +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون وتحليل السلوك</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الاسم</th><th>السلوك المستهدَف</th><th>الأسباب المحتملة</th><th>استراتيجيات التدخل</th><th>إجراءات المتابعة</th><th>النتيجة</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:10%;">الاسم</th><th style="width:13%;">السلوك المستهدَف</th><th style="width:13%;">الأسباب المحتملة</th><th style="width:24%;">استراتيجيات التدخل</th><th style="width:24%;">إجراءات المتابعة</th><th style="width:12%;">النتيجة</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="behaviorStudents">+ إضافة طالب</button>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم وملاحظات ختامية</div>' +
     inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بعد تطبيق استراتيجيات التدخل أعلاه لمدة...، لوحظ تحسّن في...'})
@@ -5091,12 +5093,12 @@ function renderPlcMeeting(d, ro, teachers){
     '</div>' +
     '<div class="field"><label>نوع اللقاء</label>'+radioGroup('meetingType', ['اجتماع دوري','حلقة نقاش','لقاء تدريبي','أخرى'], d.meetingType)+'</div>' +
     '<div class="block-title"><span class="dot"></span> الحضور</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الاسم</th><th>التخصص</th><th>حاضر</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+attRows+'</tbody></table></div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:45%;">الاسم</th><th>التخصص</th><th style="width:80px;">حاضر</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+attRows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="attendees">+ إضافة مشارك</button>') +
     '<div class="block-title"><span class="dot"></span> جدول الأعمال</div>' + agenda + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="agenda">+ إضافة بند</button>') +
     '<div class="block-title"><span class="dot"></span> ملخص النقاش</div>' + inputField('','summary', d.summary, {type:'textarea', readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> القرارات والمتابعات</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>القرار</th><th>المسؤول</th><th>الموعد</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+decisions+'</tbody></table></div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:45%;">القرار</th><th style="width:30%;">المسؤول</th><th>الموعد</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+decisions+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="decisions">+ إضافة قرار</button>')
   );
 }
@@ -5122,7 +5124,7 @@ function renderMotivation(d, ro){
     inputField('الاستراتيجية المستخدمة (من بنك استراتيجيات التحفيز)','strategy',d.strategy,{readonly:ro}) +
     inputField('وصف المبادرة','description',d.description,{type:'textarea',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> مؤشرات قياس الأثر</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>المؤشر</th><th>القيمة قبل المبادرة</th><th>المستهدف</th><th>الفعلي</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+impacts+'</tbody></table></div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:40%;">المؤشر</th><th>القيمة قبل المبادرة</th><th>المستهدف</th><th>الفعلي</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+impacts+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="impacts">+ إضافة مؤشر</button>')
   );
 }
