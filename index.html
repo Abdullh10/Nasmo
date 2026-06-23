@@ -232,6 +232,7 @@ textarea.input{ resize:vertical; min-height:64px; }
 .evidence-thumb{ position:relative; width:84px; height:84px; border-radius:8px; overflow:hidden; border:1.5px solid var(--border); }
 .evidence-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
 .evidence-thumb .rmv-ev{ position:absolute; top:2px; left:2px; background:rgba(185,28,28,.9); color:#fff; border:none; width:20px; height:20px; border-radius:50%; font-size:12px; line-height:1; }
+.evidence-thumb .ev-download{ position:absolute; bottom:2px; right:2px; background:rgba(15,42,77,.85); color:#fff; border:none; width:20px; height:20px; border-radius:50%; font-size:11px; line-height:1; display:flex; align-items:center; justify-content:center; text-decoration:none; }
 .evidence-add{ width:84px; height:84px; border-radius:8px; border:1.5px dashed var(--teal); background:#EAF6F5; color:var(--teal-dark); display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; }
 .evidence-thumb.file{ background:#F3F4F6; }
 .evidence-thumb.file .file-ic{ font-size:22px; }
@@ -423,6 +424,9 @@ create table tasks (
   principal_rating int check (principal_rating between 1 and 5),
   principal_note text,
   principal_reviewed_at timestamptz,
+  coordinator_status text check (coordinator_status in ('returned')),
+  coordinator_note text,
+  coordinator_reviewed_at timestamptz,
   created_at timestamptz default now()
 );
 
@@ -468,6 +472,8 @@ create table plc_goals (
   principal_rating int check (principal_rating between 1 and 5),
   principal_note text,
   principal_reviewed_at timestamptz,
+  assigned_member_ids jsonb default '[]'::jsonb,
+  evidence_files jsonb default '[]'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -626,6 +632,16 @@ create policy "students_all" on students for all using ( school = my_school() or
 -- والاعتماد)، نفّذ هذين الأمرين مرة واحدة:
 -- alter table submissions add column if not exists principal_rating int check (principal_rating between 1 and 5);
 -- alter table submissions add column if not exists principal_note text;
+
+-- ميزة "تنزيل شواهد المهام وإرجاعها من المنسق + توكيل أعضاء المجتمع المهني بتنفيذ
+-- خطة التحسين ورفع شواهد إنجازها" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على
+-- Supabase موجودًا من قبل (لديك جدولا tasks و plc_goals بالفعل)، نفّذ هذه الأوامر
+-- مرة واحدة في SQL Editor:
+-- alter table tasks add column if not exists coordinator_status text check (coordinator_status in ('returned'));
+-- alter table tasks add column if not exists coordinator_note text;
+-- alter table tasks add column if not exists coordinator_reviewed_at timestamptz;
+-- alter table plc_goals add column if not exists assigned_member_ids jsonb default '[]'::jsonb;
+-- alter table plc_goals add column if not exists evidence_files jsonb default '[]'::jsonb;
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -1459,6 +1475,18 @@ function principalReviewBadgeHtml(item){
   const stars = item.principal_rating ? (' '+'★'.repeat(item.principal_rating)+'☆'.repeat(5-item.principal_rating)) : '';
   return '<span class="badge '+cls+'">'+PRINCIPAL_STATUS_LABEL[item.principal_status]+stars+'</span>';
 }
+function coordinatorReturnBadgeHtml(item){
+  return item.coordinator_status==='returned' ? '<span class="badge returned">أُعيدت من المنسق للتعديل</span>' : '';
+}
+function dataUrlExt(dataUrl){
+  const m = /^data:([^;]+);/.exec(dataUrl||'');
+  const mime = m ? m[1] : '';
+  if (mime.indexOf('pdf')>-1) return 'pdf';
+  if (mime.indexOf('jpeg')>-1 || mime.indexOf('jpg')>-1) return 'jpg';
+  if (mime.indexOf('gif')>-1) return 'gif';
+  if (mime.indexOf('webp')>-1) return 'webp';
+  return 'png';
+}
 
 /* ---------------------- مؤشرات الدليل التنفيذي للبرنامج ---------------------- */
 const PROGRAM_DEFS = [
@@ -1713,13 +1741,29 @@ function teacherSelectInlineHtml(fieldPath, value, teachers, ro){
     '</select>' + manualInput
   );
 }
+function studentOptionsHtml(students, value, isManual){
+  students = students || [];
+  const myId = State.user && State.user.id;
+  const assigned = [];
+  const others = [];
+  students.forEach(function(s){
+    const ids = Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids : [];
+    if (myId && ids.indexOf(myId)>-1) assigned.push(s); else others.push(s);
+  });
+  function opt(s){ return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>'; }
+  if (assigned.length && others.length){
+    return (
+      '<optgroup label="طلابي المسندون">' + assigned.map(opt).join('') + '</optgroup>' +
+      '<optgroup label="بقية طلاب المدرسة">' + others.map(opt).join('') + '</optgroup>'
+    );
+  }
+  return students.map(opt).join('');
+}
 function studentSelectHtml(label, fieldPath, value, students, ro){
   if (ro) return inputField(label, fieldPath, value, {readonly:true});
   students = students || [];
   const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = students.map(function(s){
-    return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>';
-  }).join('');
+  const opts = studentOptionsHtml(students, value, isManual);
   const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
   return (
     '<div class="field"><label>'+esc(label)+'</label>' +
@@ -1735,9 +1779,7 @@ function studentSelectInlineHtml(fieldPath, value, students, ro){
   if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
   students = students || [];
   const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = students.map(function(s){
-    return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>';
-  }).join('');
+  const opts = studentOptionsHtml(students, value, isManual);
   const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
   return (
     '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
@@ -2321,12 +2363,15 @@ async function screenCoordinatorTasks(){
 
   const rows = sorted.map(function(t){
     const done = t.status==='done';
+    const wasReturned = !done && t.coordinator_status==='returned';
+    const statusCls = done ? 'approved' : (wasReturned ? 'returned' : 'pending');
+    const statusLbl = done ? 'مكتملة' : (wasReturned ? 'أُعيدت للمعلم وبانتظار التعديل' : 'بانتظار التنفيذ');
     return (
       '<tr>' +
         '<td><b>'+esc(t.title)+'</b>'+(t.description?('<div style="color:var(--muted);font-size:12px;">'+esc(t.description)+'</div>'):'')+'</td>' +
         '<td>'+esc(t.assigned_to_name||'')+'</td>' +
         '<td>'+(t.due_date?fmtDate(t.due_date):'—')+'</td>' +
-        '<td><span class="badge '+(done?'approved':'pending')+'">'+(done?'مكتملة':'بانتظار التنفيذ')+'</span></td>' +
+        '<td><span class="badge '+statusCls+'">'+statusLbl+'</span></td>' +
         '<td class="row-actions"><button class="btn btn-ghost btn-sm" data-action="viewTask" data-id="'+t.id+'">عرض</button></td>' +
       '</tr>'
     );
@@ -2399,7 +2444,25 @@ function bindCoordinatorTasks(){
 }
 
 /* ----- خطة التحسين الفصلية وتتبع الأهداف (منسق المجتمع المهني) ----- */
-let GoalsUI = { modalOpen:false, editId:null };
+let GoalsUI = { modalOpen:false, editId:null, draft:null };
+function blankGoalDraft(){
+  return { title:'', measure_unit:'', baseline_value:'', target_value:'', current_value:'', due_date:'', semester:'1', status:'active', category:'academic', assigned_member_ids:[], evidence_files:[] };
+}
+function goalDraftFrom(g){
+  return {
+    title:g.title||'', measure_unit:g.measure_unit||'', baseline_value:g.baseline_value!=null?g.baseline_value:'', target_value:g.target_value!=null?g.target_value:'',
+    current_value:g.current_value!=null?g.current_value:'', due_date:g.due_date||'', semester:g.semester||'1', status:g.status||'active', category:g.category||'academic',
+    assigned_member_ids:(g.assigned_member_ids||[]).slice(), evidence_files:(g.evidence_files||[]).slice()
+  };
+}
+function syncGoalDraftFromForm(){
+  const d = GoalsUI.draft;
+  if (!d) return;
+  ['glTitle:title','glSemester:semester','glCategory:category','glUnit:measure_unit','glBaseline:baseline_value','glTarget:target_value','glCurrent:current_value','glDue:due_date','glStatus:status'].forEach(function(pair){
+    const parts = pair.split(':'); const el = document.getElementById(parts[0]);
+    if (el) d[parts[1]] = el.value;
+  });
+}
 function goalProgressRate(goal){
   const base = Number(goal.baseline_value), target = Number(goal.target_value), cur = Number(goal.current_value);
   if (!isFinite(base) || !isFinite(target) || !isFinite(cur) || target===base) return null;
@@ -2430,6 +2493,9 @@ function communityScorecard(parts){
 function pctLabel(rate){ return rate==null ? '—' : Math.round(rate*100)+'%'; }
 async function screenCoordinatorGoals(){
   const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
+  const members = State.user.community_id
+    ? (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher' && u.community_id===State.user.community_id; })
+    : [];
   const sorted = goals.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
   const counts = { active:0, achieved:0, missed:0 };
   goals.forEach(function(g){ counts[g.status] = (counts[g.status]||0)+1; });
@@ -2439,9 +2505,11 @@ async function screenCoordinatorGoals(){
     const pct = rate==null ? '—' : Math.round(rate*100)+'%';
     const statusLabel = g.status==='achieved' ? 'تم تحقيقه' : g.status==='missed' ? 'لم يتحقق' : 'قيد التنفيذ';
     const statusClass = g.status==='achieved' ? 'approved' : g.status==='missed' ? 'returned' : 'pending';
+    const assignedNames = (g.assigned_member_ids||[]).map(function(id){ const m = members.find(function(x){ return x.id===id; }); return m ? m.full_name : null; }).filter(Boolean);
+    const assignedHtml = assignedNames.length ? ('<div style="color:var(--muted);font-size:11.5px;margin-top:3px;">مُوكَّل إلى: '+esc(assignedNames.join('، '))+'</div>') : '';
     return (
       '<tr>' +
-        '<td><b>'+esc(g.title)+'</b><div style="color:var(--muted);font-size:12px;">الفصل '+esc(SEMESTER_LABELS[g.semester]||g.semester||'—')+' · '+esc(GOAL_CATEGORY_LABEL[g.category]||GOAL_CATEGORY_LABEL.academic)+'</div></td>' +
+        '<td><b>'+esc(g.title)+'</b><div style="color:var(--muted);font-size:12px;">الفصل '+esc(SEMESTER_LABELS[g.semester]||g.semester||'—')+' · '+esc(GOAL_CATEGORY_LABEL[g.category]||GOAL_CATEGORY_LABEL.academic)+'</div>'+assignedHtml+'</td>' +
         '<td>'+esc(g.baseline_value!=null && g.baseline_value!=='' ? g.baseline_value : '—')+' ← '+esc(g.target_value!=null && g.target_value!=='' ? g.target_value : '—')+' '+esc(g.measure_unit||'')+'</td>' +
         '<td>'+esc(g.current_value!=null && g.current_value!=='' ? g.current_value : '—')+'</td>' +
         '<td>'+pct+'</td>' +
@@ -2454,7 +2522,7 @@ async function screenCoordinatorGoals(){
   }).join('');
 
   const editGoal = GoalsUI.editId ? goals.find(function(g){ return g.id===GoalsUI.editId; }) : null;
-  const modal = GoalsUI.modalOpen ? goalComposeModal(editGoal) : '';
+  const modal = GoalsUI.modalOpen ? goalComposeModal(GoalsUI.draft, members) : '';
 
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
@@ -2477,12 +2545,14 @@ async function screenCoordinatorGoals(){
     modal
   );
 }
-function goalComposeModal(goal){
-  const g = goal || { title:'', measure_unit:'', baseline_value:'', target_value:'', current_value:'', due_date:'', semester:'', status:'active', category:'academic' };
+function goalComposeModal(draft, members){
+  const g = draft || blankGoalDraft();
+  members = members || [];
+  const isEdit = !!GoalsUI.editId;
   return (
     '<div class="modal-bg" data-action="closeGoalModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
-        '<h3>'+(goal?'تعديل الهدف':'هدف جديد')+'</h3>' +
+        '<h3>'+(isEdit?'تعديل الهدف':'هدف جديد')+'</h3>' +
         '<div class="field"><label>عنوان الهدف</label><input class="input" id="glTitle" value="'+esc(g.title)+'" placeholder="مثال: رفع نسبة إنجاز خطط الدروس النموذجية"></div>' +
         '<div class="field"><label>الفصل الدراسي</label><select class="input" id="glSemester">' +
           ['1','2','3'].map(function(v){ return '<option value="'+v+'" '+(v===g.semester?'selected':'')+'>الفصل '+SEMESTER_LABELS[v]+'</option>'; }).join('') +
@@ -2509,8 +2579,20 @@ function goalComposeModal(goal){
           '<option value="achieved" '+(g.status==='achieved'?'selected':'')+'>تم تحقيقه</option>' +
           '<option value="missed" '+(g.status==='missed'?'selected':'')+'>لم يتحقق</option>' +
         '</select></div>' +
+        '<div class="field"><label>توكيل تنفيذ الخطة لأعضاء المجتمع (اختياري)</label>' +
+          '<div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">' +
+            teacherChecklistHtml(members, [], g.assigned_member_ids||[], null, 'goalMemberChk') +
+          '</div>' +
+        '</div>' +
+        (g.status==='achieved' ? (
+          '<div class="field"><label>شواهد التحقق (صور أو PDF)</label>' +
+            '<div class="evidence-grid">' + attachmentsGridHtml(g.evidence_files||[], true, 'rmvGoalEvidence') +
+              '<label class="evidence-add">+<input type="file" id="glEvidenceInput" accept="image/*,.pdf" multiple style="display:none;"></label>' +
+            '</div>' +
+          '</div>'
+        ) : '') +
         '<div class="modal-actions">' +
-          '<button class="btn btn-primary btn-block" data-action="saveGoal">'+(goal?'حفظ التعديلات':'إضافة الهدف')+'</button>' +
+          '<button class="btn btn-primary btn-block" data-action="saveGoal">'+(isEdit?'حفظ التعديلات':'إضافة الهدف')+'</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeGoalModal">إلغاء</button>' +
         '</div>' +
       '</div>' +
@@ -2519,8 +2601,8 @@ function goalComposeModal(goal){
 }
 function bindCoordinatorGoals(){
   const newBtn = document.querySelector('[data-action="newGoal"]');
-  if (newBtn) newBtn.addEventListener('click', function(){ GoalsUI.modalOpen = true; GoalsUI.editId = null; render(); bindCoordinatorGoals(); });
-  const closeModal = function(){ GoalsUI.modalOpen = false; GoalsUI.editId = null; render(); bindCoordinatorGoals(); };
+  if (newBtn) newBtn.addEventListener('click', function(){ GoalsUI.modalOpen = true; GoalsUI.editId = null; GoalsUI.draft = blankGoalDraft(); render(); bindCoordinatorGoals(); });
+  const closeModal = function(){ GoalsUI.modalOpen = false; GoalsUI.editId = null; GoalsUI.draft = null; render(); bindCoordinatorGoals(); };
   const closeBtn = document.querySelector('[data-action="closeGoalModal"]');
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   const closeBg = document.querySelector('[data-action="closeGoalModalBg"]');
@@ -2535,7 +2617,13 @@ function bindCoordinatorGoals(){
     document.getElementById('glCategory').value = tpl.category;
   });
   document.querySelectorAll('[data-action="editGoal"]').forEach(function(el){
-    el.addEventListener('click', function(){ GoalsUI.modalOpen = true; GoalsUI.editId = el.getAttribute('data-id'); render(); bindCoordinatorGoals(); });
+    el.addEventListener('click', async function(){
+      const id = el.getAttribute('data-id');
+      const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
+      const goal = goals.find(function(g){ return g.id===id; });
+      GoalsUI.modalOpen = true; GoalsUI.editId = id; GoalsUI.draft = goalDraftFrom(goal||{});
+      render(); bindCoordinatorGoals();
+    });
   });
   document.querySelectorAll('[data-action="deleteGoal"]').forEach(function(el){
     el.addEventListener('click', async function(){
@@ -2543,34 +2631,73 @@ function bindCoordinatorGoals(){
       try{ await DB.deleteGoal(el.getAttribute('data-id')); toast('تم حذف الهدف.'); render(); bindCoordinatorGoals(); }catch(e){ toast(e.message); }
     });
   });
+  const glStatusEl = document.getElementById('glStatus');
+  if (glStatusEl) glStatusEl.addEventListener('change', function(){
+    syncGoalDraftFromForm();
+    GoalsUI.draft.status = glStatusEl.value;
+    render(); bindCoordinatorGoals();
+  });
+  document.querySelectorAll('.goalMemberChk').forEach(function(el){
+    el.addEventListener('change', function(){
+      const id = el.getAttribute('data-teacher-id');
+      const d = GoalsUI.draft;
+      const idx = d.assigned_member_ids.indexOf(id);
+      if (el.checked && idx===-1) d.assigned_member_ids.push(id);
+      else if (!el.checked && idx>-1) d.assigned_member_ids.splice(idx, 1);
+    });
+  });
+  const glEvidenceInput = document.getElementById('glEvidenceInput');
+  if (glEvidenceInput) glEvidenceInput.addEventListener('change', function(e){
+    syncGoalDraftFromForm();
+    Array.from(e.target.files).forEach(function(file){
+      const reader = new FileReader();
+      reader.onload = function(){
+        GoalsUI.draft.evidence_files = GoalsUI.draft.evidence_files || [];
+        GoalsUI.draft.evidence_files.push({ name:file.name, type:file.type, data:reader.result });
+        render(); bindCoordinatorGoals();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('[data-action="rmvGoalEvidence"]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.preventDefault();
+      syncGoalDraftFromForm();
+      GoalsUI.draft.evidence_files.splice(+el.getAttribute('data-i'), 1);
+      render(); bindCoordinatorGoals();
+    });
+  });
   const saveBtn = document.querySelector('[data-action="saveGoal"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
-    const title = document.getElementById('glTitle').value.trim();
+    syncGoalDraftFromForm();
+    const d = GoalsUI.draft;
+    const title = d.title.trim();
     if (!title){ toast('يرجى إدخال عنوان الهدف.'); return; }
-    const semester = document.getElementById('glSemester').value;
-    const measure_unit = document.getElementById('glUnit').value.trim();
-    const baseline = document.getElementById('glBaseline').value;
-    const target = document.getElementById('glTarget').value;
-    const current = document.getElementById('glCurrent').value;
-    const due_date = document.getElementById('glDue').value;
-    const status = document.getElementById('glStatus').value;
-    const category = document.getElementById('glCategory').value;
     const patch = {
-      title:title, semester:semester, measure_unit:measure_unit||null, category:category,
-      baseline_value: baseline===''?null:Number(baseline),
-      target_value: target===''?null:Number(target),
-      current_value: current===''?null:Number(current),
-      due_date: due_date||null, status:status
+      title:title, semester:d.semester, measure_unit:d.measure_unit.trim()||null, category:d.category,
+      baseline_value: d.baseline_value===''?null:Number(d.baseline_value),
+      target_value: d.target_value===''?null:Number(d.target_value),
+      current_value: d.current_value===''?null:Number(d.current_value),
+      due_date: d.due_date||null, status:d.status,
+      assigned_member_ids: d.assigned_member_ids||[],
+      evidence_files: d.status==='achieved' ? (d.evidence_files||[]) : []
     };
     try{
-      if (GoalsUI.editId){
-        await DB.updateGoal(GoalsUI.editId, patch);
+      let saved;
+      const wasEdit = !!GoalsUI.editId;
+      if (wasEdit){
+        saved = await DB.updateGoal(GoalsUI.editId, patch);
         toast('تم حفظ التعديلات.');
       } else {
-        await DB.createGoal(Object.assign({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name }, patch));
+        saved = await DB.createGoal(Object.assign({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name }, patch));
         toast('تم إضافة الهدف.');
       }
-      GoalsUI.modalOpen = false; GoalsUI.editId = null;
+      if (saved && patch.assigned_member_ids.length){
+        patch.assigned_member_ids.forEach(function(memberId){
+          DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:memberId, type:'general', title:'تم توكيلك بتنفيذ خطة تحسين: '+title, body:'وكَّلك '+State.user.full_name+' بتنفيذ خطة التحسين "'+title+'"، يرجى متابعتها وتنفيذها.' }).catch(function(){});
+        });
+      }
+      GoalsUI.modalOpen = false; GoalsUI.editId = null; GoalsUI.draft = null;
       render(); bindCoordinatorGoals();
     }catch(e){ toast(e.message); }
   });
@@ -2695,9 +2822,9 @@ function bindPrincipalReview(){
 
 /* ----- بنك تبادل الخبرات: مشاركة الممارسات التدريسية الناجحة بين المعلمين، واعتماد مدير المدرسة وتقييمه لها ----- */
 let PracticeBankUI = { composeOpen:false, reviewId:null, attachments:[], title:'', category:'teacherSupport', description:'', attachment_note:'' };
-function attachmentThumbHtml(f, i, removable){
+function attachmentThumbHtml(f, i, removable, rmvAction){
   const isImg = /^image\//.test(f.type||'');
-  const rmv = removable ? '<button type="button" class="rmv-ev" data-action="rmvPracticeFile" data-i="'+i+'">✕</button>' : '';
+  const rmv = removable ? '<button type="button" class="rmv-ev" data-action="'+(rmvAction||'rmvPracticeFile')+'" data-i="'+i+'">✕</button>' : '';
   if (isImg){
     return '<div class="evidence-thumb"><img src="'+f.data+'">'+rmv+'</div>';
   }
@@ -2712,8 +2839,8 @@ function attachmentThumbHtml(f, i, removable){
     '</div>'
   );
 }
-function attachmentsGridHtml(attachments, removable){
-  return (attachments||[]).map(function(f, i){ return attachmentThumbHtml(f, i, removable); }).join('');
+function attachmentsGridHtml(attachments, removable, rmvAction){
+  return (attachments||[]).map(function(f, i){ return attachmentThumbHtml(f, i, removable, rmvAction); }).join('');
 }
 async function screenPracticeBank(){
   const shares = await DB.listPracticeShares({ school: State.user.school });
@@ -2916,14 +3043,22 @@ function bindPracticeBank(){
 let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false };
 async function screenStudentRoster(){
   const students = await DB.listStudents({ school: State.user.school });
-  const sorted = students.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||''); });
+  const myId = State.user.id;
+  const sorted = students.slice().sort(function(a,b){
+    const aMine = Array.isArray(a.assigned_teacher_ids) && a.assigned_teacher_ids.indexOf(myId)>-1;
+    const bMine = Array.isArray(b.assigned_teacher_ids) && b.assigned_teacher_ids.indexOf(myId)>-1;
+    if (aMine!==bMine) return aMine ? -1 : 1;
+    return (a.full_name||'').localeCompare(b.full_name||'');
+  });
   const rows = sorted.map(function(s){
+    const isMine = Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(myId)>-1;
     return (
       '<tr>' +
         '<td><b>'+esc(s.full_name)+'</b></td>' +
         '<td>'+esc(s.grade||'—')+'</td>' +
         '<td>'+esc(s.section||'—')+'</td>' +
         '<td>'+esc(s.national_id||'—')+'</td>' +
+        '<td>'+(isMine?'<span class="badge approved">مُسند لي</span>':'<span style="color:var(--muted);">—</span>')+'</td>' +
         '<td>'+esc(s.created_by_name||'')+'</td>' +
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
@@ -2945,10 +3080,10 @@ async function screenStudentRoster(){
         '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة وتقليل الأخطاء. سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة وتقليل الأخطاء. سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة، والطلاب الذين أسندهم مدير النظام لك يظهرون أولًا ومُعلَّمون بـ"مُسند لي".</p>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>أضافه</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
+      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>الإسناد</th><th>أضافه</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal + pasteModal
   );
@@ -3384,6 +3519,21 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
+  const myGoals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return (g.assigned_member_ids||[]).indexOf(State.user.id)>-1; });
+  myGoals.sort(function(a,b){ return ((a.status==='achieved'?1:0) - (b.status==='achieved'?1:0)) || (new Date(a.due_date||0) - new Date(b.due_date||0)); });
+  const goalCards = myGoals.map(function(g){
+    const rate = goalProgressRate(g);
+    const statusLbl = g.status==='achieved' ? 'تم تحقيقه' : g.status==='missed' ? 'لم يتحقق' : 'قيد التنفيذ';
+    const statusColor = g.status==='achieved' ? 'var(--success)' : g.status==='missed' ? 'var(--danger)' : 'var(--pending)';
+    return (
+      '<div class="task-card">' +
+        '<div class="meta"><b>'+esc(g.title)+'</b>' +
+          '<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">الفصل '+esc(SEMESTER_LABELS[g.semester]||g.semester||'—')+' · '+esc(GOAL_CATEGORY_LABEL[g.category]||GOAL_CATEGORY_LABEL.academic)+(g.due_date?(' · الموعد: '+fmtDate(g.due_date)):'')+'</div>' +
+          '<span>المنسق المُوكِّل: '+esc(g.created_by_name||'')+(rate!=null?(' · نسبة التحقق: '+Math.round(rate*100)+'%'):'')+' · <span style="color:'+statusColor+';font-weight:700;">'+statusLbl+'</span></span></div>' +
+      '</div>'
+    );
+  }).join('');
+
   const myForms = subs.filter(function(s){ return s.created_by===State.user.id; })
     .sort(function(a,b){ return new Date(b.created_at||0) - new Date(a.created_at||0); });
   const myFormsRows = myForms.map(function(s){
@@ -3418,7 +3568,8 @@ async function screenTeacherTasks(){
       '<tbody>' + (myFormsRows || '<tr class="empty-row"><td colspan="4">لم تُنشئ أي نموذج بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     (taskCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
-    (sessCards ? ('<div class="block-title" style="margin-top:'+(taskCards?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '')
+    (goalCards ? ('<div class="block-title" style="margin-top:'+(taskCards?'22px':'0')+';"><span class="dot"></span> خطط تحسين موكَّل إليك تنفيذها</div>' + goalCards) : '') +
+    (sessCards ? ('<div class="block-title" style="margin-top:'+((taskCards||goalCards)?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '')
   );
 }
 function bindTeacherTasks(){
@@ -3525,7 +3676,12 @@ async function screenTaskDetail(taskId, readonly){
   const isOwner = State.user.role==='teacher' && t.assigned_to===State.user.id;
   const ro = !!readonly || !isOwner;
   const files = TaskDetailCache.evidence_files.map(function(f, i){
-    return '<div class="evidence-thumb"><img src="'+f+'">' + (ro ? '' : '<button type="button" class="rmv-ev" data-action="rmvTaskEvidence" data-i="'+i+'">✕</button>') + '</div>';
+    return (
+      '<div class="evidence-thumb"><img src="'+f+'">' +
+        '<a class="ev-download" href="'+f+'" download="شاهد-'+(i+1)+'.'+dataUrlExt(f)+'" title="تنزيل الشاهد" target="_blank">⬇</a>' +
+        (ro ? '' : '<button type="button" class="rmv-ev" data-action="rmvTaskEvidence" data-i="'+i+'">✕</button>') +
+      '</div>'
+    );
   }).join('');
   const isPrincipal = State.user.role==='principal';
   const canReview = isPrincipal && t.status==='done';
@@ -3543,6 +3699,18 @@ async function screenTaskDetail(taskId, readonly){
       '</div>' +
     '</div>'
   ) : (t.principal_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة</h3><p style="margin:0 0 6px;">'+principalReviewBadgeHtml(t)+'</p>'+(t.principal_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.principal_note)+'</p>'):'')+'</div>') : '');
+  const isCoordinatorOwner = State.user.role==='coordinator' && t.created_by===State.user.id;
+  const canCoordinatorReturn = isCoordinatorOwner && t.status==='done';
+  const coordinatorPanel = canCoordinatorReturn ? (
+    '<div class="review-panel no-print" style="margin-top:16px;">' +
+      '<h3>إرجاع المهمة للمعلم</h3>' +
+      (t.coordinator_status ? ('<p style="margin:0 0 10px;">'+coordinatorReturnBadgeHtml(t)+'</p>') : '') +
+      '<div class="review-grid">' +
+        '<div class="field"><label>ملاحظة الإرجاع (مطلوبة)</label><textarea class="input" id="taskCoordNote" placeholder="اكتب سبب إرجاع المهمة للمعلم لتعديلها...">'+esc(t.coordinator_note||'')+'</textarea></div>' +
+        '<button class="btn btn-danger btn-block" data-action="coordinatorReturnTask">إرجاع المهمة مع الملاحظة</button>' +
+      '</div>' +
+    '</div>'
+  ) : (!isPrincipal && t.coordinator_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>ملاحظة المنسق</h3><p style="margin:0 0 6px;">'+coordinatorReturnBadgeHtml(t)+'</p>'+(t.coordinator_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.coordinator_note)+'</p>'):'')+'</div>') : '');
   return (
     '<div class="sheet-wrap">' +
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
@@ -3562,6 +3730,7 @@ async function screenTaskDetail(taskId, readonly){
         '</div>'
       ) +
       reviewPanel +
+      coordinatorPanel +
     '</div>'
   );
 }
@@ -3590,7 +3759,12 @@ function bindTaskDetail(){
   if (completeBtn) completeBtn.addEventListener('click', async function(){
     if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); return; }
     try{
-      await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso() });
+      const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso() });
+      if (updated && updated.created_by){
+        try{
+          await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'أنجز المعلم مهمة: '+updated.title, body:'قام '+State.user.full_name+' بإنجاز المهمة ورفع الشواهد، بانتظار مراجعتك.' });
+        }catch(e){}
+      }
       toast('تم حفظ المهمة وتمييزها كمكتملة.');
       go('dashboard');
     }catch(e){ toast(e.message); }
@@ -3613,6 +3787,21 @@ function bindTaskDetail(){
     try{
       await DB.updateTask(TaskDetailCache.id, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso(), status:'pending' });
       toast('تم إرجاع المهمة إلى المعلم للتعديل.');
+      go('dashboard');
+    }catch(e){ toast(e.message); }
+  });
+  const coordReturnBtn = document.querySelector('[data-action="coordinatorReturnTask"]');
+  if (coordReturnBtn) coordReturnBtn.addEventListener('click', async function(){
+    const note = document.getElementById('taskCoordNote').value.trim();
+    if (!note){ toast('يرجى كتابة ملاحظة توضح سبب إرجاع المهمة.'); return; }
+    try{
+      const updated = await DB.updateTask(TaskDetailCache.id, { coordinator_status:'returned', coordinator_note: note, coordinator_reviewed_at: nowIso(), status:'pending' });
+      if (updated && updated.assigned_to){
+        try{
+          await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.assigned_to, type:'general', title:'تم إرجاع مهمة لتعديلها: '+updated.title, body:note });
+        }catch(e){}
+      }
+      toast('تم إرجاع المهمة إلى المعلم مع الملاحظة.');
       go('dashboard');
     }catch(e){ toast(e.message); }
   });
