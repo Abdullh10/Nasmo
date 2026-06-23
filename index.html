@@ -478,6 +478,19 @@ create table practice_shares (
   updated_at timestamptz default now()
 );
 
+create table students (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  created_by uuid references profiles(id),
+  created_by_name text,
+  full_name text not null,
+  grade text,
+  section text,
+  national_id text,
+  notes text,
+  created_at timestamptz default now()
+);
+
 -- دوال مساعدة (security definer) لقراءة دور/مدرسة المستخدم الحالي من JWT دون تكرار سياسات profiles على نفسها:
 create or replace function my_role() returns text language sql security definer stable as $$
   select role from profiles where id = auth.uid()
@@ -496,6 +509,7 @@ alter table site_settings enable row level security;
 alter table tasks enable row level security;
 alter table plc_goals enable row level security;
 alter table practice_shares enable row level security;
+alter table students enable row level security;
 
 create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
 create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
@@ -523,6 +537,8 @@ create policy "tasks_all" on tasks for all using ( school = my_school() or my_ro
 create policy "plc_goals_all" on plc_goals for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 create policy "practice_shares_all" on practice_shares for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+create policy "students_all" on students for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 -- ميزة "المهام" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا
 -- من قبل، نفّذ فقط الجزء الخاص بجدول tasks وسياسته أعلاه (create table tasks...
@@ -564,6 +580,24 @@ create policy "practice_shares_all" on practice_shares for all using ( school = 
 -- );
 -- alter table practice_shares enable row level security;
 -- create policy "practice_shares_all" on practice_shares for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+-- ميزة "تطوير حساب المعلم" (الخطة العلاجية السلوكية + رفع بيانات الطلاب) أُضيفت
+-- بعد إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا من قبل، نفّذ هذه الأوامر
+-- مرة واحدة في SQL Editor لإضافة جدول بيانات الطلاب:
+-- create table students (
+--   id uuid primary key default gen_random_uuid(),
+--   school text not null,
+--   created_by uuid references profiles(id),
+--   created_by_name text,
+--   full_name text not null,
+--   grade text,
+--   section text,
+--   national_id text,
+--   notes text,
+--   created_at timestamptz default now()
+-- );
+-- alter table students enable row level security;
+-- create policy "students_all" on students for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -655,6 +689,7 @@ const LS_SITE_SETTINGS = "dtd_site_settings_v1";
 const LS_TASKS = "dtd_tasks_v1";
 const LS_GOALS = "dtd_goals_v1";
 const LS_PRACTICE = "dtd_practice_v1";
+const LS_STUDENTS = "dtd_students_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -1175,6 +1210,57 @@ const DB = {
     localStorage.setItem(LS_PRACTICE, JSON.stringify(list));
     return true;
   },
+  async listStudents(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'students?order=full_name.asc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      if (filter.createdBy) path += '&created_by=eq.' + encodeURIComponent(filter.createdBy);
+      try{
+        const rows = await remoteFetch(path);
+        return rows || [];
+      }catch(e){
+        console.warn('students table not available yet (run the SQL migration to enable student rosters):', e.message);
+        return [];
+      }
+    }
+    let list = JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]');
+    if (filter.school) list = list.filter(function(s){ return s.school===filter.school; });
+    if (filter.createdBy) list = list.filter(function(s){ return s.created_by===filter.createdBy; });
+    return list.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||''); });
+  },
+  async createStudent(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('students', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_STUDENTS, JSON.stringify(list));
+    return obj;
+  },
+  async updateStudent(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('students?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]');
+    const idx = list.findIndex(function(s){ return s.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_STUDENTS, JSON.stringify(list)); return list[idx]; }
+    return null;
+  },
+  async deleteStudent(id){
+    if (isRemote()){
+      await remoteFetch('students?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]');
+    list = list.filter(function(s){ return s.id!==id; });
+    localStorage.setItem(LS_STUDENTS, JSON.stringify(list));
+    return true;
+  },
   async clearData(types, school){
     types = types || [];
     if (isRemote()){
@@ -1286,14 +1372,15 @@ if (!isRemote()) localSeed();
 
 /* ---------------------- تعريف النماذج ---------------------- */
 const FORM_DEFS = [
-  { id:'groupPlan', no:1, title:'الخطة العلاجية (الجماعية)', desc:'تسجيل الطلاب المتعثرين ضمن مجموعة، والمهارات المستهدفة والأساليب والشواهد.', icon:'👥', color:'#0E7C7B', source:true },
+  { id:'groupPlan', no:1, title:'الخطة العلاجية (الجماعية)', desc:'تسجيل الطلاب المتعثرين ضمن مجموعة، والمهارات المستهدفة والأساليب والشواهد.', icon:'👥', color:'#0E7C7B', source:true, teacherAccess:true },
   { id:'indicatorReport', no:2, title:'التقرير العام للمؤشرات', desc:'توثيق فعاليات الفاعلية الجماعية أو الاستجابة للتدخل والمشاركين والوصف والتوصيات.', icon:'📊', color:'#0B2A4A', source:true },
-  { id:'individualAgreement', no:3, title:'اتفاقية الخطة العلاجية الفردية', desc:'اتفاقية مع ولي الأمر عند انتقال الطالب للخطة الفردية، مع متابعات أسبوعية متعددة المعلمين.', icon:'🤝', color:'#B45309', source:true },
+  { id:'individualAgreement', no:3, title:'اتفاقية الخطة العلاجية الفردية', desc:'اتفاقية مع ولي الأمر عند انتقال الطالب للخطة الفردية، مع متابعات أسبوعية متعددة المعلمين.', icon:'🤝', color:'#B45309', source:true, teacherAccess:true },
   { id:'modelLesson', no:4, title:'الحصة النموذجية', desc:'توثيق حصة نموذجية لمجتمع تعلم مهني وإيجابيات الموقف التعليمي.', icon:'📝', color:'#7C3AED', source:true },
   { id:'plcMeetingMinutes', no:5, title:'محضر لقاء مجتمع التعلم المهني', desc:'محضر رسمي للاجتماعات: الحضور وجدول الأعمال والقرارات والمتابعات.', icon:'🗂️', color:'#0E5A82', source:false },
-  { id:'motivationInitiative', no:6, title:'توثيق مبادرة تحفيزية وقياس الأثر', desc:'توثيق مبادرات تحفيز المعلمين والمتعلمين ومؤشرات قياس الأثر.', icon:'🏆', color:'#B8860B', source:false },
+  { id:'motivationInitiative', no:6, title:'توثيق مبادرة تحفيزية وقياس الأثر', desc:'توثيق مبادرات تحفيز المعلمين والمتعلمين ومؤشرات قياس الأثر.', icon:'🏆', color:'#B8860B', source:false, teacherAccess:true },
   { id:'plcSelfEval', no:7, title:'التقييم الذاتي الفصلي لمجتمع التعلم', desc:'تقييم ذاتي لأداء المجتمع وفق معايير الرؤية المشتركة والفرق التعاونية والاستقصاء الجماعي والتوجه العملي والنتائج.', icon:'🧭', color:'#1F6F50', source:false },
-  { id:'peerObservation', no:8, title:'الزيارة الصفية التبادلية', desc:'توثيق ملاحظة معلم زميل لحصة معلم آخر، وأبرز نقاط القوة وفرص التحسين والمتابعة.', icon:'👀', color:'#9D174D', source:false }
+  { id:'peerObservation', no:8, title:'الزيارة الصفية التبادلية', desc:'توثيق ملاحظة معلم زميل لحصة معلم آخر، وأبرز نقاط القوة وفرص التحسين والمتابعة.', icon:'👀', color:'#9D174D', source:false, teacherAccess:true },
+  { id:'behavioralPlan', no:9, title:'الخطة العلاجية السلوكية', desc:'تسجيل السلوكيات المستهدفة لدى الطلاب، وتحليل أسبابها المحتملة، واستراتيجيات التدخل والمتابعة وإشعار ولي الأمر.', icon:'🧩', color:'#C2410C', source:false, teacherAccess:true }
 ];
 const SELF_EVAL_CRITERIA = [
   { key:'vision', label:'رؤية ورسالة وقيم مشتركة', hint:'يتشارك أعضاء المجتمع رؤية واضحة لأهداف التعلم والتحسين.' },
@@ -1569,6 +1656,39 @@ function teacherSelectInlineHtml(fieldPath, value, teachers, ro){
     '</select>' + manualInput
   );
 }
+function studentSelectHtml(label, fieldPath, value, students, ro){
+  if (ro) return inputField(label, fieldPath, value, {readonly:true});
+  students = students || [];
+  const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
+  const opts = students.map(function(s){
+    return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>';
+  }).join('');
+  const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
+  return (
+    '<div class="field"><label>'+esc(label)+'</label>' +
+      '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
+        '<option value="">— اختر الطالب —</option>' + opts +
+        '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
+      '</select>' +
+      manualInput +
+    '</div>'
+  );
+}
+function studentSelectInlineHtml(fieldPath, value, students, ro){
+  if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
+  students = students || [];
+  const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
+  const opts = students.map(function(s){
+    return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+'</option>';
+  }).join('');
+  const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
+  return (
+    '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
+      '<option value="">— اختر الطالب —</option>' + opts +
+      '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
+    '</select>' + manualInput
+  );
+}
 
 /* ---------------------- حالة تعديل النموذج الحالي (محرّر) ---------------------- */
 let EditorState = null; // { formType, id(optional), data, status, prepSig, school, createdByName, createdBy }
@@ -1584,6 +1704,7 @@ function blankData(formType){
     case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
     case 'plcSelfEval': return { school:State.user.school, plc:'', semester:'', criteria:blankSelfEvalCriteria(), reflection:'' };
     case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
+    case 'behavioralPlan': return { school:State.user.school, grade:'', section:'', date:today, parentNotified:'لا', behaviorStudents:[ blankBehaviorRow() ], teacherOpinion:'' };
   }
 }
 function blankSelfEvalCriteria(){
@@ -1593,6 +1714,7 @@ function blankSelfEvalCriteria(){
 }
 function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[] }; }
 function blankSession(){ return { teacher:'', subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
+function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
 function openEditor(formType, submission){
   if (submission){
@@ -1601,10 +1723,10 @@ function openEditor(formType, submission){
       status: submission.status, prepSig: submission.preparer_signature, school: submission.school,
       createdByName: submission.created_by_name, createdBy: submission.created_by,
       returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at,
-      manualTeacherFields: new Set(), teachers: []
+      manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: []
     };
   } else {
-    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [] };
+    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [] };
   }
   go('editor', { formType: formType });
 }
@@ -1631,6 +1753,7 @@ async function render(){
       case 'taskDetail': renderShell(app, await screenTaskDetail(State.params.taskId, State.params.readonly)); bindTaskDetail(); break;
       case 'communityReport': renderShell(app, await screenCommunityReport(State.params.id)); bindCommunityReport(); break;
       case 'practiceBank': renderShell(app, await screenPracticeBank()); bindPracticeBank(); break;
+      case 'studentRoster': renderShell(app, await screenStudentRoster()); bindStudentRoster(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
@@ -2644,6 +2767,153 @@ function bindPracticeBank(){
   });
 }
 
+/* ---------------------- شاشة بيانات الطلاب (سجل الطلاب) ---------------------- */
+let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false };
+async function screenStudentRoster(){
+  const students = await DB.listStudents({ school: State.user.school });
+  const sorted = students.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||''); });
+  const rows = sorted.map(function(s){
+    return (
+      '<tr>' +
+        '<td><b>'+esc(s.full_name)+'</b></td>' +
+        '<td>'+esc(s.grade||'—')+'</td>' +
+        '<td>'+esc(s.section||'—')+'</td>' +
+        '<td>'+esc(s.national_id||'—')+'</td>' +
+        '<td>'+esc(s.created_by_name||'')+'</td>' +
+        '<td class="row-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
+          '<button class="btn btn-danger btn-sm" data-action="deleteStudent" data-id="'+s.id+'">حذف</button>' +
+        '</td>' +
+      '</tr>'
+    );
+  }).join('');
+  const modal = StudentRosterUI.modalOpen ? studentModal(students) : '';
+  const pasteModal = StudentRosterUI.pasteOpen ? studentPasteImportModal() : '';
+  return (
+    '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
+    '<div class="section-head"><h2>بيانات الطلاب</h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="openStudentPasteImport">لصق بيانات الطلاب</button>' +
+        '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
+      '</div>' +
+    '</div>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة.</p>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>أضافه</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    modal + pasteModal
+  );
+}
+function studentModal(students){
+  const editing = StudentRosterUI.editingId ? students.find(function(s){ return s.id===StudentRosterUI.editingId; }) : null;
+  return (
+    '<div class="modal-bg" data-action="closeStudentModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>'+(editing?'تعديل بيانات طالب':'إضافة طالب جديد')+'</h3>' +
+        '<div class="field"><label>اسم الطالب</label><input class="input" id="stFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
+        '<div class="field"><label>الصف</label><input class="input" id="stGrade" value="'+esc(editing?editing.grade||'':'')+'"></div>' +
+        '<div class="field"><label>الشعبة</label><input class="input" id="stSection" value="'+esc(editing?editing.section||'':'')+'"></div>' +
+        '<div class="field"><label>رقم الهوية/السجل المدني (اختياري)</label><input class="input" id="stNationalId" value="'+esc(editing?editing.national_id||'':'')+'"></div>' +
+        '<div class="field"><label>ملاحظات (اختياري)</label><textarea class="input" id="stNotes">'+esc(editing?editing.notes||'':'')+'</textarea></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveStudent">'+(editing?'حفظ التعديل':'إضافة الطالب')+'</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeStudentModalBg">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function studentPasteImportModal(){
+  return (
+    '<div class="modal-bg" data-action="closeStudentPasteModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>لصق بيانات الطلاب</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات هنا مباشرة من Excel (سطر لكل طالب، الأعمدة بالترتيب: اسم الطالب، ثم الصف، ثم الشعبة). يمكن أن يكون السطر الأول عناوين الأعمدة، وسيتم تجاهله تلقائيًا.</p>' +
+        '<div class="field"><textarea class="input" id="studentPasteText" rows="10" placeholder="مثال:&#10;خالد العتيبي	الرابع	أ&#10;سارة الغامدي	الرابع	ب" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="confirmStudentPasteImport">استيراد</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeStudentPasteModalBg">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function isStudentImportHeaderRow(first){
+  first = (first||'').trim();
+  return first === 'الاسم' || first === 'اسم الطالب' || first.toLowerCase() === 'name';
+}
+async function importStudentRows(dataRows){
+  let created = 0;
+  for (let i=0;i<dataRows.length;i++){
+    const r = dataRows[i];
+    const fullName = (r[0]||'').trim();
+    if (!fullName) continue;
+    const grade = (r[1]||'').trim();
+    const section = (r[2]||'').trim();
+    try{
+      await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name:fullName, grade:grade, section:section, national_id:'', notes:'' });
+      created++;
+    }catch(e){}
+  }
+  if (!created){ toast('لم يتم العثور على بيانات طلاب صالحة، يرجى مراجعة تنسيق النص.'); return; }
+  toast('تم استيراد '+created+' طالبًا بنجاح.');
+  StudentRosterUI.pasteOpen = false;
+  go('studentRoster');
+}
+function bindStudentRoster(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  const newBtn = document.querySelector('[data-action="newStudent"]');
+  if (newBtn) newBtn.addEventListener('click', function(){ StudentRosterUI.editingId = null; StudentRosterUI.modalOpen = true; render(); bindStudentRoster(); });
+  document.querySelectorAll('[data-action="editStudent"]').forEach(function(el){
+    el.addEventListener('click', function(){ StudentRosterUI.editingId = el.getAttribute('data-id'); StudentRosterUI.modalOpen = true; render(); bindStudentRoster(); });
+  });
+  document.querySelectorAll('[data-action="deleteStudent"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف بيانات هذا الطالب؟')) return;
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); go('studentRoster'); }catch(e){ toast(e.message); }
+    });
+  });
+  const closeModal = function(){ StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null; render(); bindStudentRoster(); };
+  const closeModalBg = document.querySelector('[data-action="closeStudentModalBg"]');
+  if (closeModalBg) closeModalBg.addEventListener('click', closeModal);
+  const saveBtn = document.querySelector('[data-action="saveStudent"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const full_name = document.getElementById('stFullName').value.trim();
+    if (!full_name){ toast('يرجى إدخال اسم الطالب.'); return; }
+    const grade = document.getElementById('stGrade').value.trim();
+    const section = document.getElementById('stSection').value.trim();
+    const national_id = document.getElementById('stNationalId').value.trim();
+    const notes = document.getElementById('stNotes').value.trim();
+    try{
+      if (StudentRosterUI.editingId){
+        await DB.updateStudent(StudentRosterUI.editingId, { full_name, grade, section, national_id, notes });
+        toast('تم حفظ تعديل بيانات الطالب.');
+      } else {
+        await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, national_id, notes });
+        toast('تم إضافة الطالب بنجاح.');
+      }
+      StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null;
+      go('studentRoster');
+    }catch(e){ toast(e.message); }
+  });
+  const openPasteBtn = document.querySelector('[data-action="openStudentPasteImport"]');
+  if (openPasteBtn) openPasteBtn.addEventListener('click', function(){ StudentRosterUI.pasteOpen = true; render(); bindStudentRoster(); });
+  const closePaste = function(){ StudentRosterUI.pasteOpen = false; render(); bindStudentRoster(); };
+  const closePasteBg = document.querySelector('[data-action="closeStudentPasteModalBg"]');
+  if (closePasteBg) closePasteBg.addEventListener('click', closePaste);
+  const confirmPasteBtn = document.querySelector('[data-action="confirmStudentPasteImport"]');
+  if (confirmPasteBtn) confirmPasteBtn.addEventListener('click', async function(){
+    const text = document.getElementById('studentPasteText').value;
+    const rows = parseFlexibleRows(text);
+    if (!rows.length){ toast('لم تُلصق أي بيانات.'); return; }
+    let dataRows = rows;
+    if (isStudentImportHeaderRow(rows[0][0])) dataRows = rows.slice(1);
+    if (!dataRows.length){ toast('لا توجد بيانات طلاب في النص الملصق.'); return; }
+    await importStudentRows(dataRows);
+  });
+}
+
 function adminTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
@@ -2938,12 +3208,41 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
+  const myForms = subs.filter(function(s){ return s.created_by===State.user.id; })
+    .sort(function(a,b){ return new Date(b.created_at||0) - new Date(a.created_at||0); });
+  const myFormsRows = myForms.map(function(s){
+    const def = formDef(s.form_type);
+    return (
+      '<tr>' +
+        '<td><b>'+esc(def?def.title:s.form_type)+'</b></td>' +
+        '<td>'+fmtDate(s.created_at)+'</td>' +
+        '<td><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></td>' +
+        '<td class="row-actions">' +
+          (s.status==='draft' || s.status==='returned'
+            ? '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">إكمال التعبئة</button>'
+            : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>') +
+        '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-    (taskCards ? ('<div class="block-title"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
-    (sessCards ? ('<div class="block-title" style="margin-top:'+(taskCards?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '') +
-    (!taskCards && !sessCards ? '<div class="table-wrap"><div style="padding:34px;text-align:center;color:var(--muted);">لا توجد مهام أو متابعات مكلَّف بها حاليًا.</div></div>' : '')
+    '<div class="section-head"><h2>الخطط العلاجية والنماذج الخاصة بي</h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="goStudentRoster">بيانات الطلاب</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
+        '<button class="btn btn-primary" data-action="goPicker">+ إنشاء نموذج جديد</button>' +
+      '</div>' +
+    '</div>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">من هنا يمكنك إنشاء خطة علاجية جماعية للطلاب المتعثرين، ثم خطة فردية أكاديمية لمن يحتاج متابعة مكثّفة، وخطة علاجية سلوكية لمن لديهم سلوكيات مستهدَفة، بعد تسجيل بيانات طلابك في "بيانات الطلاب".</p>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>النموذج</th><th>تاريخ الإنشاء</th><th>الحالة</th><th></th></tr></thead>' +
+      '<tbody>' + (myFormsRows || '<tr class="empty-row"><td colspan="4">لم تُنشئ أي نموذج بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>' +
+    (taskCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
+    (sessCards ? ('<div class="block-title" style="margin-top:'+(taskCards?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '')
   );
 }
 function bindTeacherTasks(){
@@ -3747,7 +4046,8 @@ function bindIndicators(){
 
 /* ----- شاشة اختيار نموذج ----- */
 function screenPicker(){
-  const cards = FORM_DEFS.map(function(f){
+  const defs = State.user.role==='teacher' ? FORM_DEFS.filter(function(f){ return f.teacherAccess; }) : FORM_DEFS;
+  const cards = defs.map(function(f){
     return (
       '<div class="form-card" data-action="pickForm" data-id="'+f.id+'">' +
         '<span class="num">نموذج ('+f.no+')</span>' +
@@ -3796,17 +4096,23 @@ async function screenEditor(){
   if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
     EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){ return u.role==='teacher'; });
   }
+  const studentForms = ['groupPlan','individualAgreement','behavioralPlan'];
+  if (studentForms.includes(EditorState.formType) && !EditorState.students.length){
+    EditorState.students = await DB.listStudents({ school: EditorState.school });
+  }
   const teachers = EditorState.teachers;
+  const students = EditorState.students;
   let body = '';
   switch(EditorState.formType){
-    case 'groupPlan': body = renderGroupPlan(EditorState.data, readonly); break;
+    case 'groupPlan': body = renderGroupPlan(EditorState.data, readonly, students); break;
     case 'indicatorReport': body = renderIndicatorReport(EditorState.data, readonly, teachers); break;
-    case 'individualAgreement': body = renderIndividualAgreement(EditorState.data, readonly, teachers); break;
+    case 'individualAgreement': body = renderIndividualAgreement(EditorState.data, readonly, teachers, students); break;
     case 'modelLesson': body = renderModelLesson(EditorState.data, readonly, teachers); break;
     case 'plcMeetingMinutes': body = renderPlcMeeting(EditorState.data, readonly, teachers); break;
     case 'motivationInitiative': body = renderMotivation(EditorState.data, readonly); break;
     case 'plcSelfEval': body = renderPlcSelfEval(EditorState.data, readonly); break;
     case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly, teachers); break;
+    case 'behavioralPlan': body = renderBehavioralPlan(EditorState.data, readonly, students); break;
   }
 
   const returnBox = EditorState.status==='returned' && EditorState.returnComment
@@ -3845,11 +4151,11 @@ async function screenEditor(){
 
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
-function renderGroupPlan(d, ro){
+function renderGroupPlan(d, ro, students){
   const rows = d.students.map(function(s, i){
     return (
       '<tr data-row="students" data-idx="'+i+'">' +
-        '<td><input class="input" data-field="students.'+i+'.name" value="'+esc(s.name)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td>'+studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro)+'</td>' +
         '<td><textarea class="input" data-field="students.'+i+'.diag" '+(ro?'disabled':'')+'>'+esc(s.diag)+'</textarea></td>' +
         '<td><textarea class="input" data-field="students.'+i+'.skills" '+(ro?'disabled':'')+'>'+esc(s.skills)+'</textarea></td>' +
         '<td>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</td>' +
@@ -3901,7 +4207,7 @@ function renderIndicatorReport(d, ro, teachers){
   );
 }
 
-function renderIndividualAgreement(d, ro, teachers){
+function renderIndividualAgreement(d, ro, teachers, students){
   const sessions = d.sessions.map(function(s,i){
     return (
       '<div class="session-card">' +
@@ -3919,7 +4225,7 @@ function renderIndividualAgreement(d, ro, teachers){
   }).join('');
   return (
     '<div class="field-grid cols-2">' +
-      inputField('اسم الطالب','studentName',d.studentName,{readonly:ro}) + inputField('الصف','grade',d.grade,{readonly:ro}) +
+      studentSelectHtml('اسم الطالب','studentName',d.studentName,students,ro) + inputField('الصف','grade',d.grade,{readonly:ro}) +
     '</div>' +
     '<div class="upload-note">انطلاقًا من حرص المدرسة على دعم تحصيل الطلاب، أُدرج الطالب أعلاه في الخطة الفردية. تُسجَّل أدناه جلسات المتابعة الأسبوعية لكل معلم على حدة.</div>' +
     '<div class="block-title"><span class="dot"></span> جلسات المتابعة الأسبوعية</div>' +
@@ -3927,6 +4233,35 @@ function renderIndividualAgreement(d, ro, teachers){
     '<div class="block-title"><span class="dot"></span> الخطوات المقترحة من ولي أمر الطالب</div>' +
     inputField('','parentSuggested', d.parentSuggested, {type:'textarea', readonly:ro}) +
     '<div class="upload-note">نظرًا لعدم امتلاك ولي الأمر حسابًا في النظام: يُرجى طباعة النموذج بعد الاعتماد للحصول على توقيع ولي الأمر يدويًا، أو رفع صورة توقيعه ضمن سجل الشواهد.</div>'
+  );
+}
+
+function renderBehavioralPlan(d, ro, students){
+  const rows = d.behaviorStudents.map(function(s, i){
+    return (
+      '<tr data-row="behaviorStudents" data-idx="'+i+'">' +
+        '<td>'+studentSelectInlineHtml('behaviorStudents.'+i+'.name', s.name, students, ro)+'</td>' +
+        '<td><textarea class="input" data-field="behaviorStudents.'+i+'.behavior" '+(ro?'disabled':'')+'>'+esc(s.behavior)+'</textarea></td>' +
+        '<td><textarea class="input" data-field="behaviorStudents.'+i+'.causes" '+(ro?'disabled':'')+'>'+esc(s.causes)+'</textarea></td>' +
+        '<td>'+checkboxGroup('behaviorStudents.'+i+'.strategies', ['تعزيز إيجابي','عقد سلوكي','تعديل بيئة الجلوس','جلسة إرشادية فردية','تواصل مع ولي الأمر','إحالة للموجه الطلابي'], s.strategies)+'</td>' +
+        '<td>'+checkboxGroup('behaviorStudents.'+i+'.followUp', ['ملاحظة يومية','تقرير أسبوعي','مقابلة دورية مع ولي الأمر','تقييم بعد أسبوعين'], s.followUp)+'</td>' +
+        '<td><input class="input" data-field="behaviorStudents.'+i+'.result" value="'+esc(s.result)+'" '+(ro?'disabled':'')+'></td>' +
+        (ro?'':'<td><button class="dyn-table-rmv rmv" data-action="removeRow" data-list="behaviorStudents" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  return (
+    '<div class="field-grid cols-3">' +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('الصف','grade',d.grade,{readonly:ro}) +
+      inputField('الشعبة','section',d.section,{readonly:ro}) +
+    '</div>' +
+    inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+    '<div class="field"><label>هل تم إشعار ولي الأمر؟</label>'+radioGroup('parentNotified', ['نعم','لا'], d.parentNotified)+'</div>' +
+    '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون وتحليل السلوك</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الاسم</th><th>السلوك المستهدَف</th><th>الأسباب المحتملة</th><th>استراتيجيات التدخل</th><th>إجراءات المتابعة</th><th>النتيجة</th>'+(ro?'':'<th></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="behaviorStudents">+ إضافة طالب</button>') +
+    '<div class="block-title"><span class="dot"></span> رأي المعلم وملاحظات ختامية</div>' +
+    inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بعد تطبيق استراتيجيات التدخل أعلاه لمدة...، لوحظ تحسّن في...'})
   );
 }
 
@@ -4101,6 +4436,7 @@ function setPath(obj, path, value){
 function defaultRowFor(list){
   switch(list){
     case 'students': return blankStudentRow();
+    case 'behaviorStudents': return blankBehaviorRow();
     case 'participants': return { name:'', spec:'' };
     case 'sessions': return blankSession();
     case 'positives': return '';
@@ -4142,6 +4478,19 @@ function bindEditor(){
         setPath(EditorState.data, target, '');
       } else {
         EditorState.manualTeacherFields.delete(target);
+        setPath(EditorState.data, target, el.value);
+      }
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="studentSelect"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const target = el.getAttribute('data-target');
+      if (el.value === '__manual__'){
+        EditorState.manualStudentFields.add(target);
+        setPath(EditorState.data, target, '');
+      } else {
+        EditorState.manualStudentFields.delete(target);
         setPath(EditorState.data, target, el.value);
       }
       render(); bindEditor();
@@ -4219,6 +4568,7 @@ async function screenView(id){
     case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
     case 'plcSelfEval': body = renderPlcSelfEval(s.payload, true); break;
     case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
+    case 'behavioralPlan': body = renderBehavioralPlan(s.payload, true); break;
   }
   const stamp = s.status==='approved' ? (
     '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
@@ -4263,6 +4613,7 @@ async function screenReview(id){
     case 'motivationInitiative': body = renderMotivation(s.payload, true); break;
     case 'plcSelfEval': body = renderPlcSelfEval(s.payload, true); break;
     case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
+    case 'behavioralPlan': body = renderBehavioralPlan(s.payload, true); break;
   }
   return (
     '<div class="sheet-bar no-print"><div style="display:flex;gap:8px;align-items:center;"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></div>' +
@@ -4321,6 +4672,7 @@ function bindGlobalAction(el){
   else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
   else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); go('dashboard'); }); }
   else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
+  else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
