@@ -225,6 +225,8 @@ textarea.input{ resize:vertical; min-height:64px; }
 .evidence-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
 .evidence-thumb .rmv-ev{ position:absolute; top:2px; left:2px; background:rgba(185,28,28,.9); color:#fff; border:none; width:20px; height:20px; border-radius:50%; font-size:12px; line-height:1; }
 .evidence-add{ width:84px; height:84px; border-radius:8px; border:1.5px dashed var(--teal); background:#EAF6F5; color:var(--teal-dark); display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; }
+.evidence-thumb.file{ background:#F3F4F6; }
+.evidence-thumb.file .file-ic{ font-size:22px; }
 
 .task-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 18px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .task-card .meta b{ display:block; font-size:14px; color:var(--navy-2); margin-bottom:3px; }
@@ -470,6 +472,7 @@ create table practice_shares (
   title text not null,
   description text,
   attachment_note text,
+  attachments jsonb default '[]'::jsonb,
   status text not null default 'pending' check (status in ('pending','approved','returned')),
   principal_rating int check (principal_rating between 1 and 5),
   principal_note text,
@@ -598,6 +601,9 @@ create policy "students_all" on students for all using ( school = my_school() or
 -- );
 -- alter table students enable row level security;
 -- create policy "students_all" on students for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+-- لإتاحة رفع الشواهد (صور/PDF/Word) في تبادل الخبرات، نفّذ هذا الأمر مرة واحدة:
+-- alter table practice_shares add column if not exists attachments jsonb default '[]'::jsonb;
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -2606,7 +2612,27 @@ function bindPrincipalReview(){
 }
 
 /* ----- بنك تبادل الخبرات: مشاركة الممارسات التدريسية الناجحة بين المعلمين، واعتماد مدير المدرسة وتقييمه لها ----- */
-let PracticeBankUI = { composeOpen:false, reviewId:null };
+let PracticeBankUI = { composeOpen:false, reviewId:null, attachments:[], title:'', category:'teacherSupport', description:'', attachment_note:'' };
+function attachmentThumbHtml(f, i, removable){
+  const isImg = /^image\//.test(f.type||'');
+  const rmv = removable ? '<button type="button" class="rmv-ev" data-action="rmvPracticeFile" data-i="'+i+'">✕</button>' : '';
+  if (isImg){
+    return '<div class="evidence-thumb"><img src="'+f.data+'">'+rmv+'</div>';
+  }
+  const icon = /pdf/i.test(f.type||'') || /\.pdf$/i.test(f.name||'') ? '📕' : '📄';
+  return (
+    '<div class="evidence-thumb file">' +
+      '<a href="'+f.data+'" target="_blank" download="'+esc(f.name||'')+'" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;color:inherit;text-decoration:none;gap:2px;">' +
+        '<span class="file-ic">'+icon+'</span>' +
+        '<span style="font-size:10px;line-height:1.1;max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(f.name||'')+'</span>' +
+      '</a>' +
+      rmv +
+    '</div>'
+  );
+}
+function attachmentsGridHtml(attachments, removable){
+  return (attachments||[]).map(function(f, i){ return attachmentThumbHtml(f, i, removable); }).join('');
+}
 async function screenPracticeBank(){
   const shares = await DB.listPracticeShares({ school: State.user.school });
   const canShare = State.user.role==='coordinator' || State.user.role==='teacher';
@@ -2643,6 +2669,7 @@ async function screenPracticeBank(){
         '<div class="ph"><h3>'+esc(s.title)+'</h3><p>'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+' · '+esc(s.created_by_name||'')+' · '+fmtDate(s.created_at)+(stars?(' · '+stars):'')+'</p></div>' +
         (s.description ? ('<p style="font-size:13.5px;color:var(--ink);">'+esc(s.description)+'</p>') : '') +
         (s.attachment_note ? ('<p style="font-size:12.5px;color:var(--muted);">'+esc(s.attachment_note)+'</p>') : '') +
+        ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
       '</div>'
     );
   }).join('');
@@ -2678,12 +2705,17 @@ function practiceComposeModalHtml(){
     '<div class="modal-bg" data-action="closePracticeModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>مشاركة ممارسة تدريسية ناجحة</h3>' +
-        '<div class="field"><label>عنوان الممارسة</label><input class="input" id="pkTitle" placeholder="مثال: استراتيجية التعلم التعاوني في حصة الرياضيات"></div>' +
+        '<div class="field"><label>عنوان الممارسة</label><input class="input" id="pkTitle" value="'+esc(PracticeBankUI.title)+'" placeholder="مثال: استراتيجية التعلم التعاوني في حصة الرياضيات"></div>' +
         '<div class="field"><label>التصنيف</label><select class="input" id="pkCategory">' +
-          Object.keys(GOAL_CATEGORY_LABEL).map(function(k){ return '<option value="'+k+'" '+(k==='teacherSupport'?'selected':'')+'>'+GOAL_CATEGORY_LABEL[k]+'</option>'; }).join('') +
+          Object.keys(GOAL_CATEGORY_LABEL).map(function(k){ return '<option value="'+k+'" '+(k===PracticeBankUI.category?'selected':'')+'>'+GOAL_CATEGORY_LABEL[k]+'</option>'; }).join('') +
         '</select></div>' +
-        '<div class="field"><label>وصف الممارسة وأثرها</label><textarea class="input" id="pkDesc" placeholder="صف الممارسة، وكيف نفّذتها، وما الأثر الذي لاحظته على الطلاب أو المعلمين..."></textarea></div>' +
-        '<div class="field"><label>ملاحظة عن الشواهد المرفقة (اختياري)</label><input class="input" id="pkAttach" placeholder="مثال: صور من الحصة مرفقة في ملف المجتمع المهني..."></div>' +
+        '<div class="field"><label>وصف الممارسة وأثرها</label><textarea class="input" id="pkDesc" placeholder="صف الممارسة، وكيف نفّذتها، وما الأثر الذي لاحظته على الطلاب أو المعلمين...">'+esc(PracticeBankUI.description)+'</textarea></div>' +
+        '<div class="field"><label>ملاحظة عن الشواهد المرفقة (اختياري)</label><input class="input" id="pkAttach" value="'+esc(PracticeBankUI.attachment_note)+'" placeholder="مثال: صور من الحصة مرفقة في ملف المجتمع المهني..."></div>' +
+        '<div class="field"><label>رفع الشواهد (صور، أو ملف PDF/Word) — اختياري</label>' +
+          '<div class="evidence-grid">' + attachmentsGridHtml(PracticeBankUI.attachments, true) +
+            '<label class="evidence-add">+<input type="file" id="pkFilesInput" accept="image/*,.pdf,.doc,.docx" multiple style="display:none;"></label>' +
+          '</div>' +
+        '</div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="sendPractice">مشاركة الممارسة</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closePracticeModal">إلغاء</button>' +
@@ -2698,6 +2730,7 @@ function practiceReviewModalHtml(s){
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>مراجعة الممارسة: '+esc(s.title)+'</h3>' +
         '<p style="color:var(--muted);font-size:13.5px;">'+esc(s.description||'')+'</p>' +
+        ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid" style="margin:0 0 8px;">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
         '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="pkRating">' +
           [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(s.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
         '</select></div>' +
@@ -2713,13 +2746,41 @@ function practiceReviewModalHtml(s){
 }
 function bindPracticeBank(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  const resetComposeFields = function(){ PracticeBankUI.attachments = []; PracticeBankUI.title=''; PracticeBankUI.category='teacherSupport'; PracticeBankUI.description=''; PracticeBankUI.attachment_note=''; };
   const newBtn = document.querySelector('[data-action="newPractice"]');
-  if (newBtn) newBtn.addEventListener('click', function(){ PracticeBankUI.composeOpen = true; render(); bindPracticeBank(); });
-  const closeCompose = function(){ PracticeBankUI.composeOpen = false; render(); bindPracticeBank(); };
+  if (newBtn) newBtn.addEventListener('click', function(){ PracticeBankUI.composeOpen = true; resetComposeFields(); render(); bindPracticeBank(); });
+  const closeCompose = function(){ PracticeBankUI.composeOpen = false; resetComposeFields(); render(); bindPracticeBank(); };
   const closeComposeBtn = document.querySelector('[data-action="closePracticeModal"]');
   if (closeComposeBtn) closeComposeBtn.addEventListener('click', closeCompose);
   const closeComposeBg = document.querySelector('[data-action="closePracticeModalBg"]');
   if (closeComposeBg) closeComposeBg.addEventListener('click', closeCompose);
+  const pkTitleEl = document.getElementById('pkTitle');
+  if (pkTitleEl) pkTitleEl.addEventListener('input', function(){ PracticeBankUI.title = pkTitleEl.value; });
+  const pkCategoryEl = document.getElementById('pkCategory');
+  if (pkCategoryEl) pkCategoryEl.addEventListener('change', function(){ PracticeBankUI.category = pkCategoryEl.value; });
+  const pkDescEl = document.getElementById('pkDesc');
+  if (pkDescEl) pkDescEl.addEventListener('input', function(){ PracticeBankUI.description = pkDescEl.value; });
+  const pkAttachEl = document.getElementById('pkAttach');
+  if (pkAttachEl) pkAttachEl.addEventListener('input', function(){ PracticeBankUI.attachment_note = pkAttachEl.value; });
+  const pkFilesInput = document.getElementById('pkFilesInput');
+  if (pkFilesInput) pkFilesInput.addEventListener('change', function(e){
+    Array.from(e.target.files).forEach(function(file){
+      const reader = new FileReader();
+      reader.onload = function(){
+        PracticeBankUI.attachments = PracticeBankUI.attachments || [];
+        PracticeBankUI.attachments.push({ name:file.name, type:file.type, data:reader.result });
+        render(); bindPracticeBank();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+  document.querySelectorAll('[data-action="rmvPracticeFile"]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.preventDefault();
+      PracticeBankUI.attachments.splice(+el.getAttribute('data-i'), 1);
+      render(); bindPracticeBank();
+    });
+  });
   const sendBtn = document.querySelector('[data-action="sendPractice"]');
   if (sendBtn) sendBtn.addEventListener('click', async function(){
     const title = document.getElementById('pkTitle').value.trim();
@@ -2727,10 +2788,12 @@ function bindPracticeBank(){
     const category = document.getElementById('pkCategory').value;
     const description = document.getElementById('pkDesc').value.trim();
     const attachment_note = document.getElementById('pkAttach').value.trim();
+    const attachments = (PracticeBankUI.attachments||[]).slice();
     try{
-      await DB.createPracticeShare({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, category:category, title:title, description:description, attachment_note: attachment_note||null, status:'pending' });
+      await DB.createPracticeShare({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, category:category, title:title, description:description, attachment_note: attachment_note||null, attachments: attachments, status:'pending' });
       toast('تم مشاركة الممارسة، وستُعرض للجميع بعد اعتماد مدير المدرسة.');
       PracticeBankUI.composeOpen = false;
+      resetComposeFields();
       render(); bindPracticeBank();
     }catch(e){ toast(e.message); }
   });
@@ -2793,11 +2856,14 @@ async function screenStudentRoster(){
     '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
     '<div class="section-head"><h2>بيانات الطلاب</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="downloadStudentTemplate">تنزيل نموذج Excel للطلاب</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="triggerStudentImport">رفع ملف الطلاب</button>' +
+        '<input type="file" id="studentImportInput" accept=".csv" style="display:none;">' +
         '<button class="btn btn-ghost btn-sm" data-action="openStudentPasteImport">لصق بيانات الطلاب</button>' +
         '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة وتقليل الأخطاء. سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة.</p>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>أضافه</th><th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="6">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
@@ -2818,7 +2884,7 @@ function studentModal(students){
         '<div class="field"><label>ملاحظات (اختياري)</label><textarea class="input" id="stNotes">'+esc(editing?editing.notes||'':'')+'</textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="saveStudent">'+(editing?'حفظ التعديل':'إضافة الطالب')+'</button>' +
-          '<button class="btn btn-ghost btn-block" data-action="closeStudentModalBg">إلغاء</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeStudentModal">إلغاء</button>' +
         '</div>' +
       '</div>' +
     '</div>'
@@ -2833,7 +2899,7 @@ function studentPasteImportModal(){
         '<div class="field"><textarea class="input" id="studentPasteText" rows="10" placeholder="مثال:&#10;خالد العتيبي	الرابع	أ&#10;سارة الغامدي	الرابع	ب" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="confirmStudentPasteImport">استيراد</button>' +
-          '<button class="btn btn-ghost btn-block" data-action="closeStudentPasteModalBg">إلغاء</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeStudentPasteModal">إلغاء</button>' +
         '</div>' +
       '</div>' +
     '</div>'
@@ -2861,6 +2927,14 @@ async function importStudentRows(dataRows){
   StudentRosterUI.pasteOpen = false;
   go('studentRoster');
 }
+async function importStudentsFromCsv(text){
+  const rows = parseCsv(text);
+  if (!rows.length){ toast('الملف فارغ.'); return; }
+  let dataRows = rows;
+  if (isStudentImportHeaderRow(rows[0][0])){ dataRows = rows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات طلاب في الملف.'); return; }
+  await importStudentRows(dataRows);
+}
 function bindStudentRoster(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
   const newBtn = document.querySelector('[data-action="newStudent"]');
@@ -2877,6 +2951,8 @@ function bindStudentRoster(){
   const closeModal = function(){ StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null; render(); bindStudentRoster(); };
   const closeModalBg = document.querySelector('[data-action="closeStudentModalBg"]');
   if (closeModalBg) closeModalBg.addEventListener('click', closeModal);
+  const closeModalBtn = document.querySelector('[data-action="closeStudentModal"]');
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
   const saveBtn = document.querySelector('[data-action="saveStudent"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const full_name = document.getElementById('stFullName').value.trim();
@@ -2897,11 +2973,28 @@ function bindStudentRoster(){
       go('studentRoster');
     }catch(e){ toast(e.message); }
   });
+  const templateBtn = document.querySelector('[data-action="downloadStudentTemplate"]');
+  if (templateBtn) templateBtn.addEventListener('click', function(){
+    const rows = [['اسم الطالب','الصف','الشعبة'], ['خالد العتيبي','الرابع','أ']];
+    downloadTextFile('نموذج_رفع_الطلاب.csv', toCsv(rows));
+  });
+  const importBtn = document.querySelector('[data-action="triggerStudentImport"]');
+  const importInput = document.getElementById('studentImportInput');
+  if (importBtn && importInput) importBtn.addEventListener('click', function(){ importInput.click(); });
+  if (importInput) importInput.addEventListener('change', function(){
+    const file = importInput.files && importInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(){ await importStudentsFromCsv(String(reader.result)); };
+    reader.readAsText(file, 'UTF-8');
+  });
   const openPasteBtn = document.querySelector('[data-action="openStudentPasteImport"]');
   if (openPasteBtn) openPasteBtn.addEventListener('click', function(){ StudentRosterUI.pasteOpen = true; render(); bindStudentRoster(); });
   const closePaste = function(){ StudentRosterUI.pasteOpen = false; render(); bindStudentRoster(); };
   const closePasteBg = document.querySelector('[data-action="closeStudentPasteModalBg"]');
   if (closePasteBg) closePasteBg.addEventListener('click', closePaste);
+  const closePasteBtn = document.querySelector('[data-action="closeStudentPasteModal"]');
+  if (closePasteBtn) closePasteBtn.addEventListener('click', closePaste);
   const confirmPasteBtn = document.querySelector('[data-action="confirmStudentPasteImport"]');
   if (confirmPasteBtn) confirmPasteBtn.addEventListener('click', async function(){
     const text = document.getElementById('studentPasteText').value;
