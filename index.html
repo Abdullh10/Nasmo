@@ -423,7 +423,7 @@ create table submissions (
   preparer_signature text,
   principal_signature text,
   principal_comment text,
-  principal_rating int check (principal_rating between 1 and 5),
+  principal_rating int check (principal_rating between 0 and 100),
   principal_note text,
   submitted_at timestamptz,
   approved_at timestamptz,
@@ -447,7 +447,7 @@ create table tasks (
   evidence_files jsonb default '[]'::jsonb,
   completed_at timestamptz,
   principal_status text check (principal_status in ('approved','returned')),
-  principal_rating int check (principal_rating between 1 and 5),
+  principal_rating int check (principal_rating between 0 and 100),
   principal_note text,
   principal_reviewed_at timestamptz,
   coordinator_status text check (coordinator_status in ('returned')),
@@ -495,7 +495,7 @@ create table plc_goals (
   created_by uuid references profiles(id),
   created_by_name text,
   principal_status text check (principal_status in ('approved','returned')),
-  principal_rating int check (principal_rating between 1 and 5),
+  principal_rating int check (principal_rating between 0 and 100),
   principal_note text,
   principal_reviewed_at timestamptz,
   assigned_member_ids jsonb default '[]'::jsonb,
@@ -516,7 +516,7 @@ create table practice_shares (
   attachment_note text,
   attachments jsonb default '[]'::jsonb,
   status text not null default 'pending' check (status in ('pending','approved','returned')),
-  principal_rating int check (principal_rating between 1 and 5),
+  principal_rating int check (principal_rating between 0 and 100),
   principal_note text,
   principal_reviewed_at timestamptz,
   created_at timestamptz default now(),
@@ -613,12 +613,12 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 -- plc_goals بالفعل)، نفّذ هذه الأوامر مرة واحدة في SQL Editor لإضافة الأعمدة
 -- الجديدة وجدول بنك تبادل الخبرات:
 -- alter table tasks add column if not exists principal_status text check (principal_status in ('approved','returned'));
--- alter table tasks add column if not exists principal_rating int check (principal_rating between 1 and 5);
+-- alter table tasks add column if not exists principal_rating int check (principal_rating between 0 and 100);
 -- alter table tasks add column if not exists principal_note text;
 -- alter table tasks add column if not exists principal_reviewed_at timestamptz;
 -- alter table plc_goals add column if not exists category text not null default 'academic' check (category in ('academic','teacherSupport','knowledgeSharing'));
 -- alter table plc_goals add column if not exists principal_status text check (principal_status in ('approved','returned'));
--- alter table plc_goals add column if not exists principal_rating int check (principal_rating between 1 and 5);
+-- alter table plc_goals add column if not exists principal_rating int check (principal_rating between 0 and 100);
 -- alter table plc_goals add column if not exists principal_note text;
 -- alter table plc_goals add column if not exists principal_reviewed_at timestamptz;
 -- create table practice_shares (
@@ -632,7 +632,7 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 --   description text,
 --   attachment_note text,
 --   status text not null default 'pending' check (status in ('pending','approved','returned')),
---   principal_rating int check (principal_rating between 1 and 5),
+--   principal_rating int check (principal_rating between 0 and 100),
 --   principal_note text,
 --   principal_reviewed_at timestamptz,
 --   created_at timestamptz default now(),
@@ -670,7 +670,7 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 
 -- لإتاحة تقييم المدير وتغذيته الراجعة عند اعتماد النماذج (إضافة إلى التوقيع
 -- والاعتماد)، نفّذ هذين الأمرين مرة واحدة:
--- alter table submissions add column if not exists principal_rating int check (principal_rating between 1 and 5);
+-- alter table submissions add column if not exists principal_rating int check (principal_rating between 0 and 100);
 -- alter table submissions add column if not exists principal_note text;
 
 -- ميزة "تنزيل شواهد المهام وإرجاعها من المنسق + توكيل أعضاء المجتمع المهني بتنفيذ
@@ -698,6 +698,19 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 -- );
 -- alter table visit_schedules enable row level security;
 -- create policy "visit_schedules_all" on visit_schedules for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+-- ميزة "تقييم المدير بالأرقام من ١٠٠ بدلاً من النجوم": أُضيفت بعد إنشاء المشروع،
+-- فإذا كان مشروعك على Supabase موجودًا من قبل (وكان عمود principal_rating محصورًا
+-- بين 1 و5)، نفّذ هذه الأوامر مرة واحدة في SQL Editor لتوسيع المجال إلى 0-100
+-- (القيم القديمة 1-5 تبقى صالحة تلقائيًا تحت النطاق الجديد، فلا حاجة لأي تحويل):
+-- alter table submissions drop constraint if exists submissions_principal_rating_check;
+-- alter table submissions add constraint submissions_principal_rating_check check (principal_rating between 0 and 100);
+-- alter table tasks drop constraint if exists tasks_principal_rating_check;
+-- alter table tasks add constraint tasks_principal_rating_check check (principal_rating between 0 and 100);
+-- alter table plc_goals drop constraint if exists plc_goals_principal_rating_check;
+-- alter table plc_goals add constraint plc_goals_principal_rating_check check (principal_rating between 0 and 100);
+-- alter table practice_shares drop constraint if exists practice_shares_principal_rating_check;
+-- alter table practice_shares add constraint practice_shares_principal_rating_check check (principal_rating between 0 and 100);
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -1732,11 +1745,17 @@ const GOAL_TEMPLATES = [
   { category:'knowledgeSharing', title:'رفع نسبة المعلمين المشاركين في حلقات تبادل الخبرات', unit:'%' },
   { category:'knowledgeSharing', title:'زيادة عدد الزيارات الصفية التبادلية بين المعلمين', unit:'زيارة' }
 ];
+function ratingLabel(rating){
+  return (rating===null || rating===undefined || rating==='') ? '' : (' '+rating+'/100');
+}
+function ratingInputHtml(id, current){
+  const val = (current===null || current===undefined) ? 80 : current;
+  return '<input class="input" type="number" id="'+id+'" min="0" max="100" step="1" value="'+val+'" placeholder="من 0 إلى 100">';
+}
 function principalReviewBadgeHtml(item){
   if (!item.principal_status) return '<span class="badge pending">بانتظار تقييم المدير</span>';
   const cls = item.principal_status==='approved' ? 'approved' : 'returned';
-  const stars = item.principal_rating ? (' '+'★'.repeat(item.principal_rating)+'☆'.repeat(5-item.principal_rating)) : '';
-  return '<span class="badge '+cls+'">'+PRINCIPAL_STATUS_LABEL[item.principal_status]+stars+'</span>';
+  return '<span class="badge '+cls+'">'+PRINCIPAL_STATUS_LABEL[item.principal_status]+ratingLabel(item.principal_rating)+'</span>';
 }
 function coordinatorReturnBadgeHtml(item){
   return item.coordinator_status==='returned' ? '<span class="badge returned">أُعيدت من المنسق للتعديل</span>' : '';
@@ -2466,6 +2485,7 @@ async function screenPrincipalCommunities(){
   const subs = await DB.listSubmissions({ school: State.user.school });
   const tasks = await DB.listTasks({ school: State.user.school });
   const goals = await DB.listGoals({ school: State.user.school });
+  const shares = await DB.listPracticeShares({ school: State.user.school });
   const communityNotifs = (State.notifications||[]).filter(function(n){ return n.target_type==='community'; });
 
   const rows = communities.map(function(c){
@@ -2477,6 +2497,7 @@ async function screenPrincipalCommunities(){
     const cTasks = tasks.filter(function(t){ return t.community_id===c.id; });
     const doneTasks = cTasks.filter(function(t){ return t.status==='done'; }).length;
     const cGoals = goals.filter(function(g){ return g.community_id===c.id; });
+    const cShares = shares.filter(function(s){ return s.community_id===c.id; });
     const meetingSubs = cSubs.filter(function(s){ return s.form_type==='plcMeetingMinutes'; });
     const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; });
     const cNotifs = communityNotifs.filter(function(n){ return n.target_id===c.id; })
@@ -2485,14 +2506,15 @@ async function screenPrincipalCommunities(){
     const attendanceRate = meetingAttendanceRate(meetingSubs);
     const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
     const goalsRate = communityGoalsAvgProgress(cGoals);
-    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
+    const ratingRate = communityRatingAvg([cSubs, cTasks, cGoals, cShares]);
+    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate });
     return { community:c, leader:leader, members:members, subCounts:subCounts, totalSubs:cSubs.length, tasks:cTasks, doneTasks:doneTasks, goals:cGoals, notifs:cNotifs,
-      approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, scorecard:scorecard };
+      approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate, scorecard:scorecard };
   });
 
   const summaryTable = (
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th><th>نسبة الحضور</th><th>التقييم الذاتي</th><th>تقدم الأهداف</th><th>بطاقة الأداء</th></tr></thead>' +
+      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th><th>نسبة الحضور</th><th>التقييم الذاتي</th><th>تقدم الأهداف</th><th>متوسط تقييم المدير</th><th>نتيجة البرنامج النهائية (بطاقة الأداء)</th></tr></thead>' +
       '<tbody>' + (rows.length ? rows.map(function(r){
         return (
           '<tr>' +
@@ -2505,10 +2527,11 @@ async function screenPrincipalCommunities(){
             '<td>'+pctLabel(r.attendanceRate)+'</td>' +
             '<td>'+pctLabel(r.selfEvalRate)+'</td>' +
             '<td>'+pctLabel(r.goalsRate)+'</td>' +
-            '<td><b>'+(r.scorecard==null?'—':r.scorecard)+'</b></td>' +
+            '<td>'+ratingAvgLabel(r.ratingRate)+'</td>' +
+            '<td><b>'+(r.scorecard==null?'—':r.scorecard+'/100')+'</b></td>' +
           '</tr>'
         );
-      }).join('') : '<tr class="empty-row"><td colspan="10">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
+      }).join('') : '<tr class="empty-row"><td colspan="11">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
       '</tbody>' +
     '</table></div></div>'
   );
@@ -2531,7 +2554,7 @@ async function screenPrincipalCommunities(){
       '<div class="program-card">' +
         '<div class="ph">' +
           '<h3>'+esc(c.name)+'</h3>' +
-          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+(r.scorecard!=null?(' · بطاقة الأداء: <b>'+r.scorecard+'</b>'):'')+'</p>' +
+          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+(r.scorecard!=null?(' · نتيجة البرنامج النهائية: <b>'+r.scorecard+'/100</b>'):'')+'</p>' +
         '</div>' +
         '<div class="kpi-grid">' +
           '<div class="kpi-card accent-success"><div class="v">'+r.subCounts.approved+'</div><div class="l">نماذج معتمدة</div></div>' +
@@ -2541,6 +2564,8 @@ async function screenPrincipalCommunities(){
           '<div class="kpi-card"><div class="v">'+pctLabel(r.attendanceRate)+'</div><div class="l">نسبة الحضور في اللقاءات</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(r.selfEvalRate)+'</div><div class="l">التقييم الذاتي</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(r.goalsRate)+'</div><div class="l">تقدم الأهداف ('+r.goals.length+')</div></div>' +
+          '<div class="kpi-card"><div class="v">'+ratingAvgLabel(r.ratingRate)+'</div><div class="l">متوسط تقييم المدير</div></div>' +
+          '<div class="kpi-card accent-success"><div class="v">'+(r.scorecard==null?'—':r.scorecard+'/100')+'</div><div class="l">نتيجة البرنامج النهائية</div></div>' +
         '</div>' +
         '<div class="ind-row" style="cursor:pointer;" data-action="togglePrincipalComm" data-id="'+c.id+'">' +
           '<div class="ind-main"><div class="lbl">رسائل هذا المجتمع ('+r.notifs.length+')</div></div>' +
@@ -2558,6 +2583,12 @@ async function screenPrincipalCommunities(){
     dashTabsHtml() +
     '<div class="section-head"><h2>تقييم المجتمعات المهنية</h2></div>' +
     '<div style="color:var(--muted);font-size:13px;margin-bottom:14px;">رسائل وإحصائيات كل مجتمع مهني تظهر هنا منفصلة عن المجتمعات الأخرى، لمساعدتك على تقييم أداء كل منسق ومجتمعه وتحديد فرص التجويد.</div>' +
+    '<div class="program-card" style="margin-bottom:18px;"><div style="padding:14px 18px;font-size:13px;color:var(--ink);line-height:1.9;">' +
+      '<b>طريقة حساب نتيجة البرنامج النهائية (من 100):</b><br>' +
+      'عند اعتماد أي نموذج أو مهمة أو خطة تحسين أو ممارسة مشتركة، تمنح درجة تقييم رقمية من 0 إلى 100 (بدلاً من النجوم سابقًا) تعكس جودة الإنجاز. ' +
+      'تُحسب "نتيجة البرنامج النهائية" لكل مجتمع مهني كمتوسط للعناصر المتاحة التالية: نسبة اعتماد النماذج، نسبة الحضور في اللقاءات، التقييم الذاتي للمجتمع، نسبة تحقق الأهداف، ومتوسط درجات تقييمك (المدير) لجميع الاعتمادات. ' +
+      'تتحدّث هذه النتيجة تلقائيًا كل ما اعتمدت نموذجًا أو مهمة جديدة، فهي محصّلة تراكمية لأداء المجتمع طوال الفصل وليست تقييمًا لمرة واحدة.' +
+    '</div></div>' +
     summaryTable +
     '<div class="section-head" style="margin-top:24px;"><h2>تفاصيل كل مجتمع على حدة</h2></div>' +
     (cards || '<p style="color:var(--muted);font-size:13.5px;">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</p>')
@@ -2589,6 +2620,8 @@ async function screenCommunityReport(communityId){
   const cSubs = leader ? allSubs.filter(function(s){ return s.created_by===leader.id; }) : [];
   const approvedSubs = cSubs.filter(function(s){ return s.status==='approved'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
   const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===c.id; });
+  const tasks = (await DB.listTasks({ school: State.user.school })).filter(function(t){ return t.community_id===c.id; });
+  const shares = (await DB.listPracticeShares({ school: State.user.school })).filter(function(s){ return s.community_id===c.id; });
   const meetingSubs = cSubs.filter(function(s){ return s.form_type==='plcMeetingMinutes'; });
   const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
   const peerObsSubs = cSubs.filter(function(s){ return s.form_type==='peerObservation'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
@@ -2596,7 +2629,8 @@ async function screenCommunityReport(communityId){
   const attendanceRate = meetingAttendanceRate(meetingSubs);
   const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
   const goalsRate = communityGoalsAvgProgress(goals);
-  const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
+  const ratingRate = communityRatingAvg([cSubs, tasks, goals, shares]);
+  const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate });
 
   const subsRows = approvedSubs.map(function(s){
     const def = formDef(s.form_type);
@@ -2627,13 +2661,14 @@ async function screenCommunityReport(communityId){
         '<div class="field-grid cols-3">' +
           inputField('المنسق (القائد)','leaderName', leader?leader.full_name:'لم يُعيَّن منسق', {readonly:true}) +
           inputField('عدد الأعضاء','membersCount', String(members.length), {readonly:true}) +
-          inputField('بطاقة الأداء المجمّعة (من 100)','scorecard', scorecard==null?'—':String(scorecard), {readonly:true}) +
+          inputField('نتيجة البرنامج النهائية (من 100)','scorecard', scorecard==null?'—':String(scorecard), {readonly:true}) +
         '</div>' +
         '<div class="kpi-grid">' +
           '<div class="kpi-card accent-success"><div class="v">'+pctLabel(approvalRate)+'</div><div class="l">نسبة اعتماد النماذج</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(attendanceRate)+'</div><div class="l">نسبة الحضور في اللقاءات</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(selfEvalRate)+'</div><div class="l">التقييم الذاتي</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(goalsRate)+'</div><div class="l">تقدم خطة التحسين</div></div>' +
+          '<div class="kpi-card"><div class="v">'+ratingAvgLabel(ratingRate)+'</div><div class="l">متوسط تقييم المدير</div></div>' +
         '</div>' +
         '<div class="block-title"><span class="dot"></span> النماذج المعتمدة ('+approvedSubs.length+')</div>' +
         '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>النموذج</th><th>تاريخ الاعتماد</th></tr></thead><tbody>' +
@@ -2955,12 +2990,19 @@ function communitySelfEvalAvgRate(selfEvalSubs){
   if (!scores.length) return null;
   return Math.max(0, Math.min(1, (scores.reduce(function(a,b){ return a+b; },0) / scores.length - 1) / 3));
 }
+function communityRatingAvg(itemGroups){
+  const ratings = [];
+  (itemGroups||[]).forEach(function(arr){ (arr||[]).forEach(function(it){ if (it.principal_rating!=null) ratings.push(it.principal_rating); }); });
+  if (!ratings.length) return null;
+  return Math.max(0, Math.min(1, (ratings.reduce(function(a,b){ return a+b; },0) / ratings.length) / 100));
+}
 function communityScorecard(parts){
-  const vals = [parts.approvalRate, parts.attendanceRate, parts.selfEvalRate, parts.goalsRate].filter(function(v){ return v!=null; });
+  const vals = [parts.approvalRate, parts.attendanceRate, parts.selfEvalRate, parts.goalsRate, parts.ratingRate].filter(function(v){ return v!=null; });
   if (!vals.length) return null;
   return Math.round((vals.reduce(function(a,b){ return a+b; },0) / vals.length) * 100);
 }
 function pctLabel(rate){ return rate==null ? '—' : Math.round(rate*100)+'%'; }
+function ratingAvgLabel(rate){ return rate==null ? '—' : Math.round(rate*100)+'/100'; }
 async function screenCoordinatorGoals(){
   const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
   const members = State.user.community_id
@@ -3240,9 +3282,7 @@ function goalReviewModalHtml(g){
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>تقييم الهدف: '+esc(g.title)+'</h3>' +
         (g.principal_status ? ('<p>'+principalReviewBadgeHtml(g)+'</p>') : '') +
-        '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="glRating">' +
-          [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(g.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
-        '</select></div>' +
+        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('glRating', g.principal_rating)+'</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="glNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(g.principal_note||'')+'</textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-gold btn-block" data-action="approveGoal">✓ اعتماد وتقييم</button>' +
@@ -3325,7 +3365,7 @@ async function screenPracticeBank(){
       '<tr>' +
         '<td><b>'+esc(s.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+'</div></td>' +
         '<td>'+fmtDate(s.created_at)+'</td>' +
-        '<td>'+(s.status==='approved' ? '<span class="badge approved">معتمدة'+(s.principal_rating?(' '+'★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)):'')+'</span>' : s.status==='returned' ? '<span class="badge returned">أُعيدت للتعديل'+(s.principal_note?(': '+esc(s.principal_note)):'')+'</span>' : '<span class="badge pending">بانتظار اعتماد المدير</span>')+'</td>' +
+        '<td>'+(s.status==='approved' ? '<span class="badge approved">معتمدة'+ratingLabel(s.principal_rating)+'</span>' : s.status==='returned' ? '<span class="badge returned">أُعيدت للتعديل'+(s.principal_note?(': '+esc(s.principal_note)):'')+'</span>' : '<span class="badge pending">بانتظار اعتماد المدير</span>')+'</td>' +
       '</tr>'
     );
   }).join('');
@@ -3342,7 +3382,7 @@ async function screenPracticeBank(){
   }).join('');
 
   const approvedCards = approved.map(function(s){
-    const stars = s.principal_rating ? ('★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)) : '';
+    const stars = s.principal_rating ? ('التقييم: '+s.principal_rating+'/100') : '';
     const principalActions = isPrincipal ? (
       '<div class="row-actions" style="margin-top:8px;">' +
         '<button class="btn btn-ghost btn-sm" data-action="editPractice" data-id="'+s.id+'">تعديل</button>' +
@@ -3419,9 +3459,7 @@ function practiceReviewModalHtml(s){
         '<h3>مراجعة الممارسة: '+esc(s.title)+'</h3>' +
         '<p style="color:var(--muted);font-size:13.5px;">'+esc(s.description||'')+'</p>' +
         ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid" style="margin:0 0 8px;">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
-        '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="pkRating">' +
-          [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(s.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
-        '</select></div>' +
+        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('pkRating', s.principal_rating)+'</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="pkNote" placeholder="اكتب ملاحظتك...">'+esc(s.principal_note||'')+'</textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-gold btn-block" data-action="approvePractice">✓ اعتماد وعرضها في معرض المدرسة</button>' +
@@ -4210,9 +4248,7 @@ async function screenTaskDetail(taskId, readonly){
       '<h3>تقييم مدير المدرسة لإنجاز المهمة</h3>' +
       (t.principal_status ? ('<p style="margin:0 0 10px;">'+principalReviewBadgeHtml(t)+'</p>') : '') +
       '<div class="review-grid">' +
-        '<div class="field"><label>التقييم (1 إلى 5)</label><select class="input" id="taskRating">' +
-          [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(t.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
-        '</select></div>' +
+        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('taskRating', t.principal_rating)+'</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="taskNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(t.principal_note||'')+'</textarea></div>' +
         '<button class="btn btn-gold btn-block" data-action="approveTask">✓ اعتماد وتقييم</button>' +
         '<button class="btn btn-danger btn-block" data-action="returnTask">إرجاع للتعديل</button>' +
@@ -5908,7 +5944,7 @@ async function screenView(id){
   ) : '';
   const evalBlock = (s.status==='approved' && (s.principal_rating || s.principal_note)) ? (
     '<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة وتغذيته الراجعة</h3>' +
-      (s.principal_rating ? ('<p style="margin:0 0 6px;font-size:18px;">'+'★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)+'</p>') : '') +
+      (s.principal_rating!=null ? ('<p style="margin:0 0 6px;font-size:18px;"><b>'+s.principal_rating+'/100</b></p>') : '') +
       (s.principal_note ? ('<p style="color:var(--muted);font-size:13px;">'+esc(s.principal_note)+'</p>') : '') +
     '</div>'
   ) : '';
@@ -5968,9 +6004,7 @@ async function screenReview(id){
         '<h3>اعتماد مدير المدرسة</h3>' +
         '<div class="review-grid">' +
           '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
-          '<div class="field"><label>التقييم عند الاعتماد (1 إلى 5)</label><select class="input" id="reviewRating">' +
-            [1,2,3,4,5].map(function(n){ return '<option value="'+n+'" '+(n===(s.principal_rating||3)?'selected':'')+'>'+n+'</option>'; }).join('') +
-          '</select></div>' +
+          '<div class="field"><label>التقييم عند الاعتماد (من 0 إلى 100)</label>'+ratingInputHtml('reviewRating', s.principal_rating)+'</div>' +
           '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
           '<div class="field"><label>التوقيع الإلكتروني لمدير المدرسة</label>' + buildSignaturePad('approve', null, false) + '</div>' +
           '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
