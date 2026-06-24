@@ -515,6 +515,17 @@ create table students (
   created_at timestamptz default now()
 );
 
+create table visit_schedules (
+  id uuid primary key default gen_random_uuid(),
+  school text not null,
+  community_id uuid references communities(id),
+  created_by uuid references profiles(id),
+  created_by_name text,
+  status text not null default 'sent' check (status in ('sent')),
+  rows jsonb default '[]'::jsonb,
+  created_at timestamptz default now()
+);
+
 -- دوال مساعدة (security definer) لقراءة دور/مدرسة المستخدم الحالي من JWT دون تكرار سياسات profiles على نفسها:
 create or replace function my_role() returns text language sql security definer stable as $$
   select role from profiles where id = auth.uid()
@@ -534,6 +545,7 @@ alter table tasks enable row level security;
 alter table plc_goals enable row level security;
 alter table practice_shares enable row level security;
 alter table students enable row level security;
+alter table visit_schedules enable row level security;
 
 create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() = 'admin' or school = my_school() );
 create policy "profiles_insert" on profiles for insert with check ( my_role() = 'admin' );
@@ -563,6 +575,8 @@ create policy "plc_goals_all" on plc_goals for all using ( school = my_school() 
 create policy "practice_shares_all" on practice_shares for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 create policy "students_all" on students for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+
+create policy "visit_schedules_all" on visit_schedules for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 -- ميزة "المهام" أُضيفت بعد إنشاء المشروع، فإذا كان مشروعك على Supabase موجودًا
 -- من قبل، نفّذ فقط الجزء الخاص بجدول tasks وسياسته أعلاه (create table tasks...
@@ -646,6 +660,22 @@ create policy "students_all" on students for all using ( school = my_school() or
 -- alter table tasks add column if not exists coordinator_reviewed_at timestamptz;
 -- alter table plc_goals add column if not exists assigned_member_ids jsonb default '[]'::jsonb;
 -- alter table plc_goals add column if not exists evidence_files jsonb default '[]'::jsonb;
+
+-- ميزة "جدول الزيارات التبادلية" (تنسيق المنسق لجدول زيارات بين المعلمين وإرساله
+-- كجدول واحد مشترك يراه جميع معلمي المجتمع) أُضيفت بعد إنشاء المشروع، فإذا كان
+-- مشروعك على Supabase موجودًا من قبل، نفّذ هذه الأوامر مرة واحدة في SQL Editor:
+-- create table visit_schedules (
+--   id uuid primary key default gen_random_uuid(),
+--   school text not null,
+--   community_id uuid references communities(id),
+--   created_by uuid references profiles(id),
+--   created_by_name text,
+--   status text not null default 'sent' check (status in ('sent')),
+--   rows jsonb default '[]'::jsonb,
+--   created_at timestamptz default now()
+-- );
+-- alter table visit_schedules enable row level security;
+-- create policy "visit_schedules_all" on visit_schedules for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
@@ -738,6 +768,7 @@ const LS_TASKS = "dtd_tasks_v1";
 const LS_GOALS = "dtd_goals_v1";
 const LS_PRACTICE = "dtd_practice_v1";
 const LS_STUDENTS = "dtd_students_v1";
+const LS_VISIT_SCHEDULES = "dtd_visit_schedules_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -1260,6 +1291,45 @@ const DB = {
     let list = JSON.parse(localStorage.getItem(LS_PRACTICE) || '[]');
     list = list.filter(function(p){ return p.id!==id; });
     localStorage.setItem(LS_PRACTICE, JSON.stringify(list));
+    return true;
+  },
+  async listVisitSchedules(filter){
+    filter = filter || {};
+    if (isRemote()){
+      let path = 'visit_schedules?order=created_at.desc';
+      if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+      try{
+        const rows = await remoteFetch(path);
+        return rows || [];
+      }catch(e){
+        console.warn('visit_schedules table not available yet (run the SQL migration to enable reciprocal-visit schedules):', e.message);
+        return [];
+      }
+    }
+    let list = JSON.parse(localStorage.getItem(LS_VISIT_SCHEDULES) || '[]');
+    if (filter.school) list = list.filter(function(v){ return v.school===filter.school; });
+    return list.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  },
+  async createVisitSchedule(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('visit_schedules', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem(LS_VISIT_SCHEDULES) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_VISIT_SCHEDULES, JSON.stringify(list));
+    return obj;
+  },
+  async deleteVisitSchedule(id){
+    if (isRemote()){
+      await remoteFetch('visit_schedules?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_VISIT_SCHEDULES) || '[]');
+    list = list.filter(function(v){ return v.id!==id; });
+    localStorage.setItem(LS_VISIT_SCHEDULES, JSON.stringify(list));
     return true;
   },
   async listStudents(filter){
@@ -2126,6 +2196,7 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين الفصلية</button>' : '') +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='visits'?'active':'')+'" data-action="dashTab" data-tab="visits">الزيارات التبادلية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
@@ -2491,6 +2562,162 @@ function bindCoordinatorTasks(){
   });
   document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id'), readonly:true }); });
+  });
+}
+
+/* ----- لوحة منسق المجتمع المهني: جدول الزيارات التبادلية (المعلم الزائر/المعلم المزار) ----- */
+const VISIT_DAY_OPTIONS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
+let VisitsUI = { draft: null };
+function blankVisitRow(){
+  return { day:'', date:'', period:'', visitingTeacherId:'', visitingTeacherName:'', visitedTeacherId:'', visitedTeacherName:'' };
+}
+function visitTeacherSelectHtml(idx, field, value, teachers){
+  const opts = teachers.map(function(t){
+    return '<option value="'+t.id+'" '+(value===t.id?'selected':'')+'>'+esc(t.full_name)+'</option>';
+  }).join('');
+  return (
+    '<select class="input" data-action="visitFieldChange" data-idx="'+idx+'" data-field="'+field+'">' +
+      '<option value="">— اختر المعلم —</option>' + opts +
+    '</select>'
+  );
+}
+function visitRowCardHtml(row, idx, teachers){
+  return (
+    '<div class="program-card" style="margin-bottom:12px;">' +
+      '<div style="padding:14px 18px;">' +
+        '<div class="field-grid cols-2">' +
+          '<div class="field"><label>اليوم</label><select class="input" data-action="visitFieldChange" data-idx="'+idx+'" data-field="day">' +
+            '<option value="">— اختر اليوم —</option>' +
+            VISIT_DAY_OPTIONS.map(function(d){ return '<option value="'+d+'" '+(row.day===d?'selected':'')+'>'+d+'</option>'; }).join('') +
+          '</select></div>' +
+          '<div class="field"><label>التاريخ</label><input class="input" type="date" data-action="visitFieldChange" data-idx="'+idx+'" data-field="date" value="'+esc(row.date||'')+'"></div>' +
+        '</div>' +
+        '<div class="field"><label>الحصة</label><input class="input" data-action="visitFieldChange" data-idx="'+idx+'" data-field="period" value="'+esc(row.period||'')+'" placeholder="مثال: الحصة الثالثة"></div>' +
+        '<div class="field-grid cols-2">' +
+          '<div class="field"><label>المعلم الزائر</label>' + visitTeacherSelectHtml(idx, 'visitingTeacherId', row.visitingTeacherId, teachers) + '</div>' +
+          '<div class="field"><label>المعلم المزار</label>' + visitTeacherSelectHtml(idx, 'visitedTeacherId', row.visitedTeacherId, teachers) + '</div>' +
+        '</div>' +
+        '<button class="btn btn-ghost btn-sm" data-action="removeVisitRow" data-idx="'+idx+'">حذف هذا الصف</button>' +
+      '</div>' +
+    '</div>'
+  );
+}
+function visitScheduleTableHtml(sch, opts){
+  opts = opts || {};
+  const rowsHtml = (sch.rows||[]).map(function(r){
+    return (
+      '<tr>' +
+        '<td>'+esc(r.day||'—')+'</td>' +
+        '<td>'+(r.date?fmtDate(r.date):'—')+'</td>' +
+        '<td>'+esc(r.period||'—')+'</td>' +
+        '<td>'+esc(r.visitingTeacherName||'—')+'</td>' +
+        '<td>'+esc(r.visitedTeacherName||'—')+'</td>' +
+      '</tr>'
+    );
+  }).join('');
+  return (
+    '<div class="program-card" style="margin-bottom:16px;">' +
+      '<div class="ph"><h3>جدول الزيارات التبادلية</h3><p>'+esc(sch.created_by_name||'')+' · '+fmtDate(sch.created_at)+'</p></div>' +
+      '<div style="padding:14px 18px;">' +
+        '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+          '<thead><tr><th>اليوم</th><th>التاريخ</th><th>الحصة</th><th>المعلم الزائر</th><th>المعلم المزار</th></tr></thead>' +
+          '<tbody>' + (rowsHtml || '<tr class="empty-row"><td colspan="5">لا توجد صفوف.</td></tr>') + '</tbody>' +
+        '</table></div></div>' +
+        (opts.deletable ? '<div style="margin-top:10px;"><button class="btn btn-ghost btn-sm" data-action="deleteVisitSchedule" data-id="'+sch.id+'">حذف الجدول</button></div>' : '') +
+      '</div>' +
+    '</div>'
+  );
+}
+async function screenCoordinatorVisits(){
+  const communities = State.communitiesCache || [];
+  const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
+  const teachers = myCommunity
+    ? (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher' && u.community_id===myCommunity.id; })
+    : [];
+  const all = (await DB.listVisitSchedules({ school: State.user.school })).filter(function(s){ return s.community_id===State.user.community_id; });
+  const sent = all.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+
+  const draft = VisitsUI.draft;
+  const builder = draft ? (
+    '<div class="program-card" style="margin-bottom:16px;">' +
+      '<div class="ph"><h3>جدول زيارات جديد (قيد التنسيق)</h3><p>أضف صفًا لكل زيارة، ثم أرسل الجدول كاملًا لمعلمي مجتمعك.</p></div>' +
+      '<div style="padding:14px 18px;">' +
+        draft.rows.map(function(row, idx){ return visitRowCardHtml(row, idx, teachers); }).join('') +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
+          '<button class="add-row-btn" data-action="addVisitRow">+ إضافة صف</button>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="sendVisitSchedule">إرسال نسخة للمعلمين</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="cancelVisitDraft">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>جدول الزيارات التبادلية</h2>' +
+      (!draft && myCommunity ? '<button class="btn btn-primary" data-action="newVisitSchedule">+ تنسيق جدول جديد</button>' : '') +
+    '</div>' +
+    (myCommunity ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
+    (myCommunity && !teachers.length ? '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون في مجتمعك بعد، لذلك لا يمكنك اختيار معلمين للزيارات.</p>' : '') +
+    builder +
+    (sent.length ? sent.map(function(s){ return visitScheduleTableHtml(s, { deletable:true }); }).join('') : (draft ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يتم إرسال أي جدول زيارات للمعلمين بعد.</p>'))
+  );
+}
+function bindCoordinatorVisits(){
+  const newBtn = document.querySelector('[data-action="newVisitSchedule"]');
+  if (newBtn) newBtn.addEventListener('click', function(){ VisitsUI.draft = { rows:[blankVisitRow()] }; render(); bindCoordinatorVisits(); });
+  const cancelBtn = document.querySelector('[data-action="cancelVisitDraft"]');
+  if (cancelBtn) cancelBtn.addEventListener('click', function(){
+    if (!confirm('هل تريد إلغاء هذا الجدول؟ ستفقد كل الصفوف التي أدخلتها.')) return;
+    VisitsUI.draft = null; render(); bindCoordinatorVisits();
+  });
+  const addBtn = document.querySelector('[data-action="addVisitRow"]');
+  if (addBtn) addBtn.addEventListener('click', function(){ VisitsUI.draft.rows.push(blankVisitRow()); render(); bindCoordinatorVisits(); });
+  document.querySelectorAll('[data-action="removeVisitRow"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const idx = +el.getAttribute('data-idx');
+      VisitsUI.draft.rows.splice(idx, 1);
+      if (!VisitsUI.draft.rows.length) VisitsUI.draft.rows.push(blankVisitRow());
+      render(); bindCoordinatorVisits();
+    });
+  });
+  document.querySelectorAll('[data-action="visitFieldChange"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const idx = +el.getAttribute('data-idx');
+      const field = el.getAttribute('data-field');
+      const row = VisitsUI.draft.rows[idx];
+      if (field==='visitingTeacherId' || field==='visitedTeacherId'){
+        row[field] = el.value;
+        row[field==='visitingTeacherId' ? 'visitingTeacherName' : 'visitedTeacherName'] = el.value ? el.options[el.selectedIndex].textContent : '';
+      } else {
+        row[field] = el.value;
+      }
+    });
+  });
+  const sendBtn = document.querySelector('[data-action="sendVisitSchedule"]');
+  if (sendBtn) sendBtn.addEventListener('click', async function(){
+    const rows = VisitsUI.draft.rows.filter(function(r){ return r.day && r.date && r.visitingTeacherId && r.visitedTeacherId; });
+    if (!rows.length){ toast('يرجى تعبئة اليوم والتاريخ والمعلم الزائر والمعلم المزار في صف واحد على الأقل قبل الإرسال.'); return; }
+    if (rows.some(function(r){ return r.visitingTeacherId === r.visitedTeacherId; })){
+      toast('لا يمكن أن يكون المعلم الزائر والمعلم المزار نفس الشخص في الصف الواحد.'); return;
+    }
+    try{
+      await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
+      toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
+      VisitsUI.draft = null;
+      render(); bindCoordinatorVisits();
+    }catch(e){ toast(e.message); }
+  });
+  document.querySelectorAll('[data-action="deleteVisitSchedule"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذا الجدول؟ سيختفي فورًا من شاشات جميع المعلمين.')) return;
+      try{ await DB.deleteVisitSchedule(el.getAttribute('data-id')); toast('تم حذف الجدول.'); render(); bindCoordinatorVisits(); }
+      catch(e){ toast(e.message); }
+    });
   });
 }
 
@@ -3480,6 +3707,9 @@ async function screenDashboard(){
   if (State.dashTab==='goals' && State.user.role==='coordinator'){
     return await screenCoordinatorGoals();
   }
+  if (State.dashTab==='visits' && State.user.role==='coordinator'){
+    return await screenCoordinatorVisits();
+  }
   if (State.dashTab==='principalReview' && State.user.role==='principal'){
     return await screenPrincipalReview();
   }
@@ -3568,6 +3798,7 @@ function bindDashboard(){
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='communitiesEval' && State.user.role==='principal') bindPrincipalCommunities();
   else if (State.dashTab==='goals' && State.user.role==='coordinator') bindCoordinatorGoals();
+  else if (State.dashTab==='visits' && State.user.role==='coordinator') bindCoordinatorVisits();
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
   else if (State.dashTab==='indicators') bindIndicators();
 }
@@ -3625,6 +3856,11 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
+  const visitSchedules = State.user.community_id
+    ? (await DB.listVisitSchedules({ school: State.user.school })).filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); })
+    : [];
+  const visitScheduleCards = visitSchedules.map(function(s){ return visitScheduleTableHtml(s, {}); }).join('');
+
   const myForms = subs.filter(function(s){ return s.created_by===State.user.id; })
     .sort(function(a,b){ return new Date(b.created_at||0) - new Date(a.created_at||0); });
   const myFormsRows = myForms.map(function(s){
@@ -3658,9 +3894,10 @@ async function screenTeacherTasks(){
       '<thead><tr><th>النموذج</th><th>تاريخ الإنشاء</th><th>الحالة</th><th></th></tr></thead>' +
       '<tbody>' + (myFormsRows || '<tr class="empty-row"><td colspan="4">لم تُنشئ أي نموذج بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
-    (taskCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
-    (goalCards ? ('<div class="block-title" style="margin-top:'+(taskCards?'22px':'0')+';"><span class="dot"></span> خطط تحسين موكَّل إليك تنفيذها</div>' + goalCards) : '') +
-    (sessCards ? ('<div class="block-title" style="margin-top:'+((taskCards||goalCards)?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '')
+    (visitScheduleCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> جدول الزيارات التبادلية المعتمد من منسق مجتمعك</div>' + visitScheduleCards) : '') +
+    (taskCards ? ('<div class="block-title" style="margin-top:'+(visitScheduleCards?'22px':'0')+';"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
+    (goalCards ? ('<div class="block-title" style="margin-top:'+((visitScheduleCards||taskCards)?'22px':'0')+';"><span class="dot"></span> خطط تحسين موكَّل إليك تنفيذها</div>' + goalCards) : '') +
+    (sessCards ? ('<div class="block-title" style="margin-top:'+((visitScheduleCards||taskCards||goalCards)?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '')
   );
 }
 function bindTeacherTasks(){
