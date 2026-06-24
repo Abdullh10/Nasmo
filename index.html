@@ -245,6 +245,7 @@ textarea.input{ resize:vertical; min-height:64px; }
 .task-card .meta span{ font-size:12.5px; color:var(--muted); }
 
 .program-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:22px; overflow:hidden; }
+.program-card p{ overflow-wrap:break-word; word-break:break-word; }
 .program-card .ph{ padding:16px 18px; border-bottom:1px solid var(--border); background:var(--surface-2); }
 .program-card .ph h3{ font-size:15.5px; color:var(--navy); margin-bottom:3px; }
 .program-card .ph p{ font-size:12.5px; color:var(--muted); }
@@ -2885,10 +2886,12 @@ async function screenPracticeBank(){
     return (
       '<div class="program-card">' +
         '<div class="ph"><h3>'+esc(s.title)+'</h3><p>'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+' · '+esc(s.created_by_name||'')+' · '+fmtDate(s.created_at)+(stars?(' · '+stars):'')+'</p></div>' +
-        (s.description ? ('<p style="font-size:13.5px;color:var(--ink);">'+esc(s.description)+'</p>') : '') +
-        (s.attachment_note ? ('<p style="font-size:12.5px;color:var(--muted);">'+esc(s.attachment_note)+'</p>') : '') +
-        ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
-        principalActions +
+        '<div style="padding:14px 18px;">' +
+          (s.description ? ('<p style="font-size:13.5px;color:var(--ink);">'+esc(s.description)+'</p>') : '') +
+          (s.attachment_note ? ('<p style="font-size:12.5px;color:var(--muted);">'+esc(s.attachment_note)+'</p>') : '') +
+          ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
+          principalActions +
+        '</div>' +
       '</div>'
     );
   }).join('');
