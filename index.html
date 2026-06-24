@@ -299,6 +299,28 @@ textarea.input{ resize:vertical; min-height:64px; }
 .layout-2col{ display:grid; grid-template-columns:1fr 300px; gap:20px; align-items:start; }
 @media (max-width:900px){ .layout-2col{ grid-template-columns:1fr; } }
 
+/* ---------- منتقي التاريخ الهجري ---------- */
+.hijri-date-field{ position:relative; display:block; }
+.hijri-date-btn{ display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; text-align:right; font-family:inherit; font-size:inherit; }
+.hijri-date-btn:disabled{ cursor:not-allowed; opacity:.65; }
+.hijri-date-text{ flex:1; }
+.hijri-date-icon{ flex:none; opacity:.7; font-size:14px; }
+.hijri-cal-popup{ background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 16px 40px rgba(0,0,0,.28); padding:12px; width:264px; font-size:13px; }
+.hcal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.hcal-title{ font-weight:700; color:var(--navy); }
+.hcal-nav{ background:var(--surface-2); border:1px solid var(--border); border-radius:6px; width:28px; height:28px; cursor:pointer; font-size:16px; line-height:1; color:var(--navy); }
+.hcal-nav:hover{ background:var(--border); }
+.hcal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; color:var(--muted); font-size:11px; margin-bottom:4px; }
+.hcal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+.hcal-cell{ aspect-ratio:1; display:flex; align-items:center; justify-content:center; }
+.hcal-day{ background:none; border:none; border-radius:6px; cursor:pointer; color:var(--text); }
+.hcal-day:hover{ background:var(--surface-2); }
+.hcal-day.today{ border:1.5px solid var(--teal); }
+.hcal-day.sel{ background:var(--navy); color:#fff; }
+.hcal-foot{ display:flex; gap:8px; margin-top:10px; border-top:1px solid var(--border); padding-top:8px; }
+.hcal-foot button{ flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; padding:6px; font-size:12px; cursor:pointer; color:var(--navy-2); }
+.hcal-foot button:hover{ background:var(--border); }
+
 /* ---------- print ---------- */
 @media print{
   body{ background:#fff; }
@@ -790,6 +812,173 @@ function fmtDateTime(iso){
   if (isNaN(d.getTime())) return '—';
   return hijriDateFmt(d) + ' - ' + d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
 }
+
+/* ---------- منتقي التاريخ الهجري: تحويل ميلادي <-> هجري ---------- */
+const HIJRI_MONTH_NAMES = ['محرم','صفر','ربيع الأول','ربيع الآخر','جمادى الأولى','جمادى الآخرة','رجب','شعبان','رمضان','شوال','ذو القعدة','ذو الحجة'];
+const hijriNumFmt = new Intl.DateTimeFormat('en-US', {calendar:'islamic-umalqura', year:'numeric', month:'numeric', day:'numeric'});
+function hijriPartsOf(date){
+  const p = {};
+  hijriNumFmt.formatToParts(date).forEach(function(x){ if(x.type==='year'||x.type==='month'||x.type==='day') p[x.type]=+x.value; });
+  return p;
+}
+function hijriToGregorianApprox(hy, hm, hd){
+  const jd = Math.floor((11*hy+3)/30) + 354*hy + 30*hm - Math.floor((hm-1)/2) + hd + 1948440 - 385;
+  const a = jd + 32044, b = Math.floor((4*a+3)/146097), c = a - Math.floor((146097*b)/4);
+  const d2 = Math.floor((4*c+3)/1461), e = c - Math.floor((1461*d2)/4);
+  const m = Math.floor((5*e+2)/153);
+  const day = e - Math.floor((153*m+2)/5) + 1;
+  const month = m + 3 - 12*Math.floor(m/10);
+  const year = 100*b + d2 - 4800 + Math.floor(m/10);
+  return new Date(year, month-1, day);
+}
+function hijriToGregorian(hy, hm, hd){
+  const guess = hijriToGregorianApprox(hy, hm, hd);
+  for (let delta=-5; delta<=5; delta++){
+    const cand = new Date(guess.getFullYear(), guess.getMonth(), guess.getDate()+delta);
+    const p = hijriPartsOf(cand);
+    if (p.year===hy && p.month===hm && p.day===hd) return cand;
+  }
+  return guess;
+}
+function hijriMonthLength(hy, hm){
+  const d1 = hijriToGregorian(hy, hm, 1);
+  const ny = hm===12 ? hy+1 : hy, nm = hm===12 ? 1 : hm+1;
+  const d2 = hijriToGregorian(ny, nm, 1);
+  return Math.round((d2 - d1) / 86400000);
+}
+function isoToDate(s){
+  if (!s) return null;
+  const parts = String(s).slice(0,10).split('-');
+  if (parts.length<3) return null;
+  const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+  return isNaN(d.getTime()) ? null : d;
+}
+function dateToIso(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+/* ---------- منتقي التاريخ الهجري: عنصر الإدخال ---------- */
+function hijriDateInputHtml(attrsHtml, value, ro, btnStyle){
+  const d = isoToDate(value);
+  const display = d ? hijriDateFmt(d) : '';
+  return (
+    '<span class="hijri-date-field">' +
+      '<input type="hidden" '+attrsHtml+' value="'+esc(value||'')+'">' +
+      '<button type="button" class="input hijri-date-btn" data-action="openHijriPicker"'+(ro?' disabled':'')+(btnStyle?' style="'+btnStyle+'"':'')+'>' +
+        '<span class="hijri-date-text"'+(display?'':' style="color:var(--muted);"')+'>'+(display?esc(display):'اختر التاريخ')+'</span>' +
+        '<span class="hijri-date-icon">📅</span>' +
+      '</button>' +
+    '</span>'
+  );
+}
+const HijriPicker = { input:null, btn:null, hy:0, hm:0 };
+function closeHijriPicker(){
+  const pop = document.getElementById('hijriPickerPopup');
+  if (pop) pop.remove();
+  document.removeEventListener('mousedown', hijriPickerOutsideClick, true);
+}
+function hijriPickerOutsideClick(e){
+  const pop = document.getElementById('hijriPickerPopup');
+  if (pop && !pop.contains(e.target) && e.target !== HijriPicker.btn) closeHijriPicker();
+}
+function positionHijriPopup(pop, btn){
+  const r = btn.getBoundingClientRect();
+  pop.style.position = 'fixed';
+  pop.style.zIndex = '95';
+  pop.style.top = (r.bottom + 6) + 'px';
+  pop.style.left = r.left + 'px';
+  requestAnimationFrame(function(){
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let left = r.left, top = r.bottom + 6;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    if (left < 8) left = 8;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  });
+}
+function setHijriInputValue(iso){
+  const input = HijriPicker.input;
+  input.value = iso;
+  input.dispatchEvent(new Event('input', {bubbles:true}));
+  input.dispatchEvent(new Event('change', {bubbles:true}));
+  const wrap = input.closest('.hijri-date-field');
+  const textEl = wrap.querySelector('.hijri-date-text');
+  const d = iso ? isoToDate(iso) : null;
+  if (d){ textEl.textContent = hijriDateFmt(d); textEl.style.color = ''; }
+  else { textEl.textContent = 'اختر التاريخ'; textEl.style.color = 'var(--muted)'; }
+}
+function pickHijriDate(hy, hm, hd){
+  setHijriInputValue(dateToIso(hijriToGregorian(hy, hm, hd)));
+  closeHijriPicker();
+}
+function renderHijriPickerPopup(){
+  const length = hijriMonthLength(HijriPicker.hy, HijriPicker.hm);
+  const first = hijriToGregorian(HijriPicker.hy, HijriPicker.hm, 1);
+  const firstWeekday = first.getDay();
+  const selD = isoToDate(HijriPicker.input.value);
+  const selParts = selD ? hijriPartsOf(selD) : null;
+  const todayParts = hijriPartsOf(new Date());
+  let cells = '';
+  for (let i=0;i<firstWeekday;i++) cells += '<span class="hcal-cell"></span>';
+  for (let day=1; day<=length; day++){
+    const isSel = !!selParts && selParts.year===HijriPicker.hy && selParts.month===HijriPicker.hm && selParts.day===day;
+    const isToday = todayParts.year===HijriPicker.hy && todayParts.month===HijriPicker.hm && todayParts.day===day;
+    cells += '<span class="hcal-cell"><button type="button" class="hcal-day'+(isSel?' sel':'')+(isToday?' today':'')+'" data-day="'+day+'">'+day+'</button></span>';
+  }
+  const pop = document.createElement('div');
+  pop.id = 'hijriPickerPopup';
+  pop.className = 'hijri-cal-popup';
+  pop.innerHTML = (
+    '<div class="hcal-head">' +
+      '<button type="button" class="hcal-nav" data-nav="1">‹</button>' +
+      '<span class="hcal-title">'+HIJRI_MONTH_NAMES[HijriPicker.hm-1]+' '+HijriPicker.hy+'هـ</span>' +
+      '<button type="button" class="hcal-nav" data-nav="-1">›</button>' +
+    '</div>' +
+    '<div class="hcal-weekdays">'+['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'].map(function(w){ return '<span>'+w+'</span>'; }).join('')+'</div>' +
+    '<div class="hcal-grid">'+cells+'</div>' +
+    '<div class="hcal-foot">' +
+      '<button type="button" data-action="hcalToday">اليوم</button>' +
+      '<button type="button" data-action="hcalClear">مسح</button>' +
+    '</div>'
+  );
+  document.body.appendChild(pop);
+  positionHijriPopup(pop, HijriPicker.btn);
+  pop.querySelectorAll('[data-nav]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const dir = +el.getAttribute('data-nav');
+      HijriPicker.hm += dir;
+      if (HijriPicker.hm<1){ HijriPicker.hm=12; HijriPicker.hy--; }
+      else if (HijriPicker.hm>12){ HijriPicker.hm=1; HijriPicker.hy++; }
+      pop.remove();
+      renderHijriPickerPopup();
+    });
+  });
+  pop.querySelectorAll('.hcal-day').forEach(function(el){
+    el.addEventListener('click', function(){ pickHijriDate(HijriPicker.hy, HijriPicker.hm, +el.getAttribute('data-day')); });
+  });
+  pop.querySelector('[data-action="hcalToday"]').addEventListener('click', function(){
+    const tp = hijriPartsOf(new Date());
+    pickHijriDate(tp.year, tp.month, tp.day);
+  });
+  pop.querySelector('[data-action="hcalClear"]').addEventListener('click', function(){ setHijriInputValue(''); closeHijriPicker(); });
+  setTimeout(function(){ document.addEventListener('mousedown', hijriPickerOutsideClick, true); }, 0);
+}
+function openHijriPicker(btn){
+  if (btn.disabled) return;
+  closeHijriPicker();
+  const wrap = btn.closest('.hijri-date-field');
+  const input = wrap.querySelector('input[type="hidden"]');
+  HijriPicker.input = input; HijriPicker.btn = btn;
+  const d = isoToDate(input.value) || new Date();
+  const p = hijriPartsOf(d);
+  HijriPicker.hy = p.year; HijriPicker.hm = p.month;
+  renderHijriPickerPopup();
+}
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('[data-action="openHijriPicker"]');
+  if (btn){ e.stopPropagation(); openHijriPicker(btn); }
+});
 
 function localSeed(){
   if (!localStorage.getItem(LS_COMMUNITIES)) {
@@ -1780,6 +1969,9 @@ function inputField(label, name, value, opts){
   if (type === 'textarea'){
     return '<div class="field"><label>'+esc(label)+'</label><textarea class="input" data-field="'+name+'" '+ro+' placeholder="'+(opts.placeholder?esc(opts.placeholder):'')+'">'+esc(value||'')+'</textarea></div>';
   }
+  if (type === 'date'){
+    return '<div class="field"><label>'+esc(label)+'</label>'+hijriDateInputHtml('data-field="'+name+'"', value, !!opts.readonly)+'</div>';
+  }
   return '<div class="field"><label>'+esc(label)+'</label><input class="input" type="'+type+'" data-field="'+name+'" value="'+esc(value||'')+'" '+ro+' placeholder="'+(opts.placeholder?esc(opts.placeholder):'')+'"></div>';
 }
 function teacherSelectHtml(label, fieldPath, value, teachers, ro){
@@ -2065,7 +2257,7 @@ function notifComposeModal(){
         '</select></div>' +
         '<div class="field"><label>العنوان</label><input class="input" id="ncTitle" placeholder="مثال: تذكير باجتماع المجتمع المهني"></div>' +
         '<div class="field"><label>نص الرسالة</label><textarea class="input" id="ncBody" rows="3" placeholder="تفاصيل التنبيه..."></textarea></div>' +
-        '<div class="field"><label>الموعد (اختياري)</label><input class="input" type="date" id="ncDue"></div>' +
+        '<div class="field"><label>الموعد (اختياري)</label>'+hijriDateInputHtml('id="ncDue"', '', false)+'</div>' +
         (isAdmin ?
           ('<div class="field"><label>الجهة المستهدفة</label><select class="input" id="ncTarget">' +
             '<option value="school">كل أعضاء المدرسة</option>' +
@@ -2526,7 +2718,7 @@ function taskComposeModal(teachers){
         '</select></div>' +
         '<div class="field"><label>عنوان المهمة</label><input class="input" id="tkTitle" placeholder="مثال: تطبيق استراتيجية حل المشكلات"></div>' +
         '<div class="field"><label>التفاصيل والشواهد المطلوبة</label><textarea class="input" id="tkDesc" rows="3" placeholder="صف المهمة والشواهد المطلوب رفعها..."></textarea></div>' +
-        '<div class="field"><label>الموعد النهائي (اختياري)</label><input class="input" type="date" id="tkDue"></div>' +
+        '<div class="field"><label>الموعد النهائي (اختياري)</label>'+hijriDateInputHtml('id="tkDue"', '', false)+'</div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="sendTask">إرسال المهمة</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeTaskModal">إلغاء</button>' +
@@ -2590,7 +2782,7 @@ function visitRowCardHtml(row, idx, teachers){
             '<option value="">— اختر اليوم —</option>' +
             VISIT_DAY_OPTIONS.map(function(d){ return '<option value="'+d+'" '+(row.day===d?'selected':'')+'>'+d+'</option>'; }).join('') +
           '</select></div>' +
-          '<div class="field"><label>التاريخ</label><input class="input" type="date" data-action="visitFieldChange" data-idx="'+idx+'" data-field="date" value="'+esc(row.date||'')+'"></div>' +
+          '<div class="field"><label>التاريخ</label>'+hijriDateInputHtml('data-action="visitFieldChange" data-idx="'+idx+'" data-field="date"', row.date||'', false)+'</div>' +
         '</div>' +
         '<div class="field"><label>الحصة</label><input class="input" data-action="visitFieldChange" data-idx="'+idx+'" data-field="period" value="'+esc(row.period||'')+'" placeholder="مثال: الحصة الثالثة"></div>' +
         '<div class="field-grid cols-2">' +
@@ -2851,7 +3043,7 @@ function goalComposeModal(draft, members){
           '<div class="field"><label>القيمة المستهدفة</label><input class="input" type="number" id="glTarget" value="'+esc(g.target_value!=null?g.target_value:'')+'"></div>' +
           '<div class="field"><label>القيمة الحالية</label><input class="input" type="number" id="glCurrent" value="'+esc(g.current_value!=null?g.current_value:'')+'"></div>' +
         '</div>' +
-        '<div class="field"><label>الموعد النهائي (اختياري)</label><input class="input" type="date" id="glDue" value="'+esc(g.due_date||'')+'"></div>' +
+        '<div class="field"><label>الموعد النهائي (اختياري)</label>'+hijriDateInputHtml('id="glDue"', g.due_date||'', false)+'</div>' +
         '<div class="field"><label>حالة الهدف</label><select class="input" id="glStatus">' +
           '<option value="active" '+(g.status==='active'?'selected':'')+'>قيد التنفيذ</option>' +
           '<option value="achieved" '+(g.status==='achieved'?'selected':'')+'>تم تحقيقه</option>' +
@@ -5061,7 +5253,7 @@ async function screenIndicators(){
       '<label>الفصل الدراسي:</label>' +
       '<select id="semesterSelectInput" class="input" style="width:auto;">'+semesterOptionsHtml+'</select>' +
       '<label>تاريخ بدايته:</label>' +
-      '<input type="date" id="semesterStartInput" value="'+esc(semesterStart)+'">' +
+      hijriDateInputHtml('id="semesterStartInput"', semesterStart, false, 'width:auto;padding:6px 10px;font-size:13px;') +
       '<button class="btn btn-primary btn-sm" data-action="saveSemesterStart">حفظ</button>' +
       (curWeek!=null
         ? '<span class="prog-txt" style="margin-right:auto;">الأسبوع الدراسي الحالي: '+curWeek+'</span>'
@@ -5412,7 +5604,7 @@ function renderPlcMeeting(d, ro, teachers){
     return (
       '<tr><td><input class="input" data-field="decisions.'+i+'.decision" value="'+esc(dec.decision)+'" '+(ro?'disabled':'')+'></td>' +
       '<td><input class="input" data-field="decisions.'+i+'.responsible" value="'+esc(dec.responsible)+'" '+(ro?'disabled':'')+'></td>' +
-      '<td><input class="input" type="date" data-field="decisions.'+i+'.deadline" value="'+esc(dec.deadline)+'" '+(ro?'disabled':'')+'></td>' +
+      '<td>'+hijriDateInputHtml('data-field="decisions.'+i+'.deadline"', dec.deadline, ro)+'</td>' +
       (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="decisions" data-idx="'+i+'">✕</button></td>') +
       '</tr>'
     );
