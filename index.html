@@ -1792,6 +1792,52 @@ function studentSelectInlineHtml(fieldPath, value, students, ro){
     '</select>' + manualInput
   );
 }
+function studentMultiPickButtonHtml(list){
+  return '<button class="btn btn-ghost btn-sm" data-action="openStudentPick" data-list="'+list+'">+ إضافة عدة طلاب دفعة واحدة</button>';
+}
+function studentPickModalHtml(){
+  const list = EditorState.studentPickList;
+  const allStudents = EditorState.students || [];
+  const existingNames = (EditorState.data[list]||[]).map(function(r){ return r.name; }).filter(Boolean);
+  const myId = State.user && State.user.id;
+  const assigned = [], others = [];
+  allStudents.forEach(function(s){
+    if (existingNames.indexOf(s.full_name) > -1) return;
+    const ids = Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids : [];
+    if (myId && ids.indexOf(myId)>-1) assigned.push(s); else others.push(s);
+  });
+  function row(s){
+    const checked = EditorState.studentPickSelected.indexOf(s.full_name) > -1;
+    return (
+      '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13.5px;">' +
+        '<input type="checkbox" class="studentPickChk" data-name="'+esc(s.full_name)+'" '+(checked?'checked':'')+'>' +
+        '<span>'+esc(s.full_name)+'</span>' +
+      '</label>'
+    );
+  }
+  let listHtml;
+  if (assigned.length && others.length){
+    listHtml = '<div style="font-weight:700;color:var(--navy-2);font-size:12.5px;margin:10px 0 4px;">طلابي المسندون</div>' + assigned.map(row).join('') +
+      '<div style="font-weight:700;color:var(--navy-2);font-size:12.5px;margin:10px 0 4px;">بقية طلاب المدرسة</div>' + others.map(row).join('');
+  } else {
+    listHtml = assigned.concat(others).map(row).join('');
+  }
+  if (!listHtml) listHtml = '<p style="color:var(--muted);font-size:13px;">لا يوجد طلاب متاحون للإضافة (أو تمت إضافتهم جميعًا).</p>';
+  const count = EditorState.studentPickSelected.length;
+  return (
+    '<div class="modal-bg" data-action="closeStudentPickModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>إضافة عدة طلاب دفعة واحدة</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">حدِّد الطلاب الذين تريد إضافتهم إلى الخطة، ثم اضغط «إضافة»، وستُضاف بطاقة مستقلة لكل طالب محدَّد.</p>' +
+        '<div style="max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:8px 10px;">' + listHtml + '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="confirmStudentPick">إضافة المحدَّدين ('+count+')</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeStudentPickModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
 
 /* ---------------------- حالة تعديل النموذج الحالي (محرّر) ---------------------- */
 let EditorState = null; // { formType, id(optional), data, status, prepSig, school, createdByName, createdBy }
@@ -1826,10 +1872,11 @@ function openEditor(formType, submission){
       status: submission.status, prepSig: submission.preparer_signature, school: submission.school,
       createdByName: submission.created_by_name, createdBy: submission.created_by,
       returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at,
-      manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: []
+      manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [],
+      studentPickOpen: false, studentPickList: null, studentPickSelected: []
     };
   } else {
-    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [] };
+    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [], studentPickOpen: false, studentPickList: null, studentPickSelected: [] };
   }
   go('editor', { formType: formType });
 }
@@ -4962,6 +5009,7 @@ async function screenEditor(){
         '<button class="btn btn-ghost" data-action="saveDraft">حفظ كمسودة</button>' +
         '<button class="btn btn-primary" data-action="submitForm">إرسال لاعتماد مدير المدرسة</button>' +
       '</div>' +
+      (EditorState.studentPickOpen ? studentPickModalHtml() : '') +
     '</div>'
   );
 }
@@ -4992,7 +5040,7 @@ function renderGroupPlan(d, ro, students){
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
     cards +
-    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>') +
+    (ro?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>'+studentMultiPickButtonHtml('students')+'</div>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
     inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'})
   );
@@ -5080,7 +5128,7 @@ function renderBehavioralPlan(d, ro, students){
     '<div class="field"><label>هل تم إشعار ولي الأمر؟</label>'+radioGroup('parentNotified', ['نعم','لا'], d.parentNotified)+'</div>' +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون وتحليل السلوك</div>' +
     cards +
-    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="behaviorStudents">+ إضافة طالب</button>') +
+    (ro?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><button class="add-row-btn" data-action="addRow" data-list="behaviorStudents">+ إضافة طالب</button>'+studentMultiPickButtonHtml('behaviorStudents')+'</div>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم وملاحظات ختامية</div>' +
     inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بعد تطبيق استراتيجيات التدخل أعلاه لمدة...، لوحظ تحسّن في...'})
   );
@@ -5339,6 +5387,41 @@ function bindEditor(){
   });
   const resign = document.querySelector('[data-action="resign"]');
   if (resign) resign.addEventListener('click', function(){ EditorState.prepSig=null; render(); bindEditor(); });
+
+  document.querySelectorAll('[data-action="openStudentPick"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      EditorState.studentPickOpen = true;
+      EditorState.studentPickList = el.getAttribute('data-list');
+      EditorState.studentPickSelected = [];
+      render(); bindEditor();
+    });
+  });
+  const closeStudentPick = function(){
+    EditorState.studentPickOpen = false; EditorState.studentPickList = null; EditorState.studentPickSelected = [];
+    render(); bindEditor();
+  };
+  const closeStudentPickBtn = document.querySelector('[data-action="closeStudentPickModal"]');
+  if (closeStudentPickBtn) closeStudentPickBtn.addEventListener('click', closeStudentPick);
+  const closeStudentPickBg = document.querySelector('[data-action="closeStudentPickModalBg"]');
+  if (closeStudentPickBg) closeStudentPickBg.addEventListener('click', closeStudentPick);
+  document.querySelectorAll('.studentPickChk').forEach(function(el){
+    el.addEventListener('change', function(){
+      const name = el.getAttribute('data-name');
+      const idx = EditorState.studentPickSelected.indexOf(name);
+      if (el.checked && idx===-1) EditorState.studentPickSelected.push(name);
+      else if (!el.checked && idx>-1) EditorState.studentPickSelected.splice(idx,1);
+      render(); bindEditor();
+    });
+  });
+  const confirmStudentPickBtn = document.querySelector('[data-action="confirmStudentPick"]');
+  if (confirmStudentPickBtn) confirmStudentPickBtn.addEventListener('click', function(){
+    const list = EditorState.studentPickList;
+    const newRows = EditorState.studentPickSelected.map(function(name){
+      const row = defaultRowFor(list); row.name = name; return row;
+    });
+    EditorState.data[list] = (EditorState.data[list]||[]).concat(newRows);
+    closeStudentPick();
+  });
 
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){ await persistEditor('draft'); });
