@@ -140,8 +140,8 @@ a{ color:var(--teal-dark); }
 /* ---------- section header ---------- */
 .section-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:30px 0 14px; flex-wrap:wrap; }
 .section-head h2{ font-size:17px; }
-.tabs{ display:flex; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:4px; }
-.tab{ padding:7px 14px; border-radius:6px; font-size:13px; font-weight:700; color:var(--muted); background:transparent; border:none; }
+.tabs{ display:flex; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tab{ padding:7px 14px; border-radius:6px; font-size:13px; font-weight:700; color:var(--muted); background:transparent; border:none; flex-shrink:0; white-space:nowrap; }
 .tab.active{ background:var(--navy); color:#fff; }
 
 /* ---------- table ---------- */
