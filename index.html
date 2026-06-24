@@ -2142,7 +2142,7 @@ function blankSelfEvalCriteria(){
   SELF_EVAL_CRITERIA.forEach(function(c){ obj[c.key] = { score:'', note:'' }; });
   return obj;
 }
-function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[] }; }
+function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[] }; }
 function blankSession(){ return { teacher:'', subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
 function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
@@ -2186,6 +2186,7 @@ async function render(){
       case 'communityReport': renderShell(app, await screenCommunityReport(State.params.id)); bindCommunityReport(); break;
       case 'practiceBank': renderShell(app, await screenPracticeBank()); bindPracticeBank(); break;
       case 'studentRoster': renderShell(app, await screenStudentRoster()); bindStudentRoster(); break;
+      case 'examAnalysis': renderShell(app, await screenExamAnalysis()); bindExamAnalysis(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
@@ -3772,6 +3773,171 @@ function bindStudentRoster(){
   });
 }
 
+/* ----- شاشة المعلم: تحليل درجات اختبار نهاية الفصل والفرز الآلي للخطة العلاجية الجماعية ----- */
+const EXAM_PASS_SCORE = 20; /* نصف الدرجة العظمى (40) */
+let ExamAnalysisUI = { rows: null, resultModal: null };
+function isExamImportHeaderRow(first){
+  first = (first||'').trim();
+  return first === 'السجل المدني' || first.toLowerCase() === 'national id' || first.toLowerCase() === 'id';
+}
+function parseExamRows(rows){
+  return rows.map(function(r){
+    const nationalId = (r[0]||'').trim();
+    const name = (r[1]||'').trim();
+    const grade = (r[2]||'').trim();
+    const section = (r[3]||'').trim();
+    const scoreRaw = (r[4]||'').trim();
+    const score = scoreRaw==='' ? null : Number(scoreRaw);
+    return { nationalId, name, grade, section, score: (score!=null && !isNaN(score)) ? score : null };
+  }).filter(function(r){ return r.name; });
+}
+async function screenExamAnalysis(){
+  const rows = ExamAnalysisUI.rows || [];
+  const resultRows = rows.map(function(r, i){
+    const invalid = r.score==null;
+    const fail = !invalid && r.score < EXAM_PASS_SCORE;
+    return (
+      '<tr>' +
+        '<td>'+esc(r.nationalId||'—')+'</td>' +
+        '<td><b>'+esc(r.name)+'</b></td>' +
+        '<td>'+esc(r.grade||'—')+'</td>' +
+        '<td>'+esc(r.section||'—')+'</td>' +
+        '<td>'+(invalid?'<span style="color:var(--muted);">—</span>':esc(r.score)+' / 40')+'</td>' +
+        '<td>'+(invalid?'<span style="color:var(--muted);">لم تُحدَّد الدرجة</span>':(fail?'<span class="badge returned">أقل من النصف — يدخل الخطة العلاجية</span>':'<span class="badge approved">ناجح</span>'))+'</td>' +
+      '</tr>'
+    );
+  }).join('');
+  const failCount = rows.filter(function(r){ return r.score!=null && r.score < EXAM_PASS_SCORE; }).length;
+  const resultModal = ExamAnalysisUI.resultModal ? examAnalysisResultModal() : '';
+  return (
+    '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
+    '<div class="section-head"><h2>تحليل درجات اختبار نهاية الفصل</h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="downloadExamTemplate">تنزيل نموذج Excel لدرجات الاختبار</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="triggerExamImport">رفع ملف الدرجات</button>' +
+        '<input type="file" id="examImportInput" accept=".csv" style="display:none;">' +
+      '</div>' +
+    '</div>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ بيانات طلابك (السجل المدني، الاسم، الصف، الشعبة، درجة الاختبار من 40)، ثم ارفعه هنا. كل طالب تقل درجته عن النصف (20 من 40) يتم رصده تلقائيًا (فرز آلي) ضمن الخطة العلاجية الجماعية الخاصة بصفه وشعبته، وتظهر بعد ذلك متابعة أسبوعية لتقدّمه ضمن الخطة.</p>' +
+    (rows.length ? (
+      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+        '<thead><tr><th>السجل المدني</th><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الحالة</th></tr></thead>' +
+        '<tbody>' + resultRows + '</tbody>' +
+      '</table></div></div>' +
+      '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+        '<button class="btn btn-primary" data-action="runExamAutoSort"'+(failCount?'':' disabled')+'>تنفيذ الفرز الآلي ('+failCount+' طالب)</button>' +
+      '</div>'
+    ) : '<p style="color:var(--muted);font-size:13px;">لم يتم رفع ملف درجات بعد.</p>') +
+    resultModal
+  );
+}
+function examAnalysisResultModal(){
+  const r = ExamAnalysisUI.resultModal;
+  const plansHtml = r.plans.map(function(p){
+    return (
+      '<div class="task-card" style="margin-bottom:8px;">' +
+        '<div class="meta"><b>الصف '+esc(p.grade||'—')+' — الشعبة '+esc(p.section||'—')+'</b>' +
+          '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب '+(p.created?'(خطة جديدة)':'(تمت إضافتهم إلى خطة قائمة)')+'</span></div>' +
+        '<button class="btn btn-ghost btn-sm" data-action="openExamSortedPlan" data-id="'+p.id+'">متابعة الخطة العلاجية والمتابعة الأسبوعية</button>' +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<div class="modal-bg" data-action="closeExamResultModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>تم الفرز الآلي بنجاح</h3>' +
+        '<p style="color:var(--muted);font-size:13px;margin:-6px 0 14px;">تم رصد '+r.totalAdded+' طالبًا ممن حصلوا على أقل من نصف الدرجة ضمن الخطط العلاجية الجماعية أدناه. افتح أي خطة لبدء تسجيل المتابعة الأسبوعية لتقدّم كل طالب.</p>' +
+        plansHtml +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost btn-block" data-action="closeExamResultModal">إغلاق</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+async function runExamAutoSort(){
+  const rows = (ExamAnalysisUI.rows||[]).filter(function(r){ return r.score!=null && r.score < EXAM_PASS_SCORE; });
+  if (!rows.length){ toast('لا يوجد طلاب أقل من النصف لرصدهم.'); return; }
+  const groups = {};
+  rows.forEach(function(r){
+    const key = (r.grade||'')+'|||'+(r.section||'');
+    groups[key] = groups[key] || { grade:r.grade, section:r.section, students: [] };
+    groups[key].students.push(r);
+  });
+  const existing = (await DB.listSubmissions({ school: State.user.school })).filter(function(s){
+    return s.form_type==='groupPlan' && s.created_by===State.user.id && s.status==='draft';
+  });
+  const plans = [];
+  let totalAdded = 0;
+  for (const key in groups){
+    const g = groups[key];
+    let sub = existing.find(function(s){ return (s.payload.grade||'')===(g.grade||'') && (s.payload.section||'')===(g.section||''); });
+    let created = false;
+    let addedHere = 0;
+    if (sub){
+      const payload = JSON.parse(JSON.stringify(sub.payload));
+      g.students.forEach(function(r){
+        const found = payload.students.find(function(s){ return (s.name||'').trim()===r.name.trim(); });
+        if (found){ found.examScore = r.score; }
+        else { const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; payload.students.push(row); addedHere++; }
+      });
+      await DB.updateSubmission(sub.id, { payload: payload });
+      sub = Object.assign({}, sub, { payload: payload });
+    } else {
+      const payload = blankData('groupPlan');
+      payload.grade = g.grade; payload.section = g.section;
+      payload.students = g.students.map(function(r){ const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; return row; });
+      sub = await DB.createSubmission({ form_type:'groupPlan', school: State.user.school, created_by: State.user.id, created_by_name: State.user.full_name, payload: payload, status:'draft' });
+      created = true; addedHere = g.students.length;
+    }
+    totalAdded += addedHere;
+    plans.push({ id: sub.id, grade: g.grade, section: g.section, count: addedHere, created: created });
+  }
+  ExamAnalysisUI.resultModal = { totalAdded: totalAdded, plans: plans };
+  render(); bindExamAnalysis();
+}
+function bindExamAnalysis(){
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null }; go('dashboard'); });
+  const templateBtn = document.querySelector('[data-action="downloadExamTemplate"]');
+  if (templateBtn) templateBtn.addEventListener('click', function(){
+    const rows = [['السجل المدني','الاسم','الصف','الشعبة','درجة الاختبار (40)'], ['1234567890','خالد العتيبي','الرابع','أ','15']];
+    downloadTextFile('نموذج_درجات_الاختبار.csv', toCsv(rows));
+  });
+  const importBtn = document.querySelector('[data-action="triggerExamImport"]');
+  const importInput = document.getElementById('examImportInput');
+  if (importBtn && importInput) importBtn.addEventListener('click', function(){ importInput.click(); });
+  if (importInput) importInput.addEventListener('change', function(){
+    const file = importInput.files && importInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(){
+      const rawRows = parseCsv(String(reader.result));
+      if (!rawRows.length){ toast('الملف فارغ.'); return; }
+      let dataRows = rawRows;
+      if (isExamImportHeaderRow(rawRows[0][0])) dataRows = rawRows.slice(1);
+      ExamAnalysisUI.rows = parseExamRows(dataRows);
+      ExamAnalysisUI.resultModal = null;
+      if (!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات صالحة في الملف.'); return; }
+      render(); bindExamAnalysis();
+    };
+    reader.readAsText(file, 'UTF-8');
+  });
+  const sortBtn = document.querySelector('[data-action="runExamAutoSort"]');
+  if (sortBtn) sortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(e.message); }); });
+  const closeResult = function(){ ExamAnalysisUI.resultModal = null; render(); bindExamAnalysis(); };
+  const closeResultBg = document.querySelector('[data-action="closeExamResultModalBg"]');
+  if (closeResultBg) closeResultBg.addEventListener('click', closeResult);
+  const closeResultBtn = document.querySelector('[data-action="closeExamResultModal"]');
+  if (closeResultBtn) closeResultBtn.addEventListener('click', closeResult);
+  document.querySelectorAll('[data-action="openExamSortedPlan"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const s = await DB.getSubmission(el.getAttribute('data-id'));
+      ExamAnalysisUI = { rows:null, resultModal:null };
+      openEditor(s.form_type, s);
+    });
+  });
+}
+
 function adminTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
@@ -4115,6 +4281,7 @@ async function screenTeacherTasks(){
     '<div class="section-head"><h2>الخطط العلاجية والنماذج الخاصة بي</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" data-action="goStudentRoster">بيانات الطلاب</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="goExamAnalysis">📊 تحليل درجات الاختبار</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
         '<button class="btn btn-primary" data-action="goPicker">+ إنشاء نموذج جديد</button>' +
       '</div>' +
@@ -5483,10 +5650,23 @@ async function screenEditor(){
 
 function renderGroupPlan(d, ro, students){
   const cards = d.students.map(function(s, i){
+    const followupRows = (s.followups||[]).map(function(f, j){
+      return (
+        '<tr>' +
+          '<td>'+hijriDateInputHtml('data-field="students.'+i+'.followups.'+j+'.date"', f.date, ro)+'</td>' +
+          '<td><input class="input" data-field="students.'+i+'.followups.'+j+'.note" value="'+esc(f.note)+'" '+(ro?'disabled':'')+' placeholder="ملاحظة التقدم هذا الأسبوع"></td>' +
+          '<td><input class="input" type="number" min="0" max="40" style="width:74px;" data-field="students.'+i+'.followups.'+j+'.score" value="'+esc(f.score)+'" '+(ro?'disabled':'')+'></td>' +
+          (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="students.'+i+'.followups" data-idx="'+j+'">✕</button></td>') +
+        '</tr>'
+      );
+    }).join('');
     return (
       '<div class="session-card" data-row="students" data-idx="'+i+'">' +
         '<div class="session-head"><span class="ttl">طالب ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="students" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
-        '<div class="field"><label>الاسم</label>'+studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro)+'</div>' +
+        '<div class="field-grid cols-2">' +
+          '<div class="field"><label>الاسم</label>'+studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro)+'</div>' +
+          inputField('درجة اختبار نهاية الفصل (من 40)','students.'+i+'.examScore',s.examScore,{type:'number',readonly:ro}) +
+        '</div>' +
         '<div class="field-grid cols-2">' +
           inputField('شواهد التشخيص','students.'+i+'.diag',s.diag,{type:'textarea',readonly:ro}) +
           inputField('المهارات المستهدفة','students.'+i+'.skills',s.skills,{type:'textarea',readonly:ro}) +
@@ -5494,6 +5674,12 @@ function renderGroupPlan(d, ro, students){
         '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</div>' +
         '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], s.evidence)+'</div>' +
         '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('students.'+i+'.progress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], s.progress)+'</div>' +
+        '<div class="field"><label>المتابعة الأسبوعية لتقدم الطالب</label>' +
+          '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:160px;">التاريخ</th><th>ملاحظة التقدم</th><th style="width:80px;">الدرجة</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+
+            (followupRows || '<tr class="empty-row"><td colspan="'+(ro?3:4)+'">لا توجد متابعات أسبوعية مسجَّلة بعد.</td></tr>') +
+          '</tbody></table></div>' +
+          (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="students.'+i+'.followups">+ إضافة متابعة أسبوعية</button>') +
+        '</div>' +
       '</div>'
     );
   }).join('');
@@ -5768,7 +5954,8 @@ function setPath(obj, path, value){
   cur[parts[parts.length-1]] = value;
 }
 function defaultRowFor(list){
-  switch(list){
+  const key = list.split('.').pop();
+  switch(key){
     case 'students': return blankStudentRow();
     case 'behaviorStudents': return blankBehaviorRow();
     case 'participants': return { name:'', spec:'' };
@@ -5780,6 +5967,7 @@ function defaultRowFor(list){
     case 'impacts': return { indicator:'', baseline:'', target:'', actual:'' };
     case 'strengths': return '';
     case 'improvements': return '';
+    case 'followups': return { date:'', note:'', score:'' };
     default: return {};
   }
 }
@@ -5836,14 +6024,17 @@ function bindEditor(){
   document.querySelectorAll('[data-action="addRow"]').forEach(function(el){
     el.addEventListener('click', function(){
       const list = el.getAttribute('data-list');
-      EditorState.data[list] = (EditorState.data[list]||[]).concat([ defaultRowFor(list) ]);
+      const arr = getPath(EditorState.data, list) || [];
+      setPath(EditorState.data, list, arr.concat([ defaultRowFor(list) ]));
       render(); bindEditor();
     });
   });
   document.querySelectorAll('[data-action="removeRow"]').forEach(function(el){
     el.addEventListener('click', function(){
       const list = el.getAttribute('data-list'); const idx = +el.getAttribute('data-idx');
-      EditorState.data[list].splice(idx,1);
+      const arr = getPath(EditorState.data, list) || [];
+      arr.splice(idx,1);
+      setPath(EditorState.data, list, arr);
       render(); bindEditor();
     });
   });
@@ -6053,6 +6244,7 @@ function bindGlobalAction(el){
   else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); go('dashboard'); }); }
   else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
   else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
+  else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null }; go('examAnalysis'); }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
