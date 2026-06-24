@@ -214,6 +214,7 @@ table.list tr:hover td{ background:#FAFCFE; }
 .session-card{ border:1.5px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:var(--surface-2); position:relative; }
 .session-card .session-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
 .session-card .session-head .ttl{ font-weight:700; font-size:13px; color:var(--navy-2); }
+.session-card .session-head .rmv{ background:none; border:none; color:var(--danger); font-size:12.5px; font-weight:600; padding:2px 6px; }
 
 textarea.input{ resize:vertical; min-height:64px; }
 
@@ -4927,17 +4928,19 @@ async function screenEditor(){
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
 function renderGroupPlan(d, ro, students){
-  const rows = d.students.map(function(s, i){
+  const cards = d.students.map(function(s, i){
     return (
-      '<tr data-row="students" data-idx="'+i+'">' +
-        '<td>'+studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro)+'</td>' +
-        '<td><textarea class="input" data-field="students.'+i+'.diag" '+(ro?'disabled':'')+'>'+esc(s.diag)+'</textarea></td>' +
-        '<td><textarea class="input" data-field="students.'+i+'.skills" '+(ro?'disabled':'')+'>'+esc(s.skills)+'</textarea></td>' +
-        '<td>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</td>' +
-        '<td>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], s.evidence)+'</td>' +
-        '<td>'+checkboxGroup('students.'+i+'.progress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], s.progress)+'</td>' +
-        (ro?'':'<td><button class="dyn-table-rmv rmv" data-action="removeRow" data-list="students" data-idx="'+i+'">✕</button></td>') +
-      '</tr>'
+      '<div class="session-card" data-row="students" data-idx="'+i+'">' +
+        '<div class="session-head"><span class="ttl">طالب ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="students" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
+        '<div class="field"><label>الاسم</label>'+studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro)+'</div>' +
+        '<div class="field-grid cols-2">' +
+          inputField('شواهد التشخيص','students.'+i+'.diag',s.diag,{type:'textarea',readonly:ro}) +
+          inputField('المهارات المستهدفة','students.'+i+'.skills',s.skills,{type:'textarea',readonly:ro}) +
+        '</div>' +
+        '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</div>' +
+        '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], s.evidence)+'</div>' +
+        '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('students.'+i+'.progress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], s.progress)+'</div>' +
+      '</div>'
     );
   }).join('');
   return (
@@ -4947,7 +4950,7 @@ function renderGroupPlan(d, ro, students){
     '</div>' +
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:11%;">الاسم</th><th style="width:15%;">شواهد التشخيص</th><th style="width:15%;">المهارات المستهدفة</th><th style="width:19.5%;">الأساليب المطبقة</th><th style="width:19.5%;">الشواهد التعليمية</th><th style="width:19%;">مؤشر التقدم</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    cards +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
     inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'})
@@ -5012,17 +5015,19 @@ function renderIndividualAgreement(d, ro, teachers, students){
 }
 
 function renderBehavioralPlan(d, ro, students){
-  const rows = d.behaviorStudents.map(function(s, i){
+  const cards = d.behaviorStudents.map(function(s, i){
     return (
-      '<tr data-row="behaviorStudents" data-idx="'+i+'">' +
-        '<td>'+studentSelectInlineHtml('behaviorStudents.'+i+'.name', s.name, students, ro)+'</td>' +
-        '<td><textarea class="input" data-field="behaviorStudents.'+i+'.behavior" '+(ro?'disabled':'')+'>'+esc(s.behavior)+'</textarea></td>' +
-        '<td><textarea class="input" data-field="behaviorStudents.'+i+'.causes" '+(ro?'disabled':'')+'>'+esc(s.causes)+'</textarea></td>' +
-        '<td>'+checkboxGroup('behaviorStudents.'+i+'.strategies', ['تعزيز إيجابي','عقد سلوكي','تعديل بيئة الجلوس','جلسة إرشادية فردية','تواصل مع ولي الأمر','إحالة للموجه الطلابي'], s.strategies)+'</td>' +
-        '<td>'+checkboxGroup('behaviorStudents.'+i+'.followUp', ['ملاحظة يومية','تقرير أسبوعي','مقابلة دورية مع ولي الأمر','تقييم بعد أسبوعين'], s.followUp)+'</td>' +
-        '<td><input class="input" data-field="behaviorStudents.'+i+'.result" value="'+esc(s.result)+'" '+(ro?'disabled':'')+'></td>' +
-        (ro?'':'<td><button class="dyn-table-rmv rmv" data-action="removeRow" data-list="behaviorStudents" data-idx="'+i+'">✕</button></td>') +
-      '</tr>'
+      '<div class="session-card" data-row="behaviorStudents" data-idx="'+i+'">' +
+        '<div class="session-head"><span class="ttl">طالب ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="behaviorStudents" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
+        '<div class="field"><label>الاسم</label>'+studentSelectInlineHtml('behaviorStudents.'+i+'.name', s.name, students, ro)+'</div>' +
+        '<div class="field-grid cols-2">' +
+          inputField('السلوك المستهدَف','behaviorStudents.'+i+'.behavior',s.behavior,{type:'textarea',readonly:ro}) +
+          inputField('الأسباب المحتملة','behaviorStudents.'+i+'.causes',s.causes,{type:'textarea',readonly:ro}) +
+        '</div>' +
+        '<div class="field"><label>استراتيجيات التدخل</label>'+checkboxGroup('behaviorStudents.'+i+'.strategies', ['تعزيز إيجابي','عقد سلوكي','تعديل بيئة الجلوس','جلسة إرشادية فردية','تواصل مع ولي الأمر','إحالة للموجه الطلابي'], s.strategies)+'</div>' +
+        '<div class="field"><label>إجراءات المتابعة</label>'+checkboxGroup('behaviorStudents.'+i+'.followUp', ['ملاحظة يومية','تقرير أسبوعي','مقابلة دورية مع ولي الأمر','تقييم بعد أسبوعين'], s.followUp)+'</div>' +
+        inputField('النتيجة','behaviorStudents.'+i+'.result',s.result,{readonly:ro}) +
+      '</div>'
     );
   }).join('');
   return (
@@ -5033,7 +5038,7 @@ function renderBehavioralPlan(d, ro, students){
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="field"><label>هل تم إشعار ولي الأمر؟</label>'+radioGroup('parentNotified', ['نعم','لا'], d.parentNotified)+'</div>' +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون وتحليل السلوك</div>' +
-    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:10%;">الاسم</th><th style="width:13%;">السلوك المستهدَف</th><th style="width:13%;">الأسباب المحتملة</th><th style="width:24%;">استراتيجيات التدخل</th><th style="width:24%;">إجراءات المتابعة</th><th style="width:12%;">النتيجة</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    cards +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="behaviorStudents">+ إضافة طالب</button>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم وملاحظات ختامية</div>' +
     inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بعد تطبيق استراتيجيات التدخل أعلاه لمدة...، لوحظ تحسّن في...'})
