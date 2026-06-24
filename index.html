@@ -2781,7 +2781,7 @@ function bindCoordinatorTasks(){
     const due = document.getElementById('tkDue').value;
     if (!title){ toast('يرجى إدخال عنوان المهمة.'); return; }
     try{
-      await DB.createTask({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
+      await DB.createTask({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       render(); bindCoordinatorTasks();
@@ -2933,7 +2933,7 @@ function bindCoordinatorVisits(){
       toast('لا يمكن أن يكون المعلم الزائر والمعلم المزار نفس الشخص في الصف الواحد.'); return;
     }
     try{
-      await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
+      await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
       toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
       VisitsUI.draft = null;
       render(); bindCoordinatorVisits();
@@ -3201,7 +3201,7 @@ function bindCoordinatorGoals(){
         saved = await DB.updateGoal(GoalsUI.editId, patch);
         toast('تم حفظ التعديلات.');
       } else {
-        saved = await DB.createGoal(Object.assign({ school:State.user.school, community_id:State.user.community_id, created_by:State.user.id, created_by_name:State.user.full_name }, patch));
+        saved = await DB.createGoal(Object.assign({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name }, patch));
         toast('تم إضافة الهدف.');
       }
       if (saved && patch.assigned_member_ids.length){
