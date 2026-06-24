@@ -245,6 +245,7 @@ textarea.input{ resize:vertical; min-height:64px; }
 .task-card .meta span{ font-size:12.5px; color:var(--muted); }
 
 .program-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:22px; overflow:hidden; }
+.program-card p{ overflow-wrap:break-word; word-break:break-word; }
 .program-card .ph{ padding:16px 18px; border-bottom:1px solid var(--border); background:var(--surface-2); }
 .program-card .ph h3{ font-size:15.5px; color:var(--navy); margin-bottom:3px; }
 .program-card .ph p{ font-size:12.5px; color:var(--muted); }
@@ -2824,7 +2825,7 @@ function bindPrincipalReview(){
 }
 
 /* ----- بنك تبادل الخبرات: مشاركة الممارسات التدريسية الناجحة بين المعلمين، واعتماد مدير المدرسة وتقييمه لها ----- */
-let PracticeBankUI = { composeOpen:false, reviewId:null, attachments:[], title:'', category:'teacherSupport', description:'', attachment_note:'' };
+let PracticeBankUI = { composeOpen:false, editId:null, reviewId:null, attachments:[], title:'', category:'teacherSupport', description:'', attachment_note:'' };
 function attachmentThumbHtml(f, i, removable, rmvAction){
   const isImg = /^image\//.test(f.type||'');
   const rmv = removable ? '<button type="button" class="rmv-ev" data-action="'+(rmvAction||'rmvPracticeFile')+'" data-i="'+i+'">✕</button>' : '';
@@ -2858,7 +2859,7 @@ async function screenPracticeBank(){
       '<tr>' +
         '<td><b>'+esc(s.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+'</div></td>' +
         '<td>'+fmtDate(s.created_at)+'</td>' +
-        '<td>'+(s.status==='pending' ? '<span class="badge pending">بانتظار اعتماد المدير</span>' : principalReviewBadgeHtml(s))+'</td>' +
+        '<td>'+(s.status==='approved' ? '<span class="badge approved">معتمدة'+(s.principal_rating?(' '+'★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)):'')+'</span>' : s.status==='returned' ? '<span class="badge returned">أُعيدت للتعديل'+(s.principal_note?(': '+esc(s.principal_note)):'')+'</span>' : '<span class="badge pending">بانتظار اعتماد المدير</span>')+'</td>' +
       '</tr>'
     );
   }).join('');
@@ -2869,19 +2870,28 @@ async function screenPracticeBank(){
         '<td><b>'+esc(s.title)+'</b><div style="color:var(--muted);font-size:12px;">'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+'</div></td>' +
         '<td>'+esc(s.created_by_name||'')+'</td>' +
         '<td>'+fmtDate(s.created_at)+'</td>' +
-        '<td class="row-actions"><button class="btn btn-gold btn-sm" data-action="reviewPractice" data-id="'+s.id+'">مراجعة وتقييم</button></td>' +
+        '<td class="row-actions"><button class="btn btn-gold btn-sm" data-action="reviewPractice" data-id="'+s.id+'">مراجعة وتقييم</button> <button class="btn btn-danger btn-sm" data-action="deletePractice" data-id="'+s.id+'">حذف</button></td>' +
       '</tr>'
     );
   }).join('');
 
   const approvedCards = approved.map(function(s){
     const stars = s.principal_rating ? ('★'.repeat(s.principal_rating)+'☆'.repeat(5-s.principal_rating)) : '';
+    const principalActions = isPrincipal ? (
+      '<div class="row-actions" style="margin-top:8px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="editPractice" data-id="'+s.id+'">تعديل</button>' +
+        '<button class="btn btn-danger btn-sm" data-action="deletePractice" data-id="'+s.id+'">حذف</button>' +
+      '</div>'
+    ) : '';
     return (
       '<div class="program-card">' +
         '<div class="ph"><h3>'+esc(s.title)+'</h3><p>'+esc(GOAL_CATEGORY_LABEL[s.category]||GOAL_CATEGORY_LABEL.teacherSupport)+' · '+esc(s.created_by_name||'')+' · '+fmtDate(s.created_at)+(stars?(' · '+stars):'')+'</p></div>' +
-        (s.description ? ('<p style="font-size:13.5px;color:var(--ink);">'+esc(s.description)+'</p>') : '') +
-        (s.attachment_note ? ('<p style="font-size:12.5px;color:var(--muted);">'+esc(s.attachment_note)+'</p>') : '') +
-        ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
+        '<div style="padding:14px 18px;">' +
+          (s.description ? ('<p style="font-size:13.5px;color:var(--ink);">'+esc(s.description)+'</p>') : '') +
+          (s.attachment_note ? ('<p style="font-size:12.5px;color:var(--muted);">'+esc(s.attachment_note)+'</p>') : '') +
+          ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
+          principalActions +
+        '</div>' +
       '</div>'
     );
   }).join('');
@@ -2916,7 +2926,7 @@ function practiceComposeModalHtml(){
   return (
     '<div class="modal-bg" data-action="closePracticeModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
-        '<h3>مشاركة ممارسة تدريسية ناجحة</h3>' +
+        '<h3>'+(PracticeBankUI.editId ? 'تعديل الممارسة' : 'مشاركة ممارسة تدريسية ناجحة')+'</h3>' +
         '<div class="field"><label>عنوان الممارسة</label><input class="input" id="pkTitle" value="'+esc(PracticeBankUI.title)+'" placeholder="مثال: استراتيجية التعلم التعاوني في حصة الرياضيات"></div>' +
         '<div class="field"><label>التصنيف</label><select class="input" id="pkCategory">' +
           Object.keys(GOAL_CATEGORY_LABEL).map(function(k){ return '<option value="'+k+'" '+(k===PracticeBankUI.category?'selected':'')+'>'+GOAL_CATEGORY_LABEL[k]+'</option>'; }).join('') +
@@ -2929,7 +2939,7 @@ function practiceComposeModalHtml(){
           '</div>' +
         '</div>' +
         '<div class="modal-actions">' +
-          '<button class="btn btn-primary btn-block" data-action="sendPractice">مشاركة الممارسة</button>' +
+          '<button class="btn btn-primary btn-block" data-action="sendPractice">'+(PracticeBankUI.editId ? 'حفظ التعديلات' : 'مشاركة الممارسة')+'</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closePracticeModal">إلغاء</button>' +
         '</div>' +
       '</div>' +
@@ -2958,9 +2968,35 @@ function practiceReviewModalHtml(s){
 }
 function bindPracticeBank(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
-  const resetComposeFields = function(){ PracticeBankUI.attachments = []; PracticeBankUI.title=''; PracticeBankUI.category='teacherSupport'; PracticeBankUI.description=''; PracticeBankUI.attachment_note=''; };
+  const resetComposeFields = function(){ PracticeBankUI.editId = null; PracticeBankUI.attachments = []; PracticeBankUI.title=''; PracticeBankUI.category='teacherSupport'; PracticeBankUI.description=''; PracticeBankUI.attachment_note=''; };
   const newBtn = document.querySelector('[data-action="newPractice"]');
   if (newBtn) newBtn.addEventListener('click', function(){ PracticeBankUI.composeOpen = true; resetComposeFields(); render(); bindPracticeBank(); });
+  document.querySelectorAll('[data-action="editPractice"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const id = el.getAttribute('data-id');
+      const shares = await DB.listPracticeShares({ school: State.user.school });
+      const s = shares.find(function(x){ return x.id===id; });
+      if (!s) return;
+      PracticeBankUI.editId = id;
+      PracticeBankUI.title = s.title || '';
+      PracticeBankUI.category = s.category || 'teacherSupport';
+      PracticeBankUI.description = s.description || '';
+      PracticeBankUI.attachment_note = s.attachment_note || '';
+      PracticeBankUI.attachments = (s.attachments || []).slice();
+      PracticeBankUI.composeOpen = true;
+      render(); bindPracticeBank();
+    });
+  });
+  document.querySelectorAll('[data-action="deletePractice"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('سيتم حذف هذه الممارسة نهائيًا من بنك تبادل الخبرات لجميع المستخدمين. هل تريد الاستمرار؟')) return;
+      try{
+        await DB.deletePracticeShare(el.getAttribute('data-id'));
+        toast('تم حذف الممارسة.');
+        render(); bindPracticeBank();
+      }catch(e){ toast(e.message); }
+    });
+  });
   const closeCompose = function(){ PracticeBankUI.composeOpen = false; resetComposeFields(); render(); bindPracticeBank(); };
   const closeComposeBtn = document.querySelector('[data-action="closePracticeModal"]');
   if (closeComposeBtn) closeComposeBtn.addEventListener('click', closeCompose);
@@ -3002,8 +3038,13 @@ function bindPracticeBank(){
     const attachment_note = document.getElementById('pkAttach').value.trim();
     const attachments = (PracticeBankUI.attachments||[]).slice();
     try{
-      await DB.createPracticeShare({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, category:category, title:title, description:description, attachment_note: attachment_note||null, attachments: attachments, status:'pending' });
-      toast('تم مشاركة الممارسة، وستُعرض للجميع بعد اعتماد مدير المدرسة.');
+      if (PracticeBankUI.editId){
+        await DB.updatePracticeShare(PracticeBankUI.editId, { category:category, title:title, description:description, attachment_note: attachment_note||null, attachments: attachments });
+        toast('تم حفظ التعديلات.');
+      } else {
+        await DB.createPracticeShare({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, category:category, title:title, description:description, attachment_note: attachment_note||null, attachments: attachments, status:'pending' });
+        toast('تم مشاركة الممارسة، وستُعرض للجميع بعد اعتماد مدير المدرسة.');
+      }
       PracticeBankUI.composeOpen = false;
       resetComposeFields();
       render(); bindPracticeBank();
