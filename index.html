@@ -5950,10 +5950,10 @@ function renderPeerObservation(d, ro, teachers){
   }).join('');
   return (
     '<div class="field-grid cols-2">' +
-      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('المعلم الملاحِظ','observerName',d.observerName,{readonly:ro}) +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('المعلم الزائر','observerName',d.observerName,{readonly:ro}) +
     '</div>' +
     '<div class="field-grid cols-2">' +
-      teacherSelectHtml('المعلم المُلاحَظ','observedTeacher',d.observedTeacher,teachers,ro) + inputField('المادة','subject',d.subject,{readonly:ro}) +
+      teacherSelectHtml('المعلم المُزار','observedTeacher',d.observedTeacher,teachers,ro) + inputField('المادة','subject',d.subject,{readonly:ro}) +
     '</div>' +
     '<div class="field-grid cols-2">' +
       inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) + inputField('موضوع الحصة','lessonTopic',d.lessonTopic,{readonly:ro}) +
