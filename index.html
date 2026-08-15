@@ -4812,7 +4812,7 @@ function userModal(users, communities){
         '<h3>'+(editing?'تعديل مستخدم':'إضافة مستخدم جديد')+'</h3>' +
         '<div class="field"><label>الاسم الكامل</label><input class="input" id="umFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="umUsername" value="'+esc(editing?editing.username:'')+'" '+(editing?'disabled':'')+'></div>' +
-        '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':'')+'" '+(editing&&isRemote()?'disabled':'')+'></div>' +
+        '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':(isRemote()?'6 أحرف على الأقل':''))+'" '+(editing&&isRemote()?'disabled':'')+'></div>' +
         (editing && isRemote() ? '<p style="color:var(--muted);font-size:12px;margin:-10px 0 16px;">لا يمكن تغيير كلمة المرور من هنا في وضع التشغيل السحابي. لإعادة تعيينها يلزم حذف الحساب وإضافته من جديد.</p>' : '') +
         '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
           ['coordinator','principal','teacher','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
@@ -4862,6 +4862,7 @@ function bindAdminUsers(){
     const phone = document.getElementById('umPhone').value.trim();
     const email = document.getElementById('umEmail').value.trim();
     if (!fullName || !username || !school || (!AdminUI.editingId && !password)){ toast('يرجى تعبئة جميع الحقول المطلوبة.'); return; }
+    if (password && isRemote() && password.length < 6){ toast('كلمة المرور يجب أن تكون 6 أحرف على الأقل.'); return; }
     try{
       if (AdminUI.editingId){
         const patch = { full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty, phone:phone, email:email };
