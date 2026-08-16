@@ -4608,7 +4608,7 @@ function bindTaskDetail(){
 }
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
-let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[] };
+let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[], importCommunityId:'' };
 let CredsPrint = loadLastCredsBatch();
 function loadLastCredsBatch(){
   try{ const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH)); if (saved && saved.items && saved.items.length) return saved; }catch(e){}
@@ -4669,7 +4669,7 @@ async function createUserWithRetry(userObj){
     }
   }
 }
-async function importTeacherRows(dataRows){
+async function importTeacherRows(dataRows, communityId){
   const existingUsers = await DB.listUsers({});
   const preExistingUsernames = existingUsers.map(function(u){ return u.username; });
   const allUsernames = preExistingUsernames.slice();
@@ -4689,7 +4689,7 @@ async function importTeacherRows(dataRows){
     allUsernames.push(candidate);
     const password = String(Math.floor(100000 + Math.random()*900000));
     try{
-      await createUserWithRetry({ username:candidate, password:password, full_name:fullName, role:'teacher', school:State.user.school, community_id:null, phone:phone, email:email });
+      await createUserWithRetry({ username:candidate, password:password, full_name:fullName, role:'teacher', school:State.user.school, community_id: communityId||null, phone:phone, email:email });
       created.push({ full_name:fullName, username:candidate, password:password, email:email });
     }catch(e){ failed.push(fullName + ' — ' + e.message); }
     if (i < dataRows.length - 1) await sleep(700);
@@ -4711,21 +4711,21 @@ function isTeacherImportHeaderRow(first){
   first = (first||'').trim();
   return first === 'الاسم' || first === 'اسم المعلم' || first.toLowerCase() === 'name';
 }
-async function importTeachersFromCsv(text){
+async function importTeachersFromCsv(text, communityId){
   const rows = parseCsv(text);
   if (!rows.length){ toast('الملف فارغ.'); return; }
   let dataRows = rows;
   if (isTeacherImportHeaderRow(rows[0][0])){ dataRows = rows.slice(1); }
   if (!dataRows.length){ toast('لا توجد بيانات معلمين في الملف.'); return; }
-  await importTeacherRows(dataRows);
+  await importTeacherRows(dataRows, communityId);
 }
-async function importTeachersFromPaste(text){
+async function importTeachersFromPaste(text, communityId){
   const rows = parseFlexibleRows(text);
   if (!rows.length){ toast('لم تُلصق أي بيانات.'); return; }
   let dataRows = rows;
   if (isTeacherImportHeaderRow(rows[0][0])){ dataRows = rows.slice(1); }
   if (!dataRows.length){ toast('لا توجد بيانات معلمين في النص الملصق.'); return; }
-  await importTeacherRows(dataRows);
+  await importTeacherRows(dataRows, communityId);
 }
 function screenCredsPrint(){
   const items = CredsPrint.items || [];
@@ -4799,7 +4799,14 @@ async function screenAdminUsers(){
   }).join('');
 
   const modal = AdminUI.modalOpen ? userModal(users, communities) : '';
-  const pasteModal = AdminUI.pasteOpen ? pasteImportModal() : '';
+  const pasteModal = AdminUI.pasteOpen ? pasteImportModal(communities) : '';
+
+  const commSelectForImport = (
+    '<select class="input" id="importCommunitySelect" style="max-width:220px;" title="المجتمع المهني للمعلمين المستوردين">' +
+      '<option value="">— مجتمع مهني —</option>' +
+      communities.map(function(c){ return '<option value="'+c.id+'" '+(AdminUI.importCommunityId===c.id?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
+    '</select>'
+  );
 
   const bulkBar = AdminUI.selectedIds.length>0 ? (
     '<div class="bulk-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card-2,#f4f6f8);border:1px solid var(--border,#e2e6ea);border-radius:10px;padding:10px 12px;margin-bottom:12px;">' +
@@ -4816,16 +4823,17 @@ async function screenAdminUsers(){
 
   return (
     '<div class="section-head"><h2>المستخدمون</h2>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="downloadTeacherTemplate">تنزيل نموذج Excel للمعلمين</button>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="downloadTeacherTemplate">تنزيل نموذج Excel</button>' +
+        commSelectForImport +
         '<button class="btn btn-ghost btn-sm" data-action="triggerTeacherImport">رفع ملف المعلمين</button>' +
         '<input type="file" id="teacherImportInput" accept=".csv" style="display:none;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="openPasteImport">لصق بيانات المعلمين</button>' +
-        (CredsPrint.items && CredsPrint.items.length ? '<button class="btn btn-ghost btn-sm" data-action="printLastCredsBatch">طباعة بيانات الدخول المحفوظة ('+CredsPrint.items.length+')</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" data-action="openPasteImport">لصق البيانات</button>' +
+        (CredsPrint.items && CredsPrint.items.length ? '<button class="btn btn-ghost btn-sm" data-action="printLastCredsBatch">بطاقات الدخول ('+CredsPrint.items.length+')</button>' : '') +
         '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم المعلم ورقم الجوال والايميل، ثم ارفعه لإنشاء حسابات المعلمين دفعة واحدة. إذا تعذّر رفع الملف، استخدم "لصق بيانات المعلمين" للصق البيانات نصًا مباشرة. بعد الاستيراد، حدد المعلمين بعلامة ✓ في أول عمود وأسندهم لمجتمع مهني بزر واحد، أو حدّد عدة حسابات لحذفها دفعة واحدة.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ بيانات المعلمين، اختر المجتمع المهني من القائمة، ثم ارفع الملف أو الصق البيانات — سيُنشئ النظام الحسابات تلقائيًا ويسند المعلمين للمجتمع المحدد.</p>' +
     bulkBar +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th><input type="checkbox" id="userSelectAllChk" '+(allSelected?'checked':'')+'></th><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
@@ -4834,15 +4842,24 @@ async function screenAdminUsers(){
     modal + pasteModal
   );
 }
-function pasteImportModal(){
+function pasteImportModal(communities){
+  const commOptions = (communities||[]).map(function(c){
+    return '<option value="'+c.id+'" '+(AdminUI.importCommunityId===c.id?'selected':'')+'>'+esc(c.name)+' — '+esc(c.school)+'</option>';
+  }).join('');
   return (
     '<div class="modal-bg" data-action="closeModalBg2">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
-        '<h3>لصق بيانات المعلمين</h3>' +
-        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات هنا مباشرة من Excel (سطر لكل معلم، الأعمدة بالترتيب: اسم المعلم، ثم رقم الجوال، ثم الايميل). يمكن أن يكون السطر الأول عناوين الأعمدة، وسيتم تجاهله تلقائيًا.</p>' +
-        '<div class="field"><textarea class="input" id="pasteImportText" rows="10" placeholder="مثال:&#10;أحمد العتيبي	0501234567	ahmed@example.com&#10;سارة الغامدي	0559876543	sara@example.com" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
+        '<h3>رفع بيانات المعلمين وإنشاء حساباتهم</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات من Excel (سطر لكل معلم، الأعمدة: اسم المعلم، رقم الجوال، الايميل). سطر العناوين يُتجاهل تلقائيًا.</p>' +
+        '<div class="field"><label>المجتمع المهني (يُسند لجميع المعلمين المستوردين)</label>' +
+          '<select class="input" id="pasteImportCommunity">' +
+            '<option value="">— بدون مجتمع (يمكن الإسناد لاحقًا) —</option>' +
+            commOptions +
+          '</select>' +
+        '</div>' +
+        '<div class="field"><label>بيانات المعلمين</label><textarea class="input" id="pasteImportText" rows="9" placeholder="مثال:&#10;أحمد العتيبي	0501234567	ahmed@example.com&#10;سارة الغامدي	0559876543	sara@example.com" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
         '<div class="modal-actions">' +
-          '<button class="btn btn-primary btn-block" data-action="confirmPasteImport">استيراد</button>' +
+          '<button class="btn btn-primary btn-block" data-action="confirmPasteImport">إنشاء الحسابات</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeModalBg2">إلغاء</button>' +
         '</div>' +
       '</div>' +
@@ -4928,6 +4945,10 @@ function bindAdminUsers(){
     const rows = [['اسم المعلم','رقم الجوال','الايميل'], ['أحمد العتيبي','0501234567','ahmed.alotaibi@example.com']];
     downloadTextFile('نموذج_رفع_المعلمين.csv', toCsv(rows));
   });
+  const importCommunitySelect = document.getElementById('importCommunitySelect');
+  if (importCommunitySelect) importCommunitySelect.addEventListener('change', function(){
+    AdminUI.importCommunityId = importCommunitySelect.value;
+  });
   const importBtn = document.querySelector('[data-action="triggerTeacherImport"]');
   const importInput = document.getElementById('teacherImportInput');
   if (importBtn && importInput) importBtn.addEventListener('click', function(){ importInput.click(); });
@@ -4936,10 +4957,11 @@ function bindAdminUsers(){
     if (!file) return;
     if (AdminUI.importBusy) return;
     AdminUI.importBusy = true;
+    const chosenCommunityId = AdminUI.importCommunityId || null;
     if (importBtn){ importBtn.disabled = true; importBtn.textContent = 'جارٍ الاستيراد...'; }
     const reader = new FileReader();
     reader.onload = async function(){
-      try{ await importTeachersFromCsv(String(reader.result)); }
+      try{ await importTeachersFromCsv(String(reader.result), chosenCommunityId); }
       finally{ AdminUI.importBusy = false; importInput.value = ''; render(); bindAdminUsers(); }
     };
     reader.readAsText(file, 'UTF-8');
@@ -4956,10 +4978,12 @@ function bindAdminUsers(){
     if (AdminUI.importBusy) return;
     const text = document.getElementById('pasteImportText').value;
     if (!text || !text.trim()){ toast('يرجى لصق البيانات أولًا.'); return; }
+    const pasteCommSel = document.getElementById('pasteImportCommunity');
+    const pasteCommId = pasteCommSel ? pasteCommSel.value || null : null;
     AdminUI.importBusy = true;
     pasteConfirmBtn.disabled = true;
-    pasteConfirmBtn.textContent = 'جارٍ الاستيراد...';
-    try{ await importTeachersFromPaste(text); }
+    pasteConfirmBtn.textContent = 'جارٍ إنشاء الحسابات...';
+    try{ await importTeachersFromPaste(text, pasteCommId); }
     finally{
       AdminUI.importBusy = false;
       AdminUI.pasteOpen = false;
