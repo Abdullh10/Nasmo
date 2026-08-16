@@ -1918,7 +1918,14 @@ async function exportFormToPdf(filename){
   if (!el || !window.html2canvas || !window.jspdf){ toast('تعذّر تجهيز التصدير، يرجى المحاولة عبر الطباعة.'); return; }
   toast('جارٍ تجهيز ملف PDF...');
   try{
-    const canvas = await html2canvas(el, { scale:2, useCORS:true, backgroundColor:'#ffffff' });
+    const canvas = await html2canvas(el, {
+      scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false,
+      onclone: function(clonedDoc){
+        const s = clonedDoc.createElement('style');
+        s.textContent = ':root{ color-scheme: light only !important; } *{ forced-color-adjust: none !important; }';
+        clonedDoc.head.appendChild(s);
+      }
+    });
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation:'p', unit:'pt', format:'a4' });
