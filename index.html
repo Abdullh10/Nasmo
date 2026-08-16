@@ -4713,43 +4713,100 @@ async function createUserWithRetry(userObj){
     }
   }
 }
+
+/* عداد تقدم الاستيراد — يتحدث مباشرة في DOM دون إعادة رسم الصفحة */
+function showImportProgress(done, total, lastName){
+  var box = document.getElementById('_importProgressBox');
+  if (!box){
+    box = document.createElement('div');
+    box.id = '_importProgressBox';
+    box.setAttribute('style',
+      'position:fixed;bottom:72px;left:50%;transform:translateX(-50%);' +
+      'background:var(--card,#fff);border:1.5px solid var(--border,#e2e6ea);' +
+      'border-radius:14px;padding:16px 28px;box-shadow:0 6px 32px rgba(0,0,0,.18);' +
+      'z-index:99999;min-width:280px;text-align:center;direction:rtl;font-family:inherit;');
+    document.body.appendChild(box);
+  }
+  var pct = total > 0 ? Math.round(done/total*100) : 0;
+  box.innerHTML =
+    '<div style="font-size:14px;font-weight:700;margin-bottom:10px;">جارٍ إنشاء الحسابات…</div>' +
+    '<div style="background:var(--border,#e2e6ea);border-radius:99px;height:10px;overflow:hidden;margin-bottom:8px;">' +
+      '<div style="height:100%;background:var(--gold,#b8860b);border-radius:99px;width:'+pct+'%;transition:width .25s;"></div>' +
+    '</div>' +
+    '<div style="font-size:13px;color:var(--muted,#666);">'+done+' من '+total+
+      (lastName ? ' — <b>'+esc(lastName)+'</b>' : '')+
+    '</div>';
+}
+function hideImportProgress(){
+  var box = document.getElementById('_importProgressBox');
+  if (box) box.remove();
+}
+
 async function importTeacherRows(dataRows, communityId){
   const existingUsers = await DB.listUsers({});
   const preExistingUsernames = existingUsers.map(function(u){ return u.username; });
   const allUsernames = preExistingUsernames.slice();
-  const created = [];
   const skippedExisting = [];
   const failed = [];
+
+  /* — حضّر قائمة المعلمين الصالحين أولاً لمعرفة الإجمالي — */
+  const queue = [];
   for (let i=0;i<dataRows.length;i++){
     const r = dataRows[i];
     const fullName = (r[0]||'').trim();
+    if (!fullName) continue;
     const phone = (r[1]||'').trim();
     const email = (r[2]||'').trim();
-    if (!fullName) continue;
     let base = phone.replace(/[^0-9]/g,'') || (email.split('@')[0]||'').replace(/[^a-zA-Z0-9_.]/g,'') || 'teacher';
     if (preExistingUsernames.indexOf(base) > -1){ skippedExisting.push(fullName); continue; }
     let candidate = base, n = 1;
     while (allUsernames.indexOf(candidate) > -1){ candidate = base + '_' + (n++); }
     allUsernames.push(candidate);
-    const password = String(Math.floor(100000 + Math.random()*900000));
-    try{
-      await createUserWithRetry({ username:candidate, password:password, full_name:fullName, role:'teacher', school:State.user.school, community_id: communityId||null, phone:phone, email:email });
-      created.push({ full_name:fullName, username:candidate, password:password, email:email });
-    }catch(e){ failed.push(fullName + ' — ' + e.message); }
-    if (i < dataRows.length - 1) await sleep(700);
+    queue.push({ fullName:fullName, phone:phone, email:email, candidate:candidate,
+                 password:String(Math.floor(100000 + Math.random()*900000)) });
   }
-  if (!created.length && !skippedExisting.length && !failed.length){ toast('لم يتم العثور على بيانات معلمين صالحة، يرجى مراجعة تنسيق الملف.'); return; }
-  const parts = [];
-  if (created.length) parts.push('تم استيراد '+created.length+' معلمًا بنجاح');
-  if (skippedExisting.length) parts.push('تم تجاوز '+skippedExisting.length+' (لديهم حساب موجود مسبقًا بنفس اسم المستخدم المُستخرج): '+skippedExisting.slice(0,5).join('، ')+(skippedExisting.length>5?' ...':''));
-  if (failed.length) parts.push('فشل إنشاء '+failed.length+': '+failed.slice(0,5).join('، ')+(failed.length>5?' ...':''));
-  toast(parts.join(' — '));
-  if (!created.length) return;
+
+  if (!queue.length && !skippedExisting.length){
+    toast('لم يتم العثور على بيانات معلمين صالحة، يرجى مراجعة تنسيق الملف.');
+    return;
+  }
+
+  /* — حلقة الإنشاء مع عداد تقدم فوري — */
+  const useAdminApi = isRemote() && !!CONFIG.SUPABASE_SERVICE_KEY;
+  const delayMs = useAdminApi ? 0 : 350; /* Admin API لا يحتاج تأخيراً */
+  showImportProgress(0, queue.length, null);
+
+  for (let i=0;i<queue.length;i++){
+    const item = queue[i];
+    try{
+      await createUserWithRetry({
+        username: item.candidate, password: item.password,
+        full_name: item.fullName, role: 'teacher',
+        school: State.user.school, community_id: communityId||null,
+        phone: item.phone, email: item.email
+      });
+      /* حفظ فوري — بعد كل نجاح مباشرة */
+      const newCred = { full_name:item.fullName, username:item.candidate, password:item.password, email:item.email };
+      const merged = (CredsPrint.items||[]).filter(function(it){ return it.username !== newCred.username; }).concat([newCred]);
+      CredsPrint = { school: State.user.school, items: merged };
+      saveLastCredsBatch();
+    }catch(e){ failed.push(item.fullName + ' — ' + e.message); }
+    showImportProgress(i+1, queue.length, item.fullName);
+    if (delayMs && i < queue.length-1) await sleep(delayMs);
+  }
+
+  hideImportProgress();
   AdminUI.pasteOpen = false;
-  const merged = (CredsPrint.items||[]).filter(function(it){ return !created.some(function(c){ return c.username===it.username; }); }).concat(created);
-  CredsPrint = { school: State.user.school, items: merged };
-  saveLastCredsBatch();
-  go('credsPrint');
+
+  const createdCount = (CredsPrint.items||[]).length - ((CredsPrint.items||[]).length - queue.length + failed.length);
+  const actualCreated = queue.length - failed.length;
+  const parts = [];
+  if (actualCreated > 0) parts.push('تم إنشاء '+actualCreated+' حسابًا بنجاح');
+  if (skippedExisting.length) parts.push('تجاوز '+skippedExisting.length+' (موجودون مسبقًا)');
+  if (failed.length) parts.push('فشل '+failed.length+': '+failed.slice(0,3).join('، ')+(failed.length>3?' ...':''));
+  toast(parts.join(' — '));
+
+  if (actualCreated > 0) go('credsPrint');
 }
 function isTeacherImportHeaderRow(first){
   first = (first||'').trim();
