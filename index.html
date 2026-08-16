@@ -761,7 +761,7 @@ function applyConnDot(){
    حتى تعمل واجهة الدخول الحالية (اسم مستخدم/كلمة مرور) دون تغيير،
    بينما تُصدر Supabase جلسة JWT فعلية يميّز بها auth.uid() داخل سياسات RLS. */
 let AUTH = { accessToken: null, refreshToken: null };
-function authEmailFor(username){ return username.trim().toLowerCase() + '@nasmo.local'; }
+function authEmailFor(username){ return username.trim().toLowerCase() + '@nasmo.app'; }
 function persistAuth(){ sessionStorage.setItem('dtd_auth', JSON.stringify(AUTH)); }
 function loadAuth(){ try{ const a = JSON.parse(sessionStorage.getItem('dtd_auth')); if (a) AUTH = a; }catch(e){} }
 function clearAuth(){ AUTH = { accessToken:null, refreshToken:null }; sessionStorage.removeItem('dtd_auth'); }

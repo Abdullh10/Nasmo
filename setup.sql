@@ -323,7 +323,7 @@ create policy "visit_schedules_all" on visit_schedules
 --  الخطوات (بعد تشغيل كل ما فوق):
 --
 --  أ) اذهب إلى: Authentication > Users > Add user
---     البريد الإلكتروني : admin@nasmo.local
+--     البريد الإلكتروني : admin@nasmo.app
 --     كلمة المرور       : اختر كلمة مرور قوية (أو 1234 للتجربة)
 --     ✅ فعّل "Auto Confirm User"
 --     ثم اضغط "Create User" وانسخ الـ UUID الذي يظهر.
