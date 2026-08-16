@@ -1913,9 +1913,44 @@ function toast(msg){
 }
 
 /* ---------------------- تصدير PDF حقيقي (html2canvas + jsPDF) ---------------------- */
+function _fixP3Colors(clonedDoc){
+  /* Safari على iOS يعيد قيم color(display-p3 ...) من getComputedStyle،
+     وهي غير مدعومة في html2canvas v1.4. نستبدلها بقيم sRGB مكافئة. */
+  var RE = /color\(\s*display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)/g;
+  function p3ToHex(r,g,b){
+    // مصفوفة تحويل Display-P3 → sRGB (D65)
+    var sr = Math.max(0,Math.min(255,Math.round((1.2249*r -0.2247*g +0.0002*b)*255)));
+    var sg = Math.max(0,Math.min(255,Math.round((-0.0420*r+1.0416*g+0.0004*b)*255)));
+    var sb = Math.max(0,Math.min(255,Math.round((-0.0197*r-0.0786*g+1.0983*b)*255)));
+    return 'rgb('+sr+','+sg+','+sb+')';
+  }
+  function replaceP3(str){
+    return str.replace(RE, function(_,r,g,b){ return p3ToHex(+r,+g,+b); });
+  }
+  clonedDoc.querySelectorAll('[style]').forEach(function(el){
+    var attr = el.getAttribute('style') || '';
+    if(attr.indexOf('display-p3') !== -1) el.setAttribute('style', replaceP3(attr));
+  });
+  clonedDoc.querySelectorAll('*').forEach(function(el){
+    try{
+      var cs = clonedDoc.defaultView && clonedDoc.defaultView.getComputedStyle(el);
+      if(!cs) return;
+      ['color','background-color','border-color','outline-color'].forEach(function(prop){
+        var val = cs.getPropertyValue(prop);
+        if(val && val.indexOf('display-p3') !== -1){
+          el.style.setProperty(prop, replaceP3(val), 'important');
+        }
+      });
+    }catch(_){}
+  });
+}
 async function exportFormToPdf(filename){
   const el = document.querySelector('.form-sheet');
-  if (!el || !window.html2canvas || !window.jspdf){ toast('تعذّر تجهيز التصدير، يرجى المحاولة عبر الطباعة.'); return; }
+  if (!el || !window.html2canvas || !window.jspdf){
+    toast('تعذّر تجهيز التصدير. سيُفتح نافذة الطباعة — اختر "حفظ كـ PDF".');
+    setTimeout(function(){ window.print(); }, 600);
+    return;
+  }
   toast('جارٍ تجهيز ملف PDF...');
   try{
     const canvas = await html2canvas(el, {
@@ -1924,6 +1959,7 @@ async function exportFormToPdf(filename){
         const s = clonedDoc.createElement('style');
         s.textContent = ':root{ color-scheme: light only !important; } *{ forced-color-adjust: none !important; }';
         clonedDoc.head.appendChild(s);
+        _fixP3Colors(clonedDoc);
       }
     });
     const imgData = canvas.toDataURL('image/png');
@@ -1943,7 +1979,10 @@ async function exportFormToPdf(filename){
       heightLeft -= pageHeight;
     }
     pdf.save((filename || 'نموذج') + '.pdf');
-  }catch(e){ toast('تعذّر تصدير PDF: ' + e.message); }
+  }catch(e){
+    toast('سيُفتح نافذة الطباعة — اختر "حفظ كـ PDF" لحفظ النموذج.');
+    setTimeout(function(){ window.print(); }, 800);
+  }
 }
 
 /* ---------------------- مكوّن التوقيع (Canvas) ---------------------- */
