@@ -17,6 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
 <style>
 :root{
   --navy:#0B2A4A; --navy-2:#143B66; --navy-3:#0E5A82;
@@ -3732,7 +3733,7 @@ async function screenStudentRoster(){
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" data-action="downloadStudentTemplate">تنزيل نموذج Excel للطلاب</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="triggerStudentImport">رفع ملف الطلاب</button>' +
-        '<input type="file" id="studentImportInput" accept=".csv" style="display:none;">' +
+        '<input type="file" id="studentImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
         '<button class="btn btn-ghost btn-sm" data-action="openStudentPasteImport">لصق بيانات الطلاب</button>' +
         '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
       '</div>' +
@@ -3822,6 +3823,14 @@ async function importStudentsFromCsv(text){
   if (!dataRows.length){ toast('لا توجد بيانات طلاب في الملف.'); return; }
   await importStudentRows(dataRows);
 }
+async function importStudentsFromRows(rows){
+  if (!rows.length){ toast('الملف فارغ.'); return; }
+  const strRows = rows.map(function(r){ return r.map(function(c){ return String(c||''); }); });
+  let dataRows = strRows;
+  if (isStudentImportHeaderRow(strRows[0][0])){ dataRows = strRows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات طلاب في الملف.'); return; }
+  await importStudentRows(dataRows);
+}
 function bindStudentRoster(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
   const newBtn = document.querySelector('[data-action="newStudent"]');
@@ -3871,9 +3880,20 @@ function bindStudentRoster(){
   if (importInput) importInput.addEventListener('change', function(){
     const file = importInput.files && importInput.files[0];
     if (!file) return;
+    const isXlsx = /\.(xlsx|xls)$/i.test(file.name);
     const reader = new FileReader();
-    reader.onload = async function(){ await importStudentsFromCsv(String(reader.result)); };
-    reader.readAsText(file, 'UTF-8');
+    reader.onload = async function(){
+      if (isXlsx){
+        const wb = window.XLSX.read(new Uint8Array(reader.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = window.XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+        await importStudentsFromRows(rows);
+      } else {
+        await importStudentsFromCsv(String(reader.result));
+      }
+    };
+    if (isXlsx){ reader.readAsArrayBuffer(file); }
+    else { reader.readAsText(file, 'UTF-8'); }
   });
   const openPasteBtn = document.querySelector('[data-action="openStudentPasteImport"]');
   if (openPasteBtn) openPasteBtn.addEventListener('click', function(){ StudentRosterUI.pasteOpen = true; render(); bindStudentRoster(); });
@@ -4755,8 +4775,11 @@ async function importTeacherRows(dataRows, communityId){
     const r = dataRows[i];
     const fullName = (r[0]||'').trim();
     if (!fullName) continue;
-    const phone = (r[1]||'').trim();
+    let phone = (r[1]||'').trim();
     const email = (r[2]||'').trim();
+    /* Excel strips leading zero from numbers — restore it for 9-digit Saudi mobiles starting with 5 */
+    const phoneDigits = phone.replace(/[^0-9]/g,'');
+    if (phoneDigits.length === 9 && phoneDigits[0] === '5') phone = '0' + phoneDigits;
     let base = phone.replace(/[^0-9]/g,'') || (email.split('@')[0]||'').replace(/[^a-zA-Z0-9_.]/g,'') || 'teacher';
     if (preExistingUsernames.indexOf(base) > -1){ skippedExisting.push(fullName); continue; }
     let candidate = base, n = 1;
@@ -4817,6 +4840,14 @@ async function importTeachersFromCsv(text, communityId){
   if (!rows.length){ toast('الملف فارغ.'); return; }
   let dataRows = rows;
   if (isTeacherImportHeaderRow(rows[0][0])){ dataRows = rows.slice(1); }
+  if (!dataRows.length){ toast('لا توجد بيانات معلمين في الملف.'); return; }
+  await importTeacherRows(dataRows, communityId);
+}
+async function importTeachersFromRows(rows, communityId){
+  if (!rows.length){ toast('الملف فارغ.'); return; }
+  const strRows = rows.map(function(r){ return r.map(function(c){ return String(c||''); }); });
+  let dataRows = strRows;
+  if (isTeacherImportHeaderRow(strRows[0][0])){ dataRows = strRows.slice(1); }
   if (!dataRows.length){ toast('لا توجد بيانات معلمين في الملف.'); return; }
   await importTeacherRows(dataRows, communityId);
 }
@@ -4928,7 +4959,7 @@ async function screenAdminUsers(){
         '<button class="btn btn-ghost btn-sm" data-action="downloadTeacherTemplate">تنزيل نموذج Excel</button>' +
         commSelectForImport +
         '<button class="btn btn-ghost btn-sm" data-action="triggerTeacherImport">رفع ملف المعلمين</button>' +
-        '<input type="file" id="teacherImportInput" accept=".csv" style="display:none;">' +
+        '<input type="file" id="teacherImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
         '<button class="btn btn-ghost btn-sm" data-action="openPasteImport">لصق البيانات</button>' +
         (CredsPrint.items && CredsPrint.items.length ? '<button class="btn btn-ghost btn-sm" data-action="printLastCredsBatch">بطاقات الدخول ('+CredsPrint.items.length+')</button>' : '') +
         '<button class="btn btn-primary" data-action="addUser">+ إضافة مستخدم</button>' +
@@ -5060,12 +5091,23 @@ function bindAdminUsers(){
     AdminUI.importBusy = true;
     const chosenCommunityId = AdminUI.importCommunityId || null;
     if (importBtn){ importBtn.disabled = true; importBtn.textContent = 'جارٍ الاستيراد...'; }
+    const isXlsx = /\.(xlsx|xls)$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = async function(){
-      try{ await importTeachersFromCsv(String(reader.result), chosenCommunityId); }
+      try{
+        if (isXlsx){
+          const wb = window.XLSX.read(new Uint8Array(reader.result), {type:'array'});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = window.XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+          await importTeachersFromRows(rows, chosenCommunityId);
+        } else {
+          await importTeachersFromCsv(String(reader.result), chosenCommunityId);
+        }
+      }
       finally{ AdminUI.importBusy = false; importInput.value = ''; render(); bindAdminUsers(); }
     };
-    reader.readAsText(file, 'UTF-8');
+    if (isXlsx){ reader.readAsArrayBuffer(file); }
+    else { reader.readAsText(file, 'UTF-8'); }
   });
 
   const pasteBtn = document.querySelector('[data-action="openPasteImport"]');
