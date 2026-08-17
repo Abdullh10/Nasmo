@@ -1190,7 +1190,19 @@ const DB = {
                 const listData = await listRes.json();
                 const existingUsers = listData.users || [];
                 const found = existingUsers.find(function(u){ return u.email === email; });
-                if (found){ newId = found.id; }
+                if (found){
+                  newId = found.id;
+                  /* حدّث كلمة المرور لتطابق البطاقة الجديدة */
+                  await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + found.id, {
+                    method: "PUT",
+                    headers: {
+                      "apikey": CONFIG.SUPABASE_SERVICE_KEY,
+                      "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ password: password })
+                  }).catch(function(){});
+                }
               }
             }catch(e2){}
           }
