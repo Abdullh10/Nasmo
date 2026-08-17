@@ -1179,10 +1179,27 @@ const DB = {
           const rawText = await adminRes.text().catch(function(){ return ''; });
           let msg = null;
           try{ const errData = JSON.parse(rawText); msg = errData.msg || errData.message || errData.error; }catch(e){}
-          throw new Error('فشل إنشاء حساب المصادقة (' + adminRes.status + '): ' + (msg || rawText || 'تأكد أن اسم المستخدم غير مستخدم مسبقًا.'));
+          /* إذا كان الحساب موجوداً مسبقاً في Auth، نسترجع معرّفه ونعيد استخدامه */
+          if (adminRes.status === 422 && rawText.toLowerCase().includes('already')){
+            try{
+              const listRes = await fetch(
+                CONFIG.SUPABASE_URL + "/auth/v1/admin/users?filter=" + encodeURIComponent(email) + "&page=1&per_page=50",
+                { headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
+              );
+              if (listRes.ok){
+                const listData = await listRes.json();
+                const existingUsers = listData.users || [];
+                const found = existingUsers.find(function(u){ return u.email === email; });
+                if (found){ newId = found.id; }
+              }
+            }catch(e2){}
+          }
+          if (!newId) throw new Error('فشل إنشاء حساب المصادقة (' + adminRes.status + '): ' + (msg || rawText || 'تأكد أن اسم المستخدم غير مستخدم مسبقًا.'));
         }
-        const adminData = await adminRes.json();
-        newId = adminData.id;
+        if (!newId){
+          const adminData = await adminRes.json();
+          newId = adminData.id;
+        }
       } else {
         /* Fallback: Public signup — قد يكون محدود المعدل */
         const signupRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/signup", {
@@ -1202,7 +1219,7 @@ const DB = {
       if (!newId) throw new Error('تعذّر إنشاء حساب المصادقة.');
       obj.id = newId;
       delete obj.password;
-      const rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'return=representation' });
+      const rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'resolution=merge-duplicates,return=representation' });
       return rows && rows[0];
     }
     obj.id = uid();
