@@ -1255,6 +1255,15 @@ const DB = {
   async deleteUser(id){
     if (isRemote()){
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      if (CONFIG.SUPABASE_SERVICE_KEY){
+        await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
+          method: "DELETE",
+          headers: {
+            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
+            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY
+          }
+        }).catch(function(){});
+      }
       return true;
     }
     let users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
