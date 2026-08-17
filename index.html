@@ -1190,7 +1190,19 @@ const DB = {
                 const listData = await listRes.json();
                 const existingUsers = listData.users || [];
                 const found = existingUsers.find(function(u){ return u.email === email; });
-                if (found){ newId = found.id; }
+                if (found){
+                  newId = found.id;
+                  /* حدّث كلمة المرور لتطابق البطاقة الجديدة */
+                  await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + found.id, {
+                    method: "PUT",
+                    headers: {
+                      "apikey": CONFIG.SUPABASE_SERVICE_KEY,
+                      "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ password: password })
+                  }).catch(function(){});
+                }
               }
             }catch(e2){}
           }
@@ -1243,6 +1255,15 @@ const DB = {
   async deleteUser(id){
     if (isRemote()){
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      if (CONFIG.SUPABASE_SERVICE_KEY){
+        await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
+          method: "DELETE",
+          headers: {
+            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
+            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY
+          }
+        }).catch(function(){});
+      }
       return true;
     }
     let users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
@@ -4137,6 +4158,14 @@ async function screenAdminSettings(){
         '</div>' +
       '</div>' +
     '</div>' +
+    (isRemote() && CONFIG.SUPABASE_SERVICE_KEY ?
+    '<div class="program-card">' +
+      '<div class="ph"><h3>تنظيف الحسابات المعطوبة</h3><p>يبحث في Supabase Auth عن حسابات لا يقابلها سجل في جدول profiles (ناتجة عن استيرادات فاشلة سابقة) ويحذفها نهائياً حتى يمكن إعادة الاستيراد بدون أخطاء.</p></div>' +
+      '<div style="padding:16px 18px;">' +
+        '<button class="btn btn-danger" data-action="purgeOrphanedAuth">حذف الحسابات المعطوبة من Supabase Auth</button>' +
+        '<p style="color:var(--muted);font-size:12px;margin-top:8px;">لن يُحذف أي مستخدم لديه سجل في جدول profiles.</p>' +
+      '</div>' +
+    '</div>' : '') +
     '<div class="program-card">' +
       '<div class="ph"><h3>تصفير البيانات التجريبية</h3><p>لحذف بيانات تجريبية أو خاطئة أدخلتها أثناء التجربة (مدرسة "'+esc(State.user.school)+'" فقط). حدِّد الأنواع المطلوب حذفها — هذا الإجراء نهائي ولا يمكن التراجع عنه، ويُنصح بتنزيل نسخة احتياطية كاملة قبل المتابعة.</p></div>' +
       '<div style="padding:16px 18px;">' +
@@ -4152,7 +4181,56 @@ async function screenAdminSettings(){
     '</div>'
   );
 }
+async function purgeOrphanedAuthAccounts(){
+  /* جمع كل معرّفات profiles الموجودة */
+  const profiles = await remoteFetch('profiles?select=id') || [];
+  const profileIds = new Set(profiles.map(function(p){ return p.id; }));
+
+  /* جلب جميع حسابات Auth مع دعم الترقيم */
+  let page = 1; const perPage = 1000;
+  let allAuthUsers = [];
+  while(true){
+    const res = await fetch(
+      CONFIG.SUPABASE_URL + "/auth/v1/admin/users?page=" + page + "&per_page=" + perPage,
+      { headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
+    );
+    if (!res.ok) throw new Error('فشل جلب قائمة المستخدمين من Auth.');
+    const data = await res.json();
+    const users = data.users || [];
+    allAuthUsers = allAuthUsers.concat(users);
+    if (!data.nextPage || users.length < perPage) break;
+    page++;
+  }
+
+  /* الحسابات المعطوبة: في Auth ولها بريد @nasmo.app لكن لا يقابلها profile */
+  const orphaned = allAuthUsers.filter(function(u){
+    return u.email && u.email.endsWith('@nasmo.app') && !profileIds.has(u.id);
+  });
+
+  if (!orphaned.length){ toast('لا توجد حسابات معطوبة — كل شيء نظيف.'); return; }
+
+  if (!confirm('سيتم حذف ' + orphaned.length + ' حساباً معطوباً من Supabase Auth. هل أنت متأكد؟')) return;
+
+  let deleted = 0;
+  for (let i = 0; i < orphaned.length; i++){
+    const res = await fetch(
+      CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(orphaned[i].id),
+      { method: "DELETE", headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
+    );
+    if (res.ok || res.status === 404) deleted++;
+  }
+  toast('تم حذف ' + deleted + ' حساباً معطوباً بنجاح.');
+}
+
 function bindAdminSettings(){
+  const purgeBtn = document.querySelector('[data-action="purgeOrphanedAuth"]');
+  if (purgeBtn) purgeBtn.addEventListener('click', async function(){
+    purgeBtn.disabled = true; purgeBtn.textContent = 'جارٍ التنظيف...';
+    try{ await purgeOrphanedAuthAccounts(); }
+    catch(e){ toast(e.message); }
+    finally{ purgeBtn.disabled = false; purgeBtn.textContent = 'حذف الحسابات المعطوبة من Supabase Auth'; }
+  });
+
   const saveBtn = document.querySelector('[data-action="saveSiteSettings"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const patch = {
