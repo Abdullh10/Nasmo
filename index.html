@@ -44,6 +44,66 @@ html[data-theme="dark"]{
   --draft:#9AA6B5; --draft-bg:#252F3B;
   --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.4);
 }
+/* ===== ثيمات الألوان ===== */
+html[data-palette="forest"]{
+  --navy:#1B4D3E; --navy-2:#2D6A4F; --navy-3:#40916C;
+  --teal:#52B788; --teal-dark:#40916C;
+  --bg:#F0F7F4; --surface:#FFFFFF; --surface-2:#F5FBF8; --border:#C8E6D8;
+}
+html[data-palette="forest"][data-theme="dark"]{
+  --navy:#52B788; --navy-2:#74C69D; --navy-3:#95D5B2;
+  --teal:#95D5B2; --teal-dark:#74C69D;
+  --bg:#0D1F18; --surface:#132B1F; --surface-2:#1A3629; --border:#1F4A32;
+}
+html[data-palette="purple"]{
+  --navy:#4A1D96; --navy-2:#6D28D9; --navy-3:#7C3AED;
+  --teal:#8B5CF6; --teal-dark:#7C3AED;
+  --bg:#F5F3FF; --surface:#FFFFFF; --surface-2:#FAF9FF; --border:#DDD6FE;
+}
+html[data-palette="purple"][data-theme="dark"]{
+  --navy:#A78BFA; --navy-2:#C4B5FD; --navy-3:#8B5CF6;
+  --teal:#C4B5FD; --teal-dark:#A78BFA;
+  --bg:#0F0A1E; --surface:#1A1030; --surface-2:#221540; --border:#2D1F50;
+}
+html[data-palette="rose"]{
+  --navy:#881337; --navy-2:#9F1239; --navy-3:#BE123C;
+  --teal:#E11D48; --teal-dark:#BE123C;
+  --bg:#FFF1F2; --surface:#FFFFFF; --surface-2:#FFF5F6; --border:#FECDD3;
+}
+html[data-palette="rose"][data-theme="dark"]{
+  --navy:#FB7185; --navy-2:#FDA4AF; --navy-3:#F43F5E;
+  --teal:#FDA4AF; --teal-dark:#FB7185;
+  --bg:#1A080C; --surface:#2A1018; --surface-2:#351520; --border:#4C1828;
+}
+html[data-palette="amber"]{
+  --navy:#78350F; --navy-2:#92400E; --navy-3:#B45309;
+  --teal:#D97706; --teal-dark:#B45309;
+  --bg:#FFFBEB; --surface:#FFFFFF; --surface-2:#FEFCE8; --border:#FDE68A;
+}
+html[data-palette="amber"][data-theme="dark"]{
+  --navy:#FCD34D; --navy-2:#FBBF24; --navy-3:#F59E0B;
+  --teal:#FBBF24; --teal-dark:#F59E0B;
+  --bg:#1A1200; --surface:#261B00; --surface-2:#332300; --border:#4A3500;
+}
+html[data-palette="slate"]{
+  --navy:#1E293B; --navy-2:#334155; --navy-3:#475569;
+  --teal:#0891B2; --teal-dark:#0E7490;
+  --bg:#F1F5F9; --surface:#FFFFFF; --surface-2:#F8FAFC; --border:#CBD5E1;
+}
+html[data-palette="slate"][data-theme="dark"]{
+  --navy:#94A3B8; --navy-2:#CBD5E1; --navy-3:#64748B;
+  --teal:#22D3EE; --teal-dark:#06B6D4;
+  --bg:#0A0F1A; --surface:#111827; --surface-2:#1E2A3B; --border:#1E3A5F;
+}
+/* زر اختيار الثيم */
+.palette-btn{ position:fixed; top:62px; left:14px; z-index:90; background:var(--surface); color:var(--navy); border:1.5px solid var(--border); width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow); cursor:pointer; font-size:16px; }
+.palette-btn:hover{ background:var(--surface-2); }
+.palette-popover{ position:fixed; top:108px; left:14px; z-index:91; background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:0 8px 32px rgba(0,0,0,.18); padding:14px; width:180px; display:none; }
+.palette-popover.open{ display:block; }
+.palette-popover h4{ font-size:12px; color:var(--muted); margin:0 0 10px; text-align:center; }
+.palette-swatches{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.palette-swatch{ width:100%; aspect-ratio:1; border-radius:50%; cursor:pointer; border:3px solid transparent; transition:.15s; }
+.palette-swatch:hover,.palette-swatch.active{ border-color:var(--text); transform:scale(1.1); }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
@@ -1937,6 +1997,48 @@ function applyTheme(theme){
   document.querySelectorAll('[data-action="toggleTheme"]').forEach(function(el){ el.innerHTML = theme==='dark' ? SUN_SVG : MOON_SVG; });
 }
 function toggleTheme(){ applyTheme(getTheme()==='dark' ? 'light' : 'dark'); }
+
+const PALETTES = [
+  { id:'navy',   label:'أزرق داكن',   color:'#0B2A4A' },
+  { id:'forest', label:'أخضر',        color:'#1B4D3E' },
+  { id:'purple', label:'بنفسجي',      color:'#4A1D96' },
+  { id:'rose',   label:'أحمر وردي',   color:'#881337' },
+  { id:'amber',  label:'ذهبي',        color:'#78350F' },
+  { id:'slate',  label:'رمادي',       color:'#1E293B' },
+];
+function getPalette(){ return localStorage.getItem('palette') || 'navy'; }
+function applyPalette(id){
+  if (id === 'navy') document.documentElement.removeAttribute('data-palette');
+  else document.documentElement.setAttribute('data-palette', id);
+  localStorage.setItem('palette', id);
+  document.querySelectorAll('.palette-swatch').forEach(function(el){
+    el.classList.toggle('active', el.getAttribute('data-palette') === id);
+  });
+}
+function renderPaletteBtn(){
+  if (document.getElementById('_paletteBtn')) return;
+  var btn = document.createElement('button');
+  btn.id = '_paletteBtn';
+  btn.className = 'palette-btn';
+  btn.title = 'تغيير لون الواجهة';
+  btn.innerHTML = '🎨';
+  var pop = document.createElement('div');
+  pop.id = '_palettePop';
+  pop.className = 'palette-popover';
+  pop.innerHTML = '<h4>اختر لون الواجهة</h4><div class="palette-swatches">' +
+    PALETTES.map(function(p){
+      return '<div class="palette-swatch'+(getPalette()===p.id?' active':'')+'" data-palette="'+p.id+'" style="background:'+p.color+';" title="'+p.label+'"></div>';
+    }).join('') +
+  '</div>';
+  document.body.appendChild(btn);
+  document.body.appendChild(pop);
+  btn.addEventListener('click', function(e){ e.stopPropagation(); pop.classList.toggle('open'); });
+  pop.addEventListener('click', function(e){
+    var sw = e.target.closest('.palette-swatch');
+    if (sw){ applyPalette(sw.getAttribute('data-palette')); }
+  });
+  document.addEventListener('click', function(){ pop.classList.remove('open'); });
+}
 async function loadPrincipalPendingApprovals(){
   const [subs, tasks, goals, shares] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
@@ -2337,6 +2439,7 @@ function renderShell(app, innerHtml){
   app.innerHTML = topNav() + '<div class="shell">' + innerHtml + '</div>';
   bindTopNav();
   if (State.user && State.user.role==='admin'){ applyConnDot(); checkConnectivity(); }
+  if (State.user) renderPaletteBtn();
 }
 
 function topNav(){
@@ -6590,6 +6693,7 @@ function bindGlobalAction(el){
 /* ---------------------- نقطة الانطلاق ---------------------- */
 (function init(){
   applyTheme(getTheme());
+  applyPalette(getPalette());
   loadAuth();
   const u = loadUserSession();
   if (u){ State.user = u; go('dashboard'); }
