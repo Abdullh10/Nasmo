@@ -1365,6 +1365,12 @@ const DB = {
   },
   async deleteUser(id){
     if (isRemote()){
+      /* اجلب اسم المستخدم قبل الحذف لتنظيف بطاقات الدخول */
+      let deletedUsername = null;
+      try{
+        const prows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(id) + '&select=username');
+        deletedUsername = prows && prows[0] && prows[0].username;
+      }catch(e2){}
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
       if (CONFIG.SUPABASE_SERVICE_KEY){
         await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
@@ -1375,11 +1381,29 @@ const DB = {
           }
         }).catch(function(){});
       }
+      /* أزل المعلم من بطاقات بيانات الدخول المحفوظة */
+      if (CredsPrint.items && CredsPrint.items.length){
+        const before = CredsPrint.items.length;
+        CredsPrint.items = CredsPrint.items.filter(function(it){
+          return it.id !== id && (!deletedUsername || it.username !== deletedUsername);
+        });
+        if (CredsPrint.items.length !== before){
+          if (CredsPrint.items.length) saveLastCredsBatch();
+          else { CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH); }
+        }
+      }
       return true;
     }
     let users = JSON.parse(localStorage.getItem(LS_USERS) || '[]');
+    const deletedUser = users.find(function(u){ return u.id===id; });
     users = users.filter(function(u){ return u.id!==id; });
     localStorage.setItem(LS_USERS, JSON.stringify(users));
+    /* أزل من بطاقات الدخول في الوضع المحلي */
+    if (deletedUser && CredsPrint.items && CredsPrint.items.length){
+      CredsPrint.items = CredsPrint.items.filter(function(it){ return it.id !== id && it.username !== deletedUser.username; });
+      if (CredsPrint.items.length) saveLastCredsBatch();
+      else { CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH); }
+    }
     return true;
   },
   async getSettings(school){
@@ -5071,14 +5095,14 @@ async function importTeacherRows(dataRows, communityId){
   for (let i=0;i<queue.length;i++){
     const item = queue[i];
     try{
-      await createUserWithRetry({
+      const createdUser = await createUserWithRetry({
         username: item.candidate, password: item.password,
         full_name: item.fullName, role: 'teacher',
         school: State.user.school, community_id: communityId||null,
         phone: item.phone, email: item.email
       });
       /* حفظ فوري — بعد كل نجاح مباشرة */
-      const newCred = { full_name:item.fullName, username:item.candidate, password:item.password, email:item.email };
+      const newCred = { id: createdUser && createdUser.id, full_name:item.fullName, username:item.candidate, password:item.password, email:item.email };
       const merged = (CredsPrint.items||[]).filter(function(it){ return it.username !== newCred.username; }).concat([newCred]);
       CredsPrint = { school: State.user.school, items: merged };
       saveLastCredsBatch();
