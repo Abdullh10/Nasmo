@@ -3934,50 +3934,117 @@ function bindPracticeBank(){
 }
 
 /* ---------------------- شاشة بيانات الطلاب (سجل الطلاب) ---------------------- */
-let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false };
+function openPlanForStudent(formType, student){
+  const today = new Date().toISOString().slice(0,10);
+  let data;
+  if (formType === 'individualAgreement'){
+    data = { studentName: student.full_name, grade: student.grade||'', sessions: [blankSession()], parentSuggested: '' };
+  } else if (formType === 'groupPlan'){
+    const row = blankStudentRow();
+    row.name = student.full_name;
+    data = { school: State.user.school, grade: student.grade||'', section: student.section||'', subject:'', date:today, students:[row], teacherOpinion:'' };
+  } else {
+    data = blankData(formType);
+  }
+  EditorState = {
+    id:null, formType:formType, data:data, status:'draft', prepSig:null, school:State.user.school,
+    createdByName:State.user.full_name, createdBy:State.user.id,
+    returnComment:null, principalSig:null, approved_at:null,
+    manualTeacherFields:new Set(), teachers:[], manualStudentFields:new Set(), students:[],
+    studentPickOpen:false, studentPickList:null, studentPickSelected:[]
+  };
+  go('editor', { formType:formType });
+}
+
+let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
 async function screenStudentRoster(){
+  const isAdmin = State.user.role === 'admin';
   const students = await DB.listStudents({ school: State.user.school });
   const myId = State.user.id;
-  const sorted = students.slice().sort(function(a,b){
+
+  /* — قوائم الصفوف والشعب المتاحة — */
+  const grades = students.map(function(s){ return s.grade||''; }).filter(Boolean)
+    .filter(function(v,i,a){ return a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const allSections = students.map(function(s){ return s.section||''; }).filter(Boolean)
+    .filter(function(v,i,a){ return a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
+
+  /* — تطبيق الفلتر — */
+  let filtered = students;
+  if (StudentRosterUI.gradeFilter) filtered = filtered.filter(function(s){ return s.grade===StudentRosterUI.gradeFilter; });
+  if (StudentRosterUI.sectionFilter) filtered = filtered.filter(function(s){ return s.section===StudentRosterUI.sectionFilter; });
+
+  const sorted = filtered.slice().sort(function(a,b){
     const aMine = Array.isArray(a.assigned_teacher_ids) && a.assigned_teacher_ids.indexOf(myId)>-1;
     const bMine = Array.isArray(b.assigned_teacher_ids) && b.assigned_teacher_ids.indexOf(myId)>-1;
     if (aMine!==bMine) return aMine ? -1 : 1;
-    return (a.full_name||'').localeCompare(b.full_name||'');
+    const gc = (a.grade||'').localeCompare(b.grade||'','ar');
+    if (gc!==0) return gc;
+    const sc = (a.section||'').localeCompare(b.section||'','ar');
+    if (sc!==0) return sc;
+    return (a.full_name||'').localeCompare(b.full_name||'','ar');
   });
+
+  const cols = isAdmin ? 7 : 5;
   const rows = sorted.map(function(s){
     const isMine = Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(myId)>-1;
+    const dName = 'data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||'')+'" data-section="'+esc(s.section||'')+'"';
     return (
       '<tr>' +
         '<td><b>'+esc(s.full_name)+'</b></td>' +
         '<td>'+esc(s.grade||'—')+'</td>' +
         '<td>'+esc(s.section||'—')+'</td>' +
-        '<td>'+esc(s.national_id||'—')+'</td>' +
+        (isAdmin ? '<td>'+esc(s.national_id||'—')+'</td>' : '') +
         '<td>'+(isMine?'<span class="badge approved">مُسند لي</span>':'<span style="color:var(--muted);">—</span>')+'</td>' +
-        '<td>'+esc(s.created_by_name||'')+'</td>' +
+        (isAdmin ? '<td>'+esc(s.created_by_name||'')+'</td>' : '') +
         '<td class="row-actions">' +
-          '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
-          '<button class="btn btn-danger btn-sm" data-action="deleteStudent" data-id="'+s.id+'">حذف</button>' +
+          (isAdmin
+            ? '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
+              '<button class="btn btn-danger btn-sm" data-action="deleteStudent" data-id="'+s.id+'">حذف</button>'
+            : '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="groupPlan" '+dName+'>خطة جماعية</button>' +
+              '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="individualAgreement" '+dName+'>خطة فردية</button>'
+          ) +
         '</td>' +
       '</tr>'
     );
   }).join('');
-  const modal = StudentRosterUI.modalOpen ? studentModal(students) : '';
-  const pasteModal = StudentRosterUI.pasteOpen ? studentPasteImportModal() : '';
+
+  const modal = isAdmin && StudentRosterUI.modalOpen ? studentModal(students) : '';
+  const pasteModal = isAdmin && StudentRosterUI.pasteOpen ? studentPasteImportModal() : '';
+
   return (
     '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
     '<div class="section-head"><h2>بيانات الطلاب</h2>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="downloadStudentTemplate">تنزيل نموذج Excel للطلاب</button>' +
-        '<button class="btn btn-ghost btn-sm" data-action="triggerStudentImport">رفع ملف الطلاب</button>' +
-        '<input type="file" id="studentImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="openStudentPasteImport">لصق بيانات الطلاب</button>' +
-        '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
-      '</div>' +
+      (isAdmin
+        ? '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<button class="btn btn-ghost btn-sm" data-action="downloadStudentTemplate">تنزيل نموذج Excel للطلاب</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="triggerStudentImport">رفع ملف الطلاب</button>' +
+            '<input type="file" id="studentImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
+            '<button class="btn btn-ghost btn-sm" data-action="openStudentPasteImport">لصق بيانات الطلاب</button>' +
+            '<button class="btn btn-primary" data-action="newStudent">+ إضافة طالب</button>' +
+          '</div>'
+        : '') +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة وتقليل الأخطاء. سجّل بيانات طلابك هنا لتتمكن من اختيارهم مباشرة عند تعبئة الخطط العلاجية (الجماعية والفردية والسلوكية)، دون الحاجة لكتابة الاسم يدويًا كل مرة. تُشارَك هذه القائمة مع جميع معلمي ومنسقي المدرسة، والطلاب الذين أسندهم مدير النظام لك يظهرون أولًا ومُعلَّمون بـ"مُسند لي".</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">' +
+      (isAdmin
+        ? 'نزّل نموذج Excel، عبّئ اسم الطالب والصف والشعبة، ثم ارفعه لإضافة عدة طلاب دفعة واحدة. تُشارَك هذه القائمة مع جميع معلمي المدرسة.'
+        : 'اختر طالبًا لإنشاء خطة علاجية جماعية أو فردية. يمكنك الفلترة حسب الصف والشعبة. إضافة الطلاب وتعديلهم من صلاحية مدير النظام فقط.') +
+    '</p>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
+      '<select id="rosterGradeFilter" class="input" style="max-width:160px;">' +
+        '<option value="">— كل الصفوف —</option>' +
+        grades.map(function(g){ return '<option value="'+esc(g)+'" '+(StudentRosterUI.gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+      '</select>' +
+      '<select id="rosterSectionFilter" class="input" style="max-width:140px;">' +
+        '<option value="">— كل الشعب —</option>' +
+        allSections.map(function(sec){ return '<option value="'+esc(sec)+'" '+(StudentRosterUI.sectionFilter===sec?'selected':'')+'>'+esc(sec)+'</option>'; }).join('') +
+      '</select>' +
+      '<span style="color:var(--muted);font-size:12.5px;">'+sorted.length+' طالب</span>' +
+    '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الهوية/السجل (اختياري)</th><th>الإسناد</th><th>أضافه</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
+      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th>'+(isAdmin?'<th>الهوية/السجل</th>':'')+'<th>الإسناد</th>'+(isAdmin?'<th>أضافه</th>':'')+'<th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="'+cols+'">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal + pasteModal
   );
@@ -4068,7 +4135,26 @@ async function importStudentsFromRows(rows){
   await importStudentRows(dataRows);
 }
 function bindStudentRoster(){
+  const isAdmin = State.user.role === 'admin';
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+
+  /* فلتر الصف والشعبة */
+  const gradeFilterEl = document.getElementById('rosterGradeFilter');
+  if (gradeFilterEl) gradeFilterEl.addEventListener('change', function(){ StudentRosterUI.gradeFilter = this.value; render(); bindStudentRoster(); });
+  const sectionFilterEl = document.getElementById('rosterSectionFilter');
+  if (sectionFilterEl) sectionFilterEl.addEventListener('change', function(){ StudentRosterUI.sectionFilter = this.value; render(); bindStudentRoster(); });
+
+  /* أزرار الخطة العلاجية (للمعلم والمنسق) */
+  document.querySelectorAll('[data-action="newPlanForStudent"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const planType = el.getAttribute('data-plan');
+      const student = { id: el.getAttribute('data-id'), full_name: el.getAttribute('data-name'), grade: el.getAttribute('data-grade'), section: el.getAttribute('data-section') };
+      openPlanForStudent(planType, student);
+    });
+  });
+
+  if (!isAdmin) return; /* المعلم/المنسق: لا يوجد إضافة/تعديل/حذف */
+
   const newBtn = document.querySelector('[data-action="newStudent"]');
   if (newBtn) newBtn.addEventListener('click', function(){ StudentRosterUI.editingId = null; StudentRosterUI.modalOpen = true; render(); bindStudentRoster(); });
   document.querySelectorAll('[data-action="editStudent"]').forEach(function(el){
