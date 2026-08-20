@@ -4965,7 +4965,7 @@ function bindTaskDetail(){
 }
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
-let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[], importCommunityId:'' };
+let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[], importCommunityId:'', userSort:'alpha', userCommunityFilter:'' };
 let CredsPrint = loadLastCredsBatch();
 function loadLastCredsBatch(){
   try{ const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH)); if (saved && saved.items && saved.items.length) return saved; }catch(e){}
@@ -5201,9 +5201,23 @@ async function screenAdminUsers(){
   const users = await DB.listUsers({});
   const communities = await DB.listCommunities({});
   AdminUI.selectedIds = AdminUI.selectedIds.filter(function(id){ return users.some(function(u){ return u.id===id; }) && id!==State.user.id; });
-  const selectableUsers = users.filter(function(u){ return u.id!==State.user.id; });
+
+  /* — تطبيق الفلتر والترتيب — */
+  let displayUsers = AdminUI.userCommunityFilter
+    ? users.filter(function(u){ return u.community_id === AdminUI.userCommunityFilter; })
+    : users;
+  if (AdminUI.userSort === 'community'){
+    displayUsers = displayUsers.slice().sort(function(a, b){
+      const commA = a.community_id ? ((communities.find(function(c){ return c.id===a.community_id; })||{}).name||'') : '￿';
+      const commB = b.community_id ? ((communities.find(function(c){ return c.id===b.community_id; })||{}).name||'') : '￿';
+      const cmp = commA.localeCompare(commB, 'ar');
+      return cmp !== 0 ? cmp : (a.full_name||'').localeCompare(b.full_name||'','ar');
+    });
+  }
+
+  const selectableUsers = displayUsers.filter(function(u){ return u.id!==State.user.id; });
   const allSelected = selectableUsers.length>0 && selectableUsers.every(function(u){ return AdminUI.selectedIds.indexOf(u.id)>-1; });
-  const rows = users.map(function(u){
+  const rows = displayUsers.map(function(u){
     const canDelete = u.id !== State.user.id;
     const comm = u.community_id ? communities.find(function(c){ return c.id===u.community_id; }) : null;
     const checked = AdminUI.selectedIds.indexOf(u.id)>-1;
@@ -5259,6 +5273,17 @@ async function screenAdminUsers(){
       '</div>' +
     '</div>' +
     '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel، عبّئ بيانات المعلمين، اختر المجتمع المهني من القائمة، ثم ارفع الملف أو الصق البيانات — سيُنشئ النظام الحسابات تلقائيًا ويسند المعلمين للمجتمع المحدد.</p>' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
+      '<select id="userSortSelect" class="input" style="max-width:180px;" title="طريقة الترتيب">' +
+        '<option value="alpha" '+(AdminUI.userSort==='alpha'?'selected':'')+'>ترتيب أبجدي</option>' +
+        '<option value="community" '+(AdminUI.userSort==='community'?'selected':'')+'>ترتيب حسب المجتمع</option>' +
+      '</select>' +
+      '<select id="userCommunityFilterSelect" class="input" style="max-width:220px;" title="فلتر المجتمع">' +
+        '<option value="" '+(!AdminUI.userCommunityFilter?'selected':'')+'>— كل المجتمعات —</option>' +
+        communities.map(function(c){ return '<option value="'+c.id+'" '+(AdminUI.userCommunityFilter===c.id?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('') +
+      '</select>' +
+      '<span style="color:var(--muted);font-size:12.5px;">'+displayUsers.length+' مستخدم</span>' +
+    '</div>' +
     bulkBar +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th><input type="checkbox" id="userSelectAllChk" '+(allSelected?'checked':'')+'></th><th>الاسم</th><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>المجتمع المهني</th><th></th></tr></thead>' +
@@ -5364,6 +5389,11 @@ function bindAdminUsers(){
       AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers();
     }catch(e){ toast(e.message); }
   });
+
+  const userSortSel = document.getElementById('userSortSelect');
+  if (userSortSel){ userSortSel.addEventListener('change', function(){ AdminUI.userSort = this.value; render(); bindAdminUsers(); }); }
+  const userCommFilterSel = document.getElementById('userCommunityFilterSelect');
+  if (userCommFilterSel){ userCommFilterSel.addEventListener('change', function(){ AdminUI.userCommunityFilter = this.value; render(); bindAdminUsers(); }); }
 
   const templateBtn = document.querySelector('[data-action="downloadTeacherTemplate"]');
   if (templateBtn) templateBtn.addEventListener('click', function(){
@@ -6128,7 +6158,13 @@ async function screenEditor(){
   const readonly = false;
   const teacherForms = ['individualAgreement','modelLesson','plcMeetingMinutes','indicatorReport','peerObservation'];
   if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
-    EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){ return u.role==='teacher'; });
+    EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){
+      if (u.role !== 'teacher') return false;
+      if (State.user.role === 'coordinator' && State.user.community_id){
+        return u.community_id === State.user.community_id;
+      }
+      return true;
+    });
   }
   const studentForms = ['groupPlan','individualAgreement','behavioralPlan'];
   if (studentForms.includes(EditorState.formType) && !EditorState.students.length){
