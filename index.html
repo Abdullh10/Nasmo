@@ -944,7 +944,11 @@ async function remoteFetch(path, opts){
   if (res.status === 401 && AUTH.refreshToken){
     if (await refreshAuthToken()) res = await doFetch();
   }
-  if (!res.ok) { throw new Error("تعذّر الاتصال بقاعدة البيانات السحابية (" + res.status + ")"); }
+  if (!res.ok) {
+    let errDetail = '';
+    try{ const j = await res.json(); errDetail = j.message || j.hint || j.details || ''; }catch(e2){}
+    throw new Error("تعذّر الاتصال بقاعدة البيانات السحابية (" + res.status + ")" + (errDetail ? ': ' + errDetail : ''));
+  }
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
