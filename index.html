@@ -843,6 +843,32 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 -- alter table practice_shares drop constraint if exists practice_shares_principal_rating_check;
 -- alter table practice_shares add constraint practice_shares_principal_rating_check check (principal_rating between 0 and 100);
 
+-- ميزة "حساب المرشد الطلابي" — نفّذ هذه الأوامر مرة واحدة في SQL Editor:
+-- 1) توسيع قيود الدور في جدول profiles:
+-- alter table profiles drop constraint if exists profiles_role_check;
+-- alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','teacher','admin','counselor'));
+-- 2) جدول الحالات الإرشادية:
+-- create table if not exists counseling_cases (
+--   id uuid primary key default gen_random_uuid(),
+--   school text not null,
+--   student_name text not null default '',
+--   student_grade text default '',
+--   student_section text default '',
+--   referred_by_name text default '',
+--   referral_reason text default '',
+--   status text check (status in ('open','in_progress','closed')) default 'open',
+--   sessions jsonb default '[]',
+--   counselor_notes text default '',
+--   parent_phone text default '',
+--   close_summary text default '',
+--   created_at timestamptz default now(),
+--   updated_at timestamptz default now()
+-- );
+-- alter table counseling_cases enable row level security;
+-- create policy "counseling_cases_all" on counseling_cases for all
+--   using (school = my_school() or my_role() = 'admin')
+--   with check (school = my_school() or my_role() = 'admin');
+
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
 --    البريد: admin@nasmo.local   كلمة المرور: اختر كلمة قوية   فعّل "Auto Confirm User"
@@ -937,6 +963,7 @@ const LS_GOALS = "dtd_goals_v1";
 const LS_PRACTICE = "dtd_practice_v1";
 const LS_STUDENTS = "dtd_students_v1";
 const LS_VISIT_SCHEDULES = "dtd_visit_schedules_v1";
+const LS_COUNSELING = "dtd_counseling_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -1805,6 +1832,45 @@ const DB = {
     localStorage.setItem(LS_STUDENTS, JSON.stringify(list));
     return true;
   },
+  async listCounselingCases(school){
+    if (isRemote()){
+      return await remoteFetch('counseling_cases?school=eq.' + encodeURIComponent(school) + '&order=created_at.desc') || [];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
+    return list.filter(function(c){ return c.school===school; }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  },
+  async createCounselingCase(obj){
+    obj.created_at = nowIso(); obj.updated_at = nowIso();
+    if (isRemote()){
+      const rows = await remoteFetch('counseling_cases', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid(); obj.sessions = obj.sessions||[];
+    const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
+    list.push(obj); localStorage.setItem(LS_COUNSELING, JSON.stringify(list));
+    return obj;
+  },
+  async updateCounselingCase(id, patch){
+    patch.updated_at = nowIso();
+    if (isRemote()){
+      await remoteFetch('counseling_cases?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch });
+      return true;
+    }
+    const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
+    const idx = list.findIndex(function(c){ return c.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_COUNSELING, JSON.stringify(list)); }
+    return true;
+  },
+  async deleteCounselingCase(id){
+    if (isRemote()){
+      await remoteFetch('counseling_cases?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
+    list = list.filter(function(c){ return c.id!==id; });
+    localStorage.setItem(LS_COUNSELING, JSON.stringify(list));
+    return true;
+  },
   async clearData(types, school){
     types = types || [];
     if (isRemote()){
@@ -1947,7 +2013,7 @@ function selfEvalAvgScore(payload){
 function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
-const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام' };
+const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'مرشد طلابي' };
 
 /* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
 const PRINCIPAL_STATUS_LABEL = { approved:'معتمد ومقيَّم', returned:'مرتجع للتعديل' };
@@ -4601,7 +4667,240 @@ function bindAdminSettings(){
     clearBtn.disabled = false;
   });
 }
+/* ============================================================
+   حساب المرشد الطلابي
+   ============================================================ */
+let CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
+const CASE_STATUS_LABEL = { open:'مفتوحة', in_progress:'قيد المتابعة', closed:'مغلقة' };
+const CASE_STATUS_CLASS = { open:'pending', in_progress:'approved', closed:'' };
+
+async function screenCounselorCases(){
+  const cases = await DB.listCounselingCases(State.user.school);
+  const grades = cases.map(function(c){ return c.student_grade||''; }).filter(Boolean)
+    .filter(function(v,i,a){ return a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
+
+  let filtered = cases;
+  if (CounselorUI.statusFilter) filtered = filtered.filter(function(c){ return c.status===CounselorUI.statusFilter; });
+  if (CounselorUI.gradeFilter) filtered = filtered.filter(function(c){ return c.student_grade===CounselorUI.gradeFilter; });
+
+  const openCount = cases.filter(function(c){ return c.status==='open'; }).length;
+  const inPrgCount = cases.filter(function(c){ return c.status==='in_progress'; }).length;
+  const closedCount = cases.filter(function(c){ return c.status==='closed'; }).length;
+
+  const editing = CounselorUI.editingId ? cases.find(function(c){ return c.id===CounselorUI.editingId; }) : null;
+
+  const rows = filtered.map(function(c){
+    const waBtn = c.parent_phone
+      ? '<a href="https://wa.me/'+encodeURIComponent(c.parent_phone.replace(/[^0-9]/g,''))+'" target="_blank" class="btn btn-ghost btn-sm" style="color:#25D366;">واتساب</a>'
+      : '';
+    return (
+      '<tr>' +
+        '<td><b>'+esc(c.student_name)+'</b></td>' +
+        '<td>'+esc(c.student_grade||'—')+'</td>' +
+        '<td>'+esc(c.student_section||'—')+'</td>' +
+        '<td>'+esc(c.referred_by_name||'—')+'</td>' +
+        '<td>'+fmtDate(c.created_at)+'</td>' +
+        '<td><span class="badge '+(CASE_STATUS_CLASS[c.status]||'')+'">'+CASE_STATUS_LABEL[c.status]+'</span></td>' +
+        '<td>'+((c.sessions||[]).length)+'</td>' +
+        '<td class="row-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="openCase" data-id="'+c.id+'">فتح</button>' +
+          waBtn +
+          '<button class="btn btn-danger btn-sm" data-action="deleteCase" data-id="'+c.id+'">حذف</button>' +
+        '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const caseModal = CounselorUI.modalOpen ? counselorCaseModal(editing) : '';
+
+  const statsTab = CounselorUI.tab === 'stats' ? (
+    '<div class="kpi-grid">' +
+      '<div class="kpi-card accent-pending"><div class="v">'+openCount+'</div><div class="l">حالات مفتوحة</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+inPrgCount+'</div><div class="l">قيد المتابعة</div></div>' +
+      '<div class="kpi-card"><div class="v">'+closedCount+'</div><div class="l">حالات مغلقة</div></div>' +
+      '<div class="kpi-card"><div class="v">'+cases.length+'</div><div class="l">إجمالي الحالات</div></div>' +
+    '</div>' +
+    '<div class="program-card">' +
+      '<div class="ph"><h3>الحالات حسب الصف</h3></div>' +
+      (grades.length ? grades.map(function(g){
+        const cnt = cases.filter(function(c){ return c.student_grade===g; }).length;
+        return '<div class="ind-row"><div class="ind-main"><div class="lbl">'+esc(g)+'</div></div><div class="ind-side"><b>'+cnt+' حالة</b></div></div>';
+      }).join('') : '<p style="color:var(--muted);font-size:13.5px;padding:12px;">لا توجد حالات بعد.</p>') +
+    '</div>'
+  ) : '';
+
+  const casesTab = CounselorUI.tab === 'cases' ? (
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
+      '<select id="caseStatusFilter" class="input" style="max-width:180px;">' +
+        '<option value="" '+(!CounselorUI.statusFilter?'selected':'')+'>— كل الحالات —</option>' +
+        Object.entries(CASE_STATUS_LABEL).map(function(e){ return '<option value="'+e[0]+'" '+(CounselorUI.statusFilter===e[0]?'selected':'')+'>'+e[1]+'</option>'; }).join('') +
+      '</select>' +
+      '<select id="caseGradeFilter" class="input" style="max-width:150px;">' +
+        '<option value="">— كل الصفوف —</option>' +
+        grades.map(function(g){ return '<option value="'+esc(g)+'" '+(CounselorUI.gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+      '</select>' +
+      '<span style="color:var(--muted);font-size:12.5px;">'+filtered.length+' حالة</span>' +
+    '</div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>أحاله</th><th>تاريخ الإحالة</th><th>الحالة</th><th>الجلسات</th><th></th></tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="8">لا توجد حالات إرشادية بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>'
+  ) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المرشد الطلابي</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:16px;">'+esc(State.user.school)+'</div>' +
+    '<div class="kpi-grid" style="margin-bottom:16px;">' +
+      '<div class="kpi-card accent-pending" style="cursor:pointer;" data-action="counselorFilter" data-status="open"><div class="v">'+openCount+'</div><div class="l">مفتوحة</div></div>' +
+      '<div class="kpi-card accent-success" style="cursor:pointer;" data-action="counselorFilter" data-status="in_progress"><div class="v">'+inPrgCount+'</div><div class="l">قيد المتابعة</div></div>' +
+      '<div class="kpi-card" style="cursor:pointer;" data-action="counselorFilter" data-status="closed"><div class="v">'+closedCount+'</div><div class="l">مغلقة</div></div>' +
+    '</div>' +
+    '<div class="tab-bar">' +
+      '<button class="tab '+(CounselorUI.tab==='cases'?'active':'')+'" data-action="counselorTab" data-tab="cases">الحالات</button>' +
+      '<button class="tab '+(CounselorUI.tab==='stats'?'active':'')+'" data-action="counselorTab" data-tab="stats">إحصائيات</button>' +
+    '</div>' +
+    '<div style="margin:12px 0;">' +
+      '<button class="btn btn-primary" data-action="addCase">+ إضافة حالة</button>' +
+    '</div>' +
+    casesTab + statsTab + caseModal
+  );
+}
+
+function counselorCaseModal(c){
+  const isNew = !c;
+  const sessions = c ? (c.sessions||[]) : [];
+  const sessionsHtml = sessions.length
+    ? '<div style="margin-bottom:12px;">' + sessions.map(function(s,i){
+        return '<div style="background:var(--card-2,#f4f6f8);border-radius:8px;padding:8px 12px;margin-bottom:6px;">' +
+          '<div style="font-size:12px;color:var(--muted);">'+fmtDate(s.date)+'</div>' +
+          '<div style="font-size:13.5px;">'+esc(s.notes)+'</div>' +
+        '</div>';
+      }).join('') + '</div>'
+    : '<p style="color:var(--muted);font-size:13px;margin-bottom:12px;">لا توجد جلسات مسجلة بعد.</p>';
+
+  return (
+    '<div class="modal-bg" data-action="closeCaseModal">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:540px;">' +
+        '<h3 style="margin-bottom:16px;">'+(isNew ? 'إضافة حالة جديدة' : 'الحالة الإرشادية — '+esc(c.student_name))+'</h3>' +
+        (isNew ? (
+          '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label><input class="input" id="caseStudentName"></div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade"></div>' +
+            '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection"></div>' +
+          '</div>' +
+          '<div class="field"><label>سبب الإحالة</label><textarea class="input" id="caseReason" rows="2"></textarea></div>' +
+          '<div class="field"><label>جوال ولي الأمر (للواتساب)</label><input class="input" id="caseParentPhone" placeholder="مثال: 0501234567"></div>'
+        ) : (
+          '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">' +
+            '<span><b>الصف:</b> '+esc(c.student_grade||'—')+'</span>' +
+            '<span><b>الشعبة:</b> '+esc(c.student_section||'—')+'</span>' +
+            '<span><b>أحاله:</b> '+esc(c.referred_by_name||'—')+'</span>' +
+            '<span><b>تاريخ الإحالة:</b> '+fmtDate(c.created_at)+'</span>' +
+          '</div>' +
+          '<div class="field"><label>سبب الإحالة</label><div style="background:var(--card-2,#f4f6f8);border-radius:8px;padding:8px 12px;font-size:13.5px;">'+esc(c.referral_reason||'—')+'</div></div>' +
+          '<div class="field"><label>الحالة</label>' +
+            '<select class="input" id="caseStatusSel">' +
+              Object.entries(CASE_STATUS_LABEL).map(function(e){ return '<option value="'+e[0]+'" '+(c.status===e[0]?'selected':'')+'>'+e[1]+'</option>'; }).join('') +
+            '</select>' +
+          '</div>' +
+          '<div class="field"><label>ملاحظات المرشد (سرية)</label><textarea class="input" id="caseCounselorNotes" rows="2">'+esc(c.counselor_notes||'')+'</textarea></div>' +
+          '<div class="field"><label>جوال ولي الأمر</label><input class="input" id="caseParentPhoneEdit" value="'+esc(c.parent_phone||'')+'"></div>' +
+          (c.status!=='closed' ? (
+            '<div class="field"><label>إضافة جلسة إرشادية</label><textarea class="input" id="caseNewSession" rows="2" placeholder="ملاحظات الجلسة..."></textarea></div>'
+          ) : (
+            '<div class="field"><label>ملخص الإغلاق</label><textarea class="input" id="caseCloseSummary" rows="2">'+esc(c.close_summary||'')+'</textarea></div>'
+          )) +
+          '<div class="block-title" style="margin:12px 0 6px;">الجلسات ('+sessions.length+')</div>' +
+          sessionsHtml
+        )) +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveCase">'+(isNew?'إضافة الحالة':'حفظ التعديلات')+'</button>' +
+          (!isNew && c.parent_phone ? '<a href="https://wa.me/'+encodeURIComponent(c.parent_phone.replace(/[^0-9]/g,''))+'" target="_blank" class="btn btn-ghost btn-block" style="color:#25D366;text-align:center;">تواصل مع ولي الأمر عبر واتساب</a>' : '') +
+          '<button class="btn btn-ghost btn-block" data-action="closeCaseModal">إغلاق</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function bindCounselorCases(){
+  document.querySelectorAll('[data-action="counselorFilter"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const st = el.getAttribute('data-status');
+      CounselorUI.statusFilter = CounselorUI.statusFilter===st ? '' : st;
+      render(); bindCounselorCases();
+    });
+  });
+  document.querySelectorAll('[data-action="counselorTab"]').forEach(function(el){
+    el.addEventListener('click', function(){ CounselorUI.tab = el.getAttribute('data-tab'); render(); bindCounselorCases(); });
+  });
+  const statusFilter = document.getElementById('caseStatusFilter');
+  if (statusFilter) statusFilter.addEventListener('change', function(){ CounselorUI.statusFilter = this.value; render(); bindCounselorCases(); });
+  const gradeFilter = document.getElementById('caseGradeFilter');
+  if (gradeFilter) gradeFilter.addEventListener('change', function(){ CounselorUI.gradeFilter = this.value; render(); bindCounselorCases(); });
+
+  const addBtn = document.querySelector('[data-action="addCase"]');
+  if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); bindCounselorCases(); });
+
+  const closeModal = function(){ CounselorUI.modalOpen=false; CounselorUI.editingId=null; render(); bindCounselorCases(); };
+  const closeBg = document.querySelector('[data-action="closeCaseModal"]');
+  if (closeBg) closeBg.addEventListener('click', closeModal);
+
+  document.querySelectorAll('[data-action="openCase"]').forEach(function(el){
+    el.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=el.getAttribute('data-id'); render(); bindCounselorCases(); });
+  });
+  document.querySelectorAll('[data-action="deleteCase"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذه الحالة الإرشادية نهائياً؟')) return;
+      try{ await DB.deleteCounselingCase(el.getAttribute('data-id')); toast('تم حذف الحالة.'); render(); bindCounselorCases(); }
+      catch(e){ toast(e.message); }
+    });
+  });
+
+  const saveBtn = document.querySelector('[data-action="saveCase"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const isNew = !CounselorUI.editingId;
+    if (isNew){
+      const studentName = (document.getElementById('caseStudentName')||{}).value||'';
+      if (!studentName.trim()){ toast('يرجى إدخال اسم الطالب.'); return; }
+      const obj = {
+        school: State.user.school,
+        student_name: studentName.trim(),
+        student_grade: (document.getElementById('caseGrade')||{}).value||'',
+        student_section: (document.getElementById('caseSection')||{}).value||'',
+        referred_by_name: State.user.full_name,
+        referral_reason: (document.getElementById('caseReason')||{}).value||'',
+        status: 'open',
+        sessions: [],
+        counselor_notes: '',
+        parent_phone: (document.getElementById('caseParentPhone')||{}).value||'',
+        close_summary: ''
+      };
+      try{ await DB.createCounselingCase(obj); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      catch(e){ toast(e.message); }
+    } else {
+      const cases = await DB.listCounselingCases(State.user.school);
+      const c = cases.find(function(x){ return x.id===CounselorUI.editingId; });
+      if (!c) return;
+      const newStatus = (document.getElementById('caseStatusSel')||{}).value || c.status;
+      const notes = (document.getElementById('caseCounselorNotes')||{}).value || '';
+      const phone = (document.getElementById('caseParentPhoneEdit')||{}).value || '';
+      const sessionText = ((document.getElementById('caseNewSession')||{}).value||'').trim();
+      const closeSummary = ((document.getElementById('caseCloseSummary')||{}).value||'').trim();
+      const sessions = (c.sessions||[]).slice();
+      if (sessionText) sessions.push({ date: new Date().toISOString().slice(0,10), notes: sessionText });
+      const patch = { status:newStatus, counselor_notes:notes, parent_phone:phone, sessions:sessions };
+      if (closeSummary) patch.close_summary = closeSummary;
+      if (newStatus==='closed' && !c.closed_at) patch.closed_at = nowIso();
+      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      catch(e){ toast(e.message); }
+    }
+  });
+}
+
 async function screenDashboard(){
+  if (State.user.role==='counselor') return screenCounselorCases();
   if (State.user.role==='teacher') return screenTeacherTasks();
   if (State.user.role==='admin'){
     return (
@@ -4708,6 +5007,7 @@ async function screenDashboard(){
 }
 function bindDashboard(){
   document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
+  if (State.user.role==='counselor') { bindCounselorCases(); return; }
   if (State.user.role==='teacher') bindTeacherTasks();
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
@@ -5414,7 +5714,7 @@ function userModal(users, communities){
         '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':(isRemote()?'6 أحرف على الأقل':''))+'" '+(editing&&isRemote()?'disabled':'')+'></div>' +
         (editing && isRemote() ? '<p style="color:var(--muted);font-size:12px;margin:-10px 0 16px;">لا يمكن تغيير كلمة المرور من هنا في وضع التشغيل السحابي. لإعادة تعيينها يلزم حذف الحساب وإضافته من جديد.</p>' : '') +
         '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
-          ['coordinator','principal','teacher','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
+          ['coordinator','principal','teacher','counselor','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
         '</select></div>' +
         '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'"></div>' +
         '<div class="field"><label>المجتمع المهني (اختياري)</label><select class="input" id="umCommunity">' +
@@ -6799,10 +7099,14 @@ async function screenView(id){
       (s.principal_note ? ('<p style="color:var(--muted);font-size:13px;">'+esc(s.principal_note)+'</p>') : '') +
     '</div>'
   ) : '';
+  const referCounselorBtn = (s.form_type==='behavioralPlan' && State.user.role==='teacher')
+    ? '<button class="btn btn-ghost btn-sm" data-action="referToCounselor">إحالة للمرشد الطلابي</button>'
+    : '';
   return (
     '<div class="sheet-wrap">' +
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
         '<span style="display:flex;gap:8px;">' +
+        referCounselorBtn +
         '<button class="btn btn-ghost btn-sm" data-action="printForm">طباعة</button>' +
         '<button class="btn btn-gold btn-sm" data-action="exportPdf" data-filename="'+esc(def.title)+'">تصدير PDF</button>' +
         '</span></div>' +
@@ -6823,6 +7127,32 @@ function bindView(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
+  const referBtn = document.querySelector('[data-action="referToCounselor"]');
+  if (referBtn) referBtn.addEventListener('click', async function(){
+    const s = ViewCache;
+    if (!s) return;
+    const students = (s.payload.behaviorStudents||[]).filter(function(st){ return st.name && st.name.trim(); });
+    if (!students.length){ toast('لا يوجد طلاب في هذه الخطة للإحالة.'); return; }
+    if (!confirm('هل تريد إحالة '+students.length+' طالب للمرشد الطلابي؟')) return;
+    try{
+      for (let i=0;i<students.length;i++){
+        await DB.createCounselingCase({
+          school: s.school,
+          student_name: students[i].name,
+          student_grade: s.payload.grade||'',
+          student_section: s.payload.section||'',
+          referred_by_name: State.user.full_name,
+          referral_reason: students[i].behavior||'إحالة من خطة علاجية سلوكية',
+          status: 'open',
+          sessions: [],
+          counselor_notes: '',
+          parent_phone: '',
+          close_summary: ''
+        });
+      }
+      toast('تمت إحالة '+students.length+' طالب للمرشد الطلابي بنجاح.');
+    }catch(e){ toast('فشلت الإحالة: ' + e.message); }
+  });
 }
 
 /* ---------------------- شاشة مراجعة مدير المدرسة ---------------------- */
