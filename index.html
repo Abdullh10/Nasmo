@@ -3999,6 +3999,71 @@ function bindPracticeBank(){
   });
 }
 
+/* ---------------------- نموذج إحالة للمرشد الطلابي ---------------------- */
+function openCounselorReferralModal(students){
+  // students = [{name, grade, section}]
+  DB.listUsers({ school: State.user.school }).then(function(users){
+    const counselors = (users||[]).filter(function(u){ return u.role==='counselor'; });
+    if (!counselors.length){ toast('لا يوجد مرشد طلابي مسجّل في هذه المدرسة.'); return; }
+    removeCounselorReferralModal();
+    const names = students.map(function(s){ return s.name; }).join('، ');
+    const opts = counselors.map(function(c){
+      return '<option value="'+esc(c.id)+'">'+esc(c.full_name)+'</option>';
+    }).join('');
+    const div = document.createElement('div');
+    div.id = 'crm-overlay';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;';
+    div.innerHTML =
+      '<div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:440px;max-width:95vw;max-height:92vh;overflow-y:auto;direction:rtl;">' +
+        '<h3 style="margin:0 0 18px;font-size:17px;">إحالة للمرشد الطلابي</h3>' +
+        '<div class="field"><label>الطالب / الطلاب</label>' +
+          '<div style="background:var(--surface-2,#f4f6f8);border-radius:8px;padding:9px 12px;font-size:13.5px;color:var(--text);">'+esc(names)+'</div>' +
+        '</div>' +
+        '<div class="field"><label>اختر المرشد الطلابي <span style="color:var(--danger)">*</span></label>' +
+          '<select class="input" id="crmCounselorSel">'+opts+'</select>' +
+        '</div>' +
+        '<div class="field"><label>سبب الإحالة <span style="color:var(--danger)">*</span></label>' +
+          '<textarea class="input" id="crmReason" rows="4" placeholder="اذكر سبب الإحالة بوضوح…" style="resize:vertical;"></textarea>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">' +
+          '<button class="btn btn-ghost" id="crmCancel">إلغاء</button>' +
+          '<button class="btn btn-gold" id="crmSubmit">إرسال الإحالة</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(div);
+    document.getElementById('crmCancel').addEventListener('click', removeCounselorReferralModal);
+    div.addEventListener('click', function(e){ if(e.target===div) removeCounselorReferralModal(); });
+    document.getElementById('crmSubmit').addEventListener('click', async function(){
+      const reason = document.getElementById('crmReason').value.trim();
+      if (!reason){ toast('يرجى كتابة سبب الإحالة.'); return; }
+      const counselorId = document.getElementById('crmCounselorSel').value;
+      const counselor = counselors.find(function(c){ return c.id===counselorId; });
+      const fullReason = 'المرشد المحال إليه: '+(counselor?counselor.full_name:'')+'\n'+reason;
+      const btn = document.getElementById('crmSubmit');
+      btn.disabled = true; btn.textContent = 'جاري الإرسال…';
+      try{
+        for(var i=0;i<students.length;i++){
+          await DB.createCounselingCase({
+            school: State.user.school,
+            student_name: students[i].name,
+            student_grade: students[i].grade||'',
+            student_section: students[i].section||'',
+            referred_by_name: State.user.full_name,
+            referral_reason: fullReason,
+            status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
+          });
+        }
+        toast('تمت إحالة '+students.length+' طالب للمرشد '+(counselor?counselor.full_name:'')+' بنجاح.');
+        removeCounselorReferralModal();
+      }catch(e){ toast('فشلت الإحالة: '+e.message); btn.disabled=false; btn.textContent='إرسال الإحالة'; }
+    });
+  }).catch(function(e){ toast('فشل تحميل المرشدين: '+e.message); });
+}
+function removeCounselorReferralModal(){
+  const el = document.getElementById('crm-overlay');
+  if(el) el.remove();
+}
+
 /* ---------------------- شاشة بيانات الطلاب (سجل الطلاب) ---------------------- */
 function openPlanForStudent(formType, student){
   const today = new Date().toISOString().slice(0,10);
@@ -4223,21 +4288,12 @@ function bindStudentRoster(){
 
   /* إرسال للمرشد الطلابي من سجل الطلاب */
   document.querySelectorAll('[data-action="referStudentCounselor"]').forEach(function(el){
-    el.addEventListener('click', async function(){
-      const name = el.getAttribute('data-name');
-      if (!confirm('إحالة الطالب '+name+' للمرشد الطلابي؟')) return;
-      try{
-        await DB.createCounselingCase({
-          school: State.user.school,
-          student_name: name,
-          student_grade: el.getAttribute('data-grade')||'',
-          student_section: el.getAttribute('data-section')||'',
-          referred_by_name: State.user.full_name,
-          referral_reason: 'إحالة من سجل الطلاب',
-          status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
-        });
-        toast('تمت إحالة '+name+' للمرشد الطلابي.');
-      }catch(e){ toast('فشلت الإحالة: '+e.message); }
+    el.addEventListener('click', function(){
+      openCounselorReferralModal([{
+        name: el.getAttribute('data-name'),
+        grade: el.getAttribute('data-grade')||'',
+        section: el.getAttribute('data-section')||''
+      }]);
     });
   });
 
@@ -7178,31 +7234,20 @@ function bindView(){
   document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
   const referBtn = document.querySelector('[data-action="referToCounselor"]');
-  if (referBtn) referBtn.addEventListener('click', async function(){
+  if (referBtn) referBtn.addEventListener('click', function(){
     const s = ViewCache;
     if (!s) return;
-    let cases = [];
+    var students = [];
     if (s.form_type === 'behavioralPlan'){
-      cases = (s.payload.behaviorStudents||[]).filter(function(st){ return st.name && st.name.trim(); }).map(function(st){
-        return { student_name: st.name, grade: s.payload.grade||'', section: s.payload.section||'', reason: st.behavior||'إحالة من خطة علاجية سلوكية' };
+      students = (s.payload.behaviorStudents||[]).filter(function(st){ return st.name && st.name.trim(); }).map(function(st){
+        return { name: st.name, grade: s.payload.grade||'', section: s.payload.section||'' };
       });
     } else if (s.form_type === 'individualAgreement'){
       const name = s.payload.studentName || s.payload.student_name || '';
-      if (name.trim()) cases = [{ student_name: name, grade: s.payload.grade||'', section: s.payload.section||'', reason: 'إحالة من خطة علاجية فردية' }];
+      if (name.trim()) students = [{ name: name, grade: s.payload.grade||'', section: s.payload.section||'' }];
     }
-    if (!cases.length){ toast('لا يوجد طلاب في هذه الخطة للإحالة.'); return; }
-    if (!confirm('هل تريد إحالة '+cases.length+' طالب للمرشد الطلابي؟')) return;
-    try{
-      for (var i=0;i<cases.length;i++){
-        await DB.createCounselingCase({
-          school: s.school, student_name: cases[i].student_name,
-          student_grade: cases[i].grade, student_section: cases[i].section,
-          referred_by_name: State.user.full_name, referral_reason: cases[i].reason,
-          status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
-        });
-      }
-      toast('تمت إحالة '+cases.length+' طالب للمرشد الطلابي بنجاح.');
-    }catch(e){ toast('فشلت الإحالة: ' + e.message); }
+    if (!students.length){ toast('لا يوجد طلاب في هذه الخطة للإحالة.'); return; }
+    openCounselorReferralModal(students);
   });
 
   const principalBtn = document.querySelector('[data-action="referToPrincipal"]');
