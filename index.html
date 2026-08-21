@@ -4069,7 +4069,9 @@ async function screenStudentRoster(){
             ? '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
               '<button class="btn btn-danger btn-sm" data-action="deleteStudent" data-id="'+s.id+'">حذف</button>'
             : '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="groupPlan" '+dName+'>خطة جماعية</button>' +
-              '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="individualAgreement" '+dName+'>خطة فردية</button>'
+              '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="individualAgreement" '+dName+'>خطة فردية</button>' +
+              '<button class="btn btn-ghost btn-sm" data-action="referStudentCounselor" data-id="'+s.id+'" '+dName+'>إرسال للمرشد</button>' +
+              '<button class="btn btn-ghost btn-sm" data-action="referStudentPrincipal" data-id="'+s.id+'" '+dName+'>إرسال للمدير</button>'
           ) +
         '</td>' +
       '</tr>'
@@ -4216,6 +4218,48 @@ function bindStudentRoster(){
       const planType = el.getAttribute('data-plan');
       const student = { id: el.getAttribute('data-id'), full_name: el.getAttribute('data-name'), grade: el.getAttribute('data-grade'), section: el.getAttribute('data-section') };
       openPlanForStudent(planType, student);
+    });
+  });
+
+  /* إرسال للمرشد الطلابي من سجل الطلاب */
+  document.querySelectorAll('[data-action="referStudentCounselor"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const name = el.getAttribute('data-name');
+      if (!confirm('إحالة الطالب '+name+' للمرشد الطلابي؟')) return;
+      try{
+        await DB.createCounselingCase({
+          school: State.user.school,
+          student_name: name,
+          student_grade: el.getAttribute('data-grade')||'',
+          student_section: el.getAttribute('data-section')||'',
+          referred_by_name: State.user.full_name,
+          referral_reason: 'إحالة من سجل الطلاب',
+          status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
+        });
+        toast('تمت إحالة '+name+' للمرشد الطلابي.');
+      }catch(e){ toast('فشلت الإحالة: '+e.message); }
+    });
+  });
+
+  /* إرسال للمدير من سجل الطلاب */
+  document.querySelectorAll('[data-action="referStudentPrincipal"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const name = el.getAttribute('data-name');
+      const grade = el.getAttribute('data-grade')||'';
+      const section = el.getAttribute('data-section')||'';
+      if (!confirm('إرسال بلاغ لمدير المدرسة عن الطالب '+name+'؟')) return;
+      try{
+        await DB.createNotification({
+          school: State.user.school,
+          sender_id: State.user.id,
+          sender_name: State.user.full_name,
+          target_type: 'school',
+          type: 'general',
+          title: 'بلاغ عن طالب: '+name,
+          body: 'أحال '+State.user.full_name+' الطالب '+name+(grade||section ? ' ('+[grade,section].filter(Boolean).join(' - ')+')' :'')+' إلى اهتمام مدير المدرسة.'
+        });
+        toast('تم إرسال البلاغ لمدير المدرسة.');
+      }catch(e){ toast('فشل الإرسال: '+e.message); }
     });
   });
 
@@ -7099,14 +7143,20 @@ async function screenView(id){
       (s.principal_note ? ('<p style="color:var(--muted);font-size:13px;">'+esc(s.principal_note)+'</p>') : '') +
     '</div>'
   ) : '';
-  const referCounselorBtn = (s.form_type==='behavioralPlan' && State.user.role==='teacher')
-    ? '<button class="btn btn-ghost btn-sm" data-action="referToCounselor">إحالة للمرشد الطلابي</button>'
+  const isTeacherOrCoord = (State.user.role==='teacher' || State.user.role==='coordinator');
+  const isPlanForm = (s.form_type==='behavioralPlan' || s.form_type==='individualAgreement');
+  const referCounselorBtn = (isPlanForm && isTeacherOrCoord)
+    ? '<button class="btn btn-ghost btn-sm" data-action="referToCounselor">إرسال للمرشد</button>'
+    : '';
+  const referPrincipalBtn = (isPlanForm && isTeacherOrCoord)
+    ? '<button class="btn btn-ghost btn-sm" data-action="referToPrincipal">إرسال للمدير</button>'
     : '';
   return (
     '<div class="sheet-wrap">' +
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button>' +
         '<span style="display:flex;gap:8px;">' +
         referCounselorBtn +
+        referPrincipalBtn +
         '<button class="btn btn-ghost btn-sm" data-action="printForm">طباعة</button>' +
         '<button class="btn btn-gold btn-sm" data-action="exportPdf" data-filename="'+esc(def.title)+'">تصدير PDF</button>' +
         '</span></div>' +
@@ -7131,27 +7181,51 @@ function bindView(){
   if (referBtn) referBtn.addEventListener('click', async function(){
     const s = ViewCache;
     if (!s) return;
-    const students = (s.payload.behaviorStudents||[]).filter(function(st){ return st.name && st.name.trim(); });
-    if (!students.length){ toast('لا يوجد طلاب في هذه الخطة للإحالة.'); return; }
-    if (!confirm('هل تريد إحالة '+students.length+' طالب للمرشد الطلابي؟')) return;
+    let cases = [];
+    if (s.form_type === 'behavioralPlan'){
+      cases = (s.payload.behaviorStudents||[]).filter(function(st){ return st.name && st.name.trim(); }).map(function(st){
+        return { student_name: st.name, grade: s.payload.grade||'', section: s.payload.section||'', reason: st.behavior||'إحالة من خطة علاجية سلوكية' };
+      });
+    } else if (s.form_type === 'individualAgreement'){
+      const name = s.payload.studentName || s.payload.student_name || '';
+      if (name.trim()) cases = [{ student_name: name, grade: s.payload.grade||'', section: s.payload.section||'', reason: 'إحالة من خطة علاجية فردية' }];
+    }
+    if (!cases.length){ toast('لا يوجد طلاب في هذه الخطة للإحالة.'); return; }
+    if (!confirm('هل تريد إحالة '+cases.length+' طالب للمرشد الطلابي؟')) return;
     try{
-      for (let i=0;i<students.length;i++){
+      for (var i=0;i<cases.length;i++){
         await DB.createCounselingCase({
-          school: s.school,
-          student_name: students[i].name,
-          student_grade: s.payload.grade||'',
-          student_section: s.payload.section||'',
-          referred_by_name: State.user.full_name,
-          referral_reason: students[i].behavior||'إحالة من خطة علاجية سلوكية',
-          status: 'open',
-          sessions: [],
-          counselor_notes: '',
-          parent_phone: '',
-          close_summary: ''
+          school: s.school, student_name: cases[i].student_name,
+          student_grade: cases[i].grade, student_section: cases[i].section,
+          referred_by_name: State.user.full_name, referral_reason: cases[i].reason,
+          status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
         });
       }
-      toast('تمت إحالة '+students.length+' طالب للمرشد الطلابي بنجاح.');
+      toast('تمت إحالة '+cases.length+' طالب للمرشد الطلابي بنجاح.');
     }catch(e){ toast('فشلت الإحالة: ' + e.message); }
+  });
+
+  const principalBtn = document.querySelector('[data-action="referToPrincipal"]');
+  if (principalBtn) principalBtn.addEventListener('click', async function(){
+    const s = ViewCache;
+    if (!s) return;
+    const formDef2 = formDef(s.form_type);
+    const studentInfo = s.form_type==='individualAgreement'
+      ? (s.payload.studentName||s.payload.student_name||'')
+      : ((s.payload.behaviorStudents||[]).map(function(st){ return st.name; }).filter(Boolean).join('، ')||'');
+    if (!confirm('إرسال بلاغ لمدير المدرسة عن هذه الخطة؟')) return;
+    try{
+      await DB.createNotification({
+        school: s.school,
+        sender_id: State.user.id,
+        sender_name: State.user.full_name,
+        target_type: 'school',
+        type: 'general',
+        title: 'بلاغ عن '+formDef2.title,
+        body: 'أحال '+State.user.full_name+' '+(studentInfo ? 'الطالب(ين): '+studentInfo+' من ' : '')+formDef2.title+' إلى اهتمام مدير المدرسة.'
+      });
+      toast('تم إرسال البلاغ لمدير المدرسة.');
+    }catch(e){ toast('فشل الإرسال: '+e.message); }
   });
 }
 
