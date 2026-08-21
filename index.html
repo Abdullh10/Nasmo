@@ -5977,11 +5977,41 @@ function bindAdminUsers(){
     const ids = AdminUI.selectedIds.slice();
     if (!ids.length) return;
     if (!confirm('هل تريد حذف '+ids.length+' مستخدمًا المحددين؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    bulkDeleteBtn.disabled = true;
+    bulkDeleteBtn.textContent = 'جاري الحذف…';
     try{
-      for (let i=0;i<ids.length;i++){ await DB.deleteUser(ids[i]); }
+      if (isRemote()){
+        /* 1) جلب usernames لتنظيف بطاقات الدخول (طلب واحد) */
+        let deletedUsernames = [];
+        try{
+          const rows = await remoteFetch('profiles?id=in.('+ids.join(',')+')'+'&select=id,username');
+          deletedUsernames = (rows||[]).map(function(r){ return r.username; }).filter(Boolean);
+        }catch(e2){}
+        /* 2) حذف كل profiles بطلب واحد */
+        await remoteFetch('profiles?id=in.('+ids.join(',')+')', { method:'DELETE' });
+        /* 3) حذف auth users بالتوازي */
+        if (CONFIG.SUPABASE_SERVICE_KEY){
+          await Promise.all(ids.map(function(id){
+            return fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+encodeURIComponent(id),{
+              method:'DELETE',
+              headers:{ 'apikey':CONFIG.SUPABASE_SERVICE_KEY, 'Authorization':'Bearer '+CONFIG.SUPABASE_SERVICE_KEY }
+            }).catch(function(){});
+          }));
+        }
+        /* 4) تنظيف بطاقات الدخول */
+        if (CredsPrint.items && CredsPrint.items.length){
+          CredsPrint.items = CredsPrint.items.filter(function(it){
+            return ids.indexOf(it.id)===-1 && deletedUsernames.indexOf(it.username)===-1;
+          });
+          if (CredsPrint.items.length) saveLastCredsBatch();
+          else { CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH); }
+        }
+      } else {
+        for (let i=0;i<ids.length;i++){ try{ await DB.deleteUser(ids[i]); }catch(e2){} }
+      }
       toast('تم حذف '+ids.length+' مستخدمًا.');
       AdminUI.selectedIds = []; render(); bindAdminUsers();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast('فشل الحذف: '+e.message); render(); bindAdminUsers(); }
   });
 }
 
