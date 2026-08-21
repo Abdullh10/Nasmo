@@ -4989,9 +4989,8 @@ function bindCounselorCases(){
       const closeSummary = ((document.getElementById('caseCloseSummary')||{}).value||'').trim();
       const sessions = (c.sessions||[]).slice();
       if (sessionText) sessions.push({ date: new Date().toISOString().slice(0,10), notes: sessionText });
-      const patch = { status:newStatus, counselor_notes:notes, parent_phone:phone, sessions:sessions };
+      const patch = { status:newStatus, counselor_notes:notes, parent_phone:phone, sessions:sessions, updated_at:nowIso() };
       if (closeSummary) patch.close_summary = closeSummary;
-      if (newStatus==='closed' && !c.closed_at) patch.closed_at = nowIso();
       try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(e.message); }
     }
