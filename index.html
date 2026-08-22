@@ -869,6 +869,24 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 --   using (school = my_school() or my_role() = 'admin')
 --   with check (school = my_school() or my_role() = 'admin');
 
+-- ميزة "سوبر أدمن - إدارة متعددة المدارس" — نفّذ هذه الأوامر مرة واحدة في SQL Editor:
+-- 1) توسيع قيود الدور في جدول profiles ليشمل super_admin:
+-- alter table profiles drop constraint if exists profiles_role_check;
+-- alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','teacher','admin','counselor','super_admin'));
+-- 2) تحديث سياسات RLS لتمنح super_admin صلاحية رؤية جميع المدارس:
+-- drop policy if exists "profiles_select" on profiles;
+-- drop policy if exists "profiles_insert" on profiles;
+-- drop policy if exists "profiles_update" on profiles;
+-- drop policy if exists "profiles_delete" on profiles;
+-- create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() in ('admin','super_admin') or school = my_school() );
+-- create policy "profiles_insert" on profiles for insert with check ( my_role() in ('admin','super_admin') );
+-- create policy "profiles_update" on profiles for update using ( id = auth.uid() or my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) ) with check ( id = auth.uid() or my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) );
+-- create policy "profiles_delete" on profiles for delete using ( my_role() in ('admin','super_admin') );
+-- drop policy if exists "communities_select" on communities;
+-- drop policy if exists "communities_write" on communities;
+-- create policy "communities_select" on communities for select using ( school = my_school() or my_role() in ('admin','super_admin') );
+-- create policy "communities_write" on communities for all using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );
+
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
 --    البريد: admin@nasmo.local   كلمة المرور: اختر كلمة قوية   فعّل "Auto Confirm User"
@@ -2017,7 +2035,7 @@ function selfEvalAvgScore(payload){
 function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
-const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'مرشد طلابي' };
+const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'مرشد طلابي', super_admin:'سوبر أدمن' };
 
 /* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
 const PRINCIPAL_STATUS_LABEL = { approved:'معتمد ومقيَّم', returned:'مرتجع للتعديل' };
@@ -2561,7 +2579,7 @@ async function render(){
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
   if (State.user){
     State.notifications = await DB.listNotifications({ school: State.user.school });
-    State.communitiesCache = State.user.role==='admin' ? await DB.listCommunities({})
+    State.communitiesCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
       : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
       : [];
     State.pendingApprovals = State.user.role==='principal' ? await loadPrincipalPendingApprovals() : [];
@@ -2581,6 +2599,7 @@ async function render(){
       case 'studentRoster': renderShell(app, await screenStudentRoster()); bindStudentRoster(); break;
       case 'examAnalysis': renderShell(app, await screenExamAnalysis()); bindExamAnalysis(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
+      case 'superAdminSchool': renderShell(app, await screenSuperAdminSchool()); bindSuperSchool(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
   }catch(e){ renderShell(app, '<p class="error-text">'+esc(e.message)+'</p>'); }
@@ -5004,6 +5023,7 @@ function bindCounselorCases(){
 async function screenDashboard(){
   if (State.user.role==='counselor') return screenCounselorCases();
   if (State.user.role==='teacher') return screenTeacherTasks();
+  if (State.user.role==='super_admin') return screenSuperAdmin();
   if (State.user.role==='admin'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
@@ -5110,6 +5130,7 @@ async function screenDashboard(){
 function bindDashboard(){
   document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
   if (State.user.role==='counselor') { bindCounselorCases(); return; }
+  if (State.user.role==='super_admin') { bindSuperAdmin(); return; }
   if (State.user.role==='teacher') bindTeacherTasks();
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
@@ -5685,9 +5706,129 @@ function bindCredsPrint(){
     go('dashboard');
   });
 }
+/* ==================== لوحة السوبر أدمن ==================== */
+let SuperAdminUI = { addSchoolOpen: false, managingSchool: null };
+
+async function screenSuperAdmin(){
+  const allUsers = await DB.listUsers({});
+  const schoolMap = {};
+  allUsers.forEach(function(u){
+    if (!u.school) return;
+    if (!schoolMap[u.school]) schoolMap[u.school] = { total:0, admin:0, coordinator:0, teacher:0, principal:0, counselor:0 };
+    schoolMap[u.school].total++;
+    if (schoolMap[u.school][u.role]!==undefined) schoolMap[u.school][u.role]++;
+  });
+  const schools = Object.keys(schoolMap).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const rows = schools.map(function(school){
+    const s = schoolMap[school];
+    return '<tr>' +
+      '<td><b>'+esc(school)+'</b></td>' +
+      '<td style="text-align:center;">'+s.admin+'</td>' +
+      '<td style="text-align:center;">'+s.coordinator+'</td>' +
+      '<td style="text-align:center;">'+s.teacher+'</td>' +
+      '<td style="text-align:center;">'+s.total+'</td>' +
+      '<td class="row-actions"><button class="btn btn-ghost btn-sm" data-action="superManageSchool" data-school="'+esc(school)+'">إدارة المدرسة</button></td>' +
+    '</tr>';
+  }).join('');
+  const addModal = SuperAdminUI.addSchoolOpen ? (
+    '<div class="modal-bg" data-action="closeSuperModal">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>إضافة مدرسة جديدة</h3>' +
+        '<div class="field"><label>اسم المدرسة</label><input class="input" id="saSchoolName" placeholder="مثال: مدرسة الأمل الثانوية"></div>' +
+        '<div class="field"><label>اسم مدير النظام</label><input class="input" id="saAdminName"></div>' +
+        '<div class="field"><label>اسم المستخدم</label><input class="input" id="saAdminUser" dir="ltr"></div>' +
+        '<div class="field"><label>كلمة المرور</label><input class="input" id="saAdminPass" type="text"></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost" data-action="closeSuperModal">إلغاء</button>' +
+          '<button class="btn btn-gold" data-action="saveSuperSchool">إنشاء المدرسة</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة السوبر أدمن</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة جميع المدارس المشتركة في المنصة</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:20px;">' +
+      '<button class="btn btn-primary" data-action="superAddSchool">+ إضافة مدرسة جديدة</button>' +
+    '</div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>المدرسة</th><th style="text-align:center;">أدمن</th><th style="text-align:center;">منسقون</th><th style="text-align:center;">معلمون</th><th style="text-align:center;">الكل</th><th></th></tr></thead>' +
+      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="6">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody>' +
+    '</table></div></div>' +
+    addModal
+  );
+}
+
+function bindSuperAdmin(){
+  const addBtn = document.querySelector('[data-action="superAddSchool"]');
+  if (addBtn) addBtn.addEventListener('click', function(){ SuperAdminUI.addSchoolOpen=true; render(); bindDashboard(); });
+  const closeModal = function(){ SuperAdminUI.addSchoolOpen=false; render(); bindDashboard(); };
+  document.querySelectorAll('[data-action="closeSuperModal"]').forEach(function(el){ el.addEventListener('click', closeModal); });
+  document.querySelectorAll('[data-action="superManageSchool"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      SuperAdminUI.managingSchool = el.getAttribute('data-school');
+      State.adminTab = 'users';
+      State.screen = 'superAdminSchool';
+      render(); bindSuperSchool();
+    });
+  });
+  const saveBtn = document.querySelector('[data-action="saveSuperSchool"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    const school = (document.getElementById('saSchoolName')||{}).value||'';
+    const fullName = (document.getElementById('saAdminName')||{}).value||'';
+    const username = (document.getElementById('saAdminUser')||{}).value||'';
+    const password = (document.getElementById('saAdminPass')||{}).value||'';
+    if (!school.trim()||!fullName.trim()||!username.trim()||!password.trim()){ toast('يرجى تعبئة جميع الحقول.'); return; }
+    saveBtn.disabled=true; saveBtn.textContent='جاري الإنشاء…';
+    try{
+      await DB.createUser({ username:username.trim(), password:password, full_name:fullName.trim(), role:'admin', school:school.trim() });
+      toast('تم إنشاء مدرسة "'+school.trim()+'" بنجاح.');
+      SuperAdminUI.addSchoolOpen=false; render(); bindDashboard();
+    }catch(e){ toast('فشل الإنشاء: '+e.message); saveBtn.disabled=false; saveBtn.textContent='إنشاء المدرسة'; }
+  });
+}
+
+/* ---- إدارة مدرسة واحدة من حساب السوبر أدمن ---- */
+async function screenSuperAdminSchool(){
+  const school = SuperAdminUI.managingSchool;
+  const users = await DB.listUsers({ school: school });
+  const communities = await DB.listCommunities({ school: school });
+  AdminUI.selectedIds = AdminUI.selectedIds.filter(function(id){ return users.some(function(u){ return u.id===id; }); });
+  let displayUsers = users.filter(function(u){ return u.role!=='super_admin'; });
+  const rows = displayUsers.map(function(u){
+    return '<tr>' +
+      '<td><b>'+esc(u.full_name)+'</b><div style="font-size:11.5px;color:var(--muted);">'+esc(u.username)+'</div></td>' +
+      '<td><span class="badge approved">'+esc(ROLE_LABEL[u.role]||u.role)+'</span></td>' +
+      '<td>'+esc(u.community_id?(communities.find(function(c){return c.id===u.community_id;})||{}).name||'—':'—')+'</td>' +
+      '<td class="row-actions"><button class="btn btn-danger btn-sm" data-action="superDeleteUser" data-id="'+u.id+'">حذف</button></td>' +
+    '</tr>';
+  }).join('');
+  return (
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
+      '<button class="btn btn-ghost btn-sm" data-action="backToSuperAdmin">‹ العودة للمدارس</button>' +
+      '<h2 style="margin:0;font-size:18px;">'+esc(school)+'</h2>' +
+    '</div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>الاسم</th><th>الصلاحية</th><th>المجتمع</th><th></th></tr></thead>' +
+      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="4">لا يوجد مستخدمون.</td></tr>')+'</tbody>' +
+    '</table></div></div>'
+  );
+}
+function bindSuperSchool(){
+  document.querySelectorAll('[data-action]').forEach(bindGlobalAction);
+  const backBtn = document.querySelector('[data-action="backToSuperAdmin"]');
+  if (backBtn) backBtn.addEventListener('click', function(){ State.screen='dashboard'; render(); bindDashboard(); });
+  document.querySelectorAll('[data-action="superDeleteUser"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('حذف هذا المستخدم؟')) return;
+      try{ await DB.deleteUser(el.getAttribute('data-id')); render(); bindSuperSchool(); }catch(e){ toast(e.message); }
+    });
+  });
+}
+
 async function screenAdminUsers(){
-  const users = await DB.listUsers({});
-  const communities = await DB.listCommunities({});
+  const users = await DB.listUsers({ school: State.user.school });
+  const communities = await DB.listCommunities({ school: State.user.school });
   AdminUI.selectedIds = AdminUI.selectedIds.filter(function(id){ return users.some(function(u){ return u.id===id; }) && id!==State.user.id; });
 
   /* — تطبيق الفلتر والترتيب — */
@@ -5816,9 +5957,9 @@ function userModal(users, communities){
         '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':(isRemote()?'6 أحرف على الأقل':''))+'" '+(editing&&isRemote()?'disabled':'')+'></div>' +
         (editing && isRemote() ? '<p style="color:var(--muted);font-size:12px;margin:-10px 0 16px;">لا يمكن تغيير كلمة المرور من هنا في وضع التشغيل السحابي. لإعادة تعيينها يلزم حذف الحساب وإضافته من جديد.</p>' : '') +
         '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
-          ['coordinator','principal','teacher','counselor','admin'].map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
+          (State.user.role==='super_admin' ? ['coordinator','principal','teacher','counselor','admin','super_admin'] : ['coordinator','principal','teacher','counselor','admin']).map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
         '</select></div>' +
-        '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'"></div>' +
+        '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'" '+(State.user.role==='super_admin'?'':'')+'></div>' +
         '<div class="field"><label>المجتمع المهني (اختياري)</label><select class="input" id="umCommunity">' +
           '<option value="">— بدون مجتمع —</option>' +
           communities.map(function(c){ return '<option value="'+c.id+'" '+(selectedCommunity===c.id?'selected':'')+'>'+esc(c.name)+' — '+esc(c.school)+'</option>'; }).join('') +
