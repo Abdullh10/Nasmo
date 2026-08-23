@@ -1014,6 +1014,14 @@ const LS_COUNSELING = "dtd_counseling_v1";
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+const MAX_EVIDENCE_MB = 5;
+function checkFileSize(file){
+  if (file.size > MAX_EVIDENCE_MB * 1024 * 1024){
+    toast('الملف "' + file.name + '" يتجاوز الحد الأقصى (' + MAX_EVIDENCE_MB + ' MB). الرجاء ضغطه أو اختيار ملف أصغر.');
+    return false;
+  }
+  return true;
+}
 function hijriDateFmt(d){
   return new Intl.DateTimeFormat('ar-SA', {calendar:'islamic-umalqura', year:'numeric', month:'long', day:'numeric'}).format(d);
 }
@@ -3621,6 +3629,7 @@ function bindCoordinatorGoals(){
   if (glEvidenceInput) glEvidenceInput.addEventListener('change', function(e){
     syncGoalDraftFromForm();
     Array.from(e.target.files).forEach(function(file){
+      if (!checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         GoalsUI.draft.evidence_files = GoalsUI.draft.evidence_files || [];
@@ -3629,6 +3638,7 @@ function bindCoordinatorGoals(){
       };
       reader.readAsDataURL(file);
     });
+    e.target.value = '';
   });
   document.querySelectorAll('[data-action="rmvGoalEvidence"]').forEach(function(el){
     el.addEventListener('click', function(e){
@@ -3976,6 +3986,7 @@ function bindPracticeBank(){
   const pkFilesInput = document.getElementById('pkFilesInput');
   if (pkFilesInput) pkFilesInput.addEventListener('change', function(e){
     Array.from(e.target.files).forEach(function(file){
+      if (!checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         PracticeBankUI.attachments = PracticeBankUI.attachments || [];
@@ -3984,6 +3995,7 @@ function bindPracticeBank(){
       };
       reader.readAsDataURL(file);
     });
+    e.target.value = '';
   });
   document.querySelectorAll('[data-action="rmvPracticeFile"]').forEach(function(el){
     el.addEventListener('click', function(e){
@@ -5328,6 +5340,7 @@ function bindTeacherSession(){
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
     sess.evidenceFiles = sess.evidenceFiles || [];
     Array.from(e.target.files).forEach(function(file){
+      if (!checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         sess.evidenceFiles.push(reader.result);
@@ -5336,6 +5349,7 @@ function bindTeacherSession(){
       };
       reader.readAsDataURL(file);
     });
+    e.target.value = '';
   });
   document.querySelectorAll('[data-action="rmvEvidence"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -5431,6 +5445,7 @@ function bindTaskDetail(){
   const evInput = document.getElementById('taskEvidenceInput');
   if (evInput) evInput.addEventListener('change', function(e){
     Array.from(e.target.files).forEach(function(file){
+      if (!checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         TaskDetailCache.evidence_files.push(reader.result);
@@ -5438,6 +5453,7 @@ function bindTaskDetail(){
       };
       reader.readAsDataURL(file);
     });
+    e.target.value = '';
   });
   document.querySelectorAll('[data-action="rmvTaskEvidence"]').forEach(function(el){
     el.addEventListener('click', function(){
