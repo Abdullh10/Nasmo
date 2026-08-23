@@ -488,11 +488,25 @@ const RCJY_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA+gAAAPoCAYAAAB
 const CONFIG = {
   SUPABASE_URL: "https://witgktuyixtuzjknzexs.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpdGdrdHV5aXh0dXpqa256ZXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MDgwNjksImV4cCI6MjEwMjM4NDA2OX0.TNVM7ms-RpCq8Klx0s5_zs6V8X2zk4rrSfUqbAP0tf0",
-  /* مفتاح service_role — يُستخدم فقط لإنشاء حسابات المعلمين بلا قيود.
-     اذهب إلى: Supabase → Project Settings → API → service_role → انسخ المفتاح والصقه هنا.
-     تحذير: لا تشارك هذا المفتاح مع أحد. */
-  SUPABASE_SERVICE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpdGdrdHV5aXh0dXpqa256ZXhzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjgwODA2OSwiZXhwIjoyMTAyMzg0MDY5fQ.9duhXKiC8AgiPvD3cNnsT2X-nLorQ9qNpjvEmUrSPt8"
+  /* service_role key أُزيل — العمليات الإدارية تمر الآن عبر Edge Function آمنة */
 };
+
+/* استدعاء Edge Function الإدارية بدلاً من الاتصال المباشر بـ Admin API */
+async function callAdminAuth(action, params) {
+  const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/admin-auth', {
+    method: 'POST',
+    headers: {
+      'apikey': CONFIG.SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + AUTH.accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(Object.assign({ action: action }, params))
+  });
+  const json = await res.json().catch(function(){ return {}; });
+  if (!res.ok) throw new Error(json.error || 'Admin function error ' + res.status);
+  if (json.error) throw new Error(json.error.message || json.error);
+  return json;
+}
 
 /* SQL_SCHEMA — للإعداد الكامل راجع ملف setup.sql في جذر المشروع.
    المصادقة حقيقية عبر Supabase Auth (auth.users)؛ profiles.id يطابق auth.users.id،
@@ -1324,53 +1338,24 @@ const DB = {
       const email = authEmailFor(obj.username);
       const password = obj.password;
       let newId;
-      if (CONFIG.SUPABASE_SERVICE_KEY){
-        /* Admin API — لا قيود على العدد ولا على المعدل */
-        const adminRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users", {
-          method: "POST",
-          headers: {
-            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ email: email, password: password, email_confirm: true })
-        });
-        if (!adminRes.ok){
-          const rawText = await adminRes.text().catch(function(){ return ''; });
-          let msg = null;
-          try{ const errData = JSON.parse(rawText); msg = errData.msg || errData.message || errData.error; }catch(e){}
+      if (isRemote()){
+        /* Edge Function آمنة — service_role على الخادم فقط */
+        try {
+          const created = await callAdminAuth('create', { email: email, password: password });
+          newId = created.data && created.data.user && created.data.user.id;
+        } catch(adminErr) {
           /* إذا كان الحساب موجوداً مسبقاً في Auth، نسترجع معرّفه ونعيد استخدامه */
-          if (adminRes.status === 422 && rawText.toLowerCase().includes('already')){
-            try{
-              const listRes = await fetch(
-                CONFIG.SUPABASE_URL + "/auth/v1/admin/users?filter=" + encodeURIComponent(email) + "&page=1&per_page=50",
-                { headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
-              );
-              if (listRes.ok){
-                const listData = await listRes.json();
-                const existingUsers = listData.users || [];
-                const found = existingUsers.find(function(u){ return u.email === email; });
-                if (found){
-                  newId = found.id;
-                  /* حدّث كلمة المرور لتطابق البطاقة الجديدة */
-                  await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + found.id, {
-                    method: "PUT",
-                    headers: {
-                      "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-                      "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ password: password })
-                  }).catch(function(){});
-                }
+          if (String(adminErr.message).toLowerCase().includes('already')) {
+            try {
+              const found = await callAdminAuth('find-by-email', { email: email });
+              const existing = found.data && found.data.users && found.data.users[0];
+              if (existing) {
+                newId = existing.id;
+                await callAdminAuth('update', { id: newId, password: password }).catch(function(){});
               }
-            }catch(e2){}
+            } catch(e2) {}
           }
-          if (!newId) throw new Error('فشل إنشاء حساب المصادقة (' + adminRes.status + '): ' + (msg || rawText || 'تأكد أن اسم المستخدم غير مستخدم مسبقًا.'));
-        }
-        if (!newId){
-          const adminData = await adminRes.json();
-          newId = adminData.id;
+          if (!newId) throw new Error('فشل إنشاء حساب المصادقة: ' + adminErr.message);
         }
       } else {
         /* Fallback: Public signup — قد يكون محدود المعدل */
@@ -1421,15 +1406,7 @@ const DB = {
         deletedUsername = prows && prows[0] && prows[0].username;
       }catch(e2){}
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
-      if (CONFIG.SUPABASE_SERVICE_KEY){
-        await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
-          method: "DELETE",
-          headers: {
-            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY
-          }
-        }).catch(function(){});
-      }
+      await callAdminAuth('delete', { id: id }).catch(function(){});
       /* أزل المعلم من بطاقات بيانات الدخول المحفوظة */
       if (CredsPrint.items && CredsPrint.items.length){
         const before = CredsPrint.items.length;
@@ -4630,7 +4607,7 @@ async function screenAdminSettings(){
         '</div>' +
       '</div>' +
     '</div>' +
-    (isRemote() && CONFIG.SUPABASE_SERVICE_KEY ?
+    (isRemote() ?
     '<div class="program-card">' +
       '<div class="ph"><h3>تنظيف الحسابات المعطوبة</h3><p>يبحث في Supabase Auth عن حسابات لا يقابلها سجل في جدول profiles (ناتجة عن استيرادات فاشلة سابقة) ويحذفها نهائياً حتى يمكن إعادة الاستيراد بدون أخطاء.</p></div>' +
       '<div style="padding:16px 18px;">' +
@@ -4658,40 +4635,22 @@ async function purgeOrphanedAuthAccounts(){
   const profiles = await remoteFetch('profiles?select=id') || [];
   const profileIds = new Set(profiles.map(function(p){ return p.id; }));
 
-  /* جلب جميع حسابات Auth مع دعم الترقيم */
-  let page = 1; const perPage = 1000;
-  let allAuthUsers = [];
-  while(true){
-    const res = await fetch(
-      CONFIG.SUPABASE_URL + "/auth/v1/admin/users?page=" + page + "&per_page=" + perPage,
-      { headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
-    );
-    if (!res.ok) throw new Error('فشل جلب قائمة المستخدمين من Auth.');
-    const data = await res.json();
-    const users = data.users || [];
-    allAuthUsers = allAuthUsers.concat(users);
-    if (!data.nextPage || users.length < perPage) break;
-    page++;
-  }
+  /* جلب جميع حسابات Auth عبر Edge Function */
+  const listResult = await callAdminAuth('list', { page: 1, perPage: 1000 });
+  const allAuthUsers = (listResult.data && listResult.data.users) || [];
 
-  /* الحسابات المعطوبة: في Auth ولها بريد @nasmo.app لكن لا يقابلها profile */
+  /* الحسابات المعطوبة: في Auth ولها بريد @nasmo.local لكن لا يقابلها profile */
   const orphaned = allAuthUsers.filter(function(u){
-    return u.email && u.email.endsWith('@nasmo.app') && !profileIds.has(u.id);
+    return u.email && (u.email.endsWith('@nasmo.local') || u.email.endsWith('@nasmo.app')) && !profileIds.has(u.id);
   });
 
   if (!orphaned.length){ toast('لا توجد حسابات معطوبة — كل شيء نظيف.'); return; }
 
   if (!confirm('سيتم حذف ' + orphaned.length + ' حساباً معطوباً من Supabase Auth. هل أنت متأكد؟')) return;
 
-  let deleted = 0;
-  for (let i = 0; i < orphaned.length; i++){
-    const res = await fetch(
-      CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(orphaned[i].id),
-      { method: "DELETE", headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
-    );
-    if (res.ok || res.status === 404) deleted++;
-  }
-  toast('تم حذف ' + deleted + ' حساباً معطوباً بنجاح.');
+  const orphanIds = orphaned.map(function(u){ return u.id; });
+  await callAdminAuth('delete-bulk', { ids: orphanIds });
+  toast('تم حذف ' + orphaned.length + ' حساباً معطوباً بنجاح.');
 }
 
 function bindAdminSettings(){
@@ -5597,7 +5556,7 @@ async function importTeacherRows(dataRows, communityId){
   }
 
   /* — حلقة الإنشاء مع عداد تقدم فوري — */
-  const useAdminApi = isRemote() && !!CONFIG.SUPABASE_SERVICE_KEY;
+  const useAdminApi = isRemote();
   const delayMs = useAdminApi ? 0 : 350; /* Admin API لا يحتاج تأخيراً */
   showImportProgress(0, queue.length, null);
 
@@ -6137,15 +6096,8 @@ function bindAdminUsers(){
         }catch(e2){}
         /* 2) حذف كل profiles بطلب واحد */
         await remoteFetch('profiles?id=in.('+ids.join(',')+')', { method:'DELETE' });
-        /* 3) حذف auth users بالتوازي */
-        if (CONFIG.SUPABASE_SERVICE_KEY){
-          await Promise.all(ids.map(function(id){
-            return fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+encodeURIComponent(id),{
-              method:'DELETE',
-              headers:{ 'apikey':CONFIG.SUPABASE_SERVICE_KEY, 'Authorization':'Bearer '+CONFIG.SUPABASE_SERVICE_KEY }
-            }).catch(function(){});
-          }));
-        }
+        /* 3) حذف auth users عبر Edge Function */
+        await callAdminAuth('delete-bulk', { ids: ids }).catch(function(){});
         /* 4) تنظيف بطاقات الدخول */
         if (CredsPrint.items && CredsPrint.items.length){
           CredsPrint.items = CredsPrint.items.filter(function(it){
