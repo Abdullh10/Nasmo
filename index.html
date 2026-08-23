@@ -874,18 +874,42 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 -- alter table profiles drop constraint if exists profiles_role_check;
 -- alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','teacher','admin','counselor','super_admin'));
 -- 2) تحديث سياسات RLS لتمنح super_admin صلاحية رؤية جميع المدارس:
--- drop policy if exists "profiles_select" on profiles;
--- drop policy if exists "profiles_insert" on profiles;
--- drop policy if exists "profiles_update" on profiles;
--- drop policy if exists "profiles_delete" on profiles;
+-- drop policy if exists "profiles_select"       on profiles;
+-- drop policy if exists "profiles_insert"       on profiles;
+-- drop policy if exists "profiles_update"       on profiles;
+-- drop policy if exists "profiles_delete"       on profiles;
 -- create policy "profiles_select" on profiles for select using ( id = auth.uid() or my_role() in ('admin','super_admin') or school = my_school() );
 -- create policy "profiles_insert" on profiles for insert with check ( my_role() in ('admin','super_admin') );
 -- create policy "profiles_update" on profiles for update using ( id = auth.uid() or my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) ) with check ( id = auth.uid() or my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) );
 -- create policy "profiles_delete" on profiles for delete using ( my_role() in ('admin','super_admin') );
--- drop policy if exists "communities_select" on communities;
--- drop policy if exists "communities_write" on communities;
+-- drop policy if exists "communities_select"    on communities;
+-- drop policy if exists "communities_write"     on communities;
 -- create policy "communities_select" on communities for select using ( school = my_school() or my_role() in ('admin','super_admin') );
--- create policy "communities_write" on communities for all using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );
+-- create policy "communities_write"  on communities for all   using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );
+-- drop policy if exists "notifications_select"  on notifications;
+-- drop policy if exists "notifications_insert"  on notifications;
+-- drop policy if exists "notifications_update"  on notifications;
+-- create policy "notifications_select" on notifications for select using ( school = my_school() or my_role() in ('admin','super_admin') );
+-- create policy "notifications_insert" on notifications for insert with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- create policy "notifications_update" on notifications for update using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "submissions_all"       on submissions;
+-- create policy "submissions_all"       on submissions       for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "app_settings_all"      on app_settings;
+-- create policy "app_settings_all"      on app_settings      for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "indicator_status_all"  on indicator_status;
+-- create policy "indicator_status_all"  on indicator_status  for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "site_settings_write"   on site_settings;
+-- create policy "site_settings_write"   on site_settings     for all using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );
+-- drop policy if exists "tasks_all"             on tasks;
+-- create policy "tasks_all"             on tasks             for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "plc_goals_all"         on plc_goals;
+-- create policy "plc_goals_all"         on plc_goals         for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "practice_shares_all"   on practice_shares;
+-- create policy "practice_shares_all"   on practice_shares   for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "students_all"          on students;
+-- create policy "students_all"          on students          for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
+-- drop policy if exists "visit_schedules_all"   on visit_schedules;
+-- create policy "visit_schedules_all"   on visit_schedules   for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );
 
 -- تفعيل حساب المدير الأول (مرة واحدة فقط):
 -- 1) من لوحة Supabase: Authentication > Users > Add user
