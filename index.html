@@ -975,7 +975,7 @@ async function remoteFetch(path, opts){
       "Content-Type": "application/json"
     };
     if (opts.prefer) headers["Prefer"] = opts.prefer;
-    if (method === "GET") headers["Range"] = "0-99999";
+    if (method === "GET") headers["Range"] = opts.range || "0-999";
     return fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
       method: method,
       headers: headers,
@@ -1953,16 +1953,17 @@ const DB = {
   },
   async exportFullBackup(){
     if (isRemote()){
+      const backupRange = { range: '0-49999' };
       const [profiles, communities, submissions, notifications, tasks, goals, appSettings, indicatorStatus, siteSettings] = await Promise.all([
-        remoteFetch('profiles?order=created_at.desc'),
-        remoteFetch('communities?order=created_at.asc'),
-        remoteFetch('submissions?order=created_at.desc'),
-        remoteFetch('notifications?order=created_at.desc'),
-        remoteFetch('tasks?order=created_at.desc'),
-        remoteFetch('plc_goals?order=created_at.desc'),
-        remoteFetch('app_settings'),
-        remoteFetch('indicator_status'),
-        remoteFetch('site_settings')
+        remoteFetch('profiles?order=created_at.desc',      backupRange),
+        remoteFetch('communities?order=created_at.asc',    backupRange),
+        remoteFetch('submissions?order=created_at.desc',   backupRange),
+        remoteFetch('notifications?order=created_at.desc', backupRange),
+        remoteFetch('tasks?order=created_at.desc',         backupRange),
+        remoteFetch('plc_goals?order=created_at.desc',     backupRange),
+        remoteFetch('app_settings',                        backupRange),
+        remoteFetch('indicator_status',                    backupRange),
+        remoteFetch('site_settings',                       backupRange)
       ]);
       return {
         version: 1, exported_at: nowIso(),
@@ -4681,7 +4682,7 @@ async function screenAdminSettings(){
 }
 async function purgeOrphanedAuthAccounts(){
   /* جمع كل معرّفات profiles الموجودة */
-  const profiles = await remoteFetch('profiles?select=id') || [];
+  const profiles = await remoteFetch('profiles?select=id', { range: '0-49999' }) || [];
   const profileIds = new Set(profiles.map(function(p){ return p.id; }));
 
   /* جلب جميع حسابات Auth مع دعم الترقيم */
