@@ -471,7 +471,12 @@ textarea.input{ resize:vertical; min-height:64px; }
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div id="init-spinner" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg,#f5f2eb);">
+    <div style="width:36px;height:36px;border:3px solid var(--border,#ddd);border-top-color:var(--navy,#0f2140);border-radius:50%;animation:spin .7s linear infinite;"></div>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <script>
 /* =========================================================================
@@ -2619,7 +2624,7 @@ async function render(){
   }
   try{
     switch(State.screen){
-      case 'login': app.innerHTML = screenLogin(); bindLogin(); break;
+      case 'login': { const sp = document.getElementById('init-spinner'); if (sp) sp.remove(); app.innerHTML = screenLogin(); bindLogin(); break; }
       case 'dashboard': renderShell(app, await screenDashboard()); bindDashboard(); break;
       case 'picker': renderShell(app, screenPicker()); bindPicker(); break;
       case 'editor': renderShell(app, await screenEditor()); bindEditor(); break;
@@ -2639,6 +2644,8 @@ async function render(){
 }
 
 function renderShell(app, innerHtml){
+  const spinner = document.getElementById('init-spinner');
+  if (spinner) spinner.remove();
   app.innerHTML = topNav() + '<div class="shell">' + innerHtml + '</div>';
   bindTopNav();
   if (State.user && State.user.role==='admin'){ applyConnDot(); checkConnectivity(); }
@@ -7568,18 +7575,19 @@ function bindGlobalAction(el){
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
-(function init(){
+(async function init(){
   applyTheme(getTheme());
   applyPalette(getPalette());
   loadAuth();
+  /* جلب الإعدادات أولاً لتجنب render مزدوج وضمان صحة العنوان من أول لحظة */
+  try {
+    const s = await DB.getSiteSettings();
+    SiteSettings = Object.assign({}, SiteSettings, s);
+    document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
+  } catch(e) {}
   const u = loadUserSession();
   if (u){ State.user = u; go('dashboard'); }
   else { go('login'); }
-  DB.getSiteSettings().then(function(s){
-    SiteSettings = Object.assign({}, SiteSettings, s);
-    document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
-    render();
-  }).catch(function(){});
   setInterval(function(){ if (State.user && State.user.role==='admin') checkConnectivity(); }, 20000);
 })();
 </script>
