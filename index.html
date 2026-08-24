@@ -440,7 +440,9 @@ textarea.input{ resize:vertical; min-height:64px; }
 .hcal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; color:var(--muted); font-size:11px; margin-bottom:4px; }
 .hcal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
 .hcal-cell{ aspect-ratio:1; display:flex; align-items:center; justify-content:center; }
-.hcal-day{ background:none; border:none; border-radius:6px; cursor:pointer; color:var(--text); }
+.hcal-day{ background:none; border:none; border-radius:6px; cursor:pointer; color:var(--text); touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+.hcal-foot button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+.hcal-nav{ touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
 .hcal-day:hover{ background:var(--surface-2); }
 .hcal-day.today{ border:1.5px solid var(--teal); }
 .hcal-day.sel{ background:var(--navy); color:#fff; }
@@ -1108,6 +1110,7 @@ function closeHijriPicker(){
   const pop = document.getElementById('hijriPickerPopup');
   if (pop) pop.remove();
   document.removeEventListener('mousedown', hijriPickerOutsideClick, true);
+  document.removeEventListener('touchstart', hijriPickerOutsideClick, true);
 }
 function hijriPickerOutsideClick(e){
   const pop = document.getElementById('hijriPickerPopup');
@@ -1116,7 +1119,7 @@ function hijriPickerOutsideClick(e){
 function positionHijriPopup(pop, btn){
   const r = btn.getBoundingClientRect();
   pop.style.position = 'fixed';
-  pop.style.zIndex = '95';
+  pop.style.zIndex = '9999';
   pop.style.top = (r.bottom + 6) + 'px';
   pop.style.left = r.left + 'px';
   requestAnimationFrame(function(){
@@ -1194,7 +1197,10 @@ function renderHijriPickerPopup(){
     pickHijriDate(tp.year, tp.month, tp.day);
   });
   pop.querySelector('[data-action="hcalClear"]').addEventListener('click', function(){ setHijriInputValue(''); closeHijriPicker(); });
-  setTimeout(function(){ document.addEventListener('mousedown', hijriPickerOutsideClick, true); }, 0);
+  setTimeout(function(){
+    document.addEventListener('mousedown', hijriPickerOutsideClick, true);
+    document.addEventListener('touchstart', hijriPickerOutsideClick, { capture:true, passive:true });
+  }, 0);
 }
 function openHijriPicker(btn){
   if (btn.disabled) return;
@@ -2612,35 +2618,41 @@ function openEditor(formType, submission){
 }
 
 /* ---------------------- التطبيق: الشاشات ---------------------- */
+let _renderToken = 0;
 async function render(){
+  const token = ++_renderToken;
   const app = document.getElementById('app');
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
   if (State.user){
     State.notifications = await DB.listNotifications({ school: State.user.school });
+    if (token !== _renderToken) return;
     State.communitiesCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
       : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
       : [];
+    if (token !== _renderToken) return;
     State.pendingApprovals = State.user.role==='principal' ? await loadPrincipalPendingApprovals() : [];
+    if (token !== _renderToken) return;
   }
+  let html;
   try{
     switch(State.screen){
       case 'login': { const sp = document.getElementById('init-spinner'); if (sp) sp.remove(); app.innerHTML = screenLogin(); bindLogin(); break; }
-      case 'dashboard': renderShell(app, await screenDashboard()); bindDashboard(); break;
+      case 'dashboard': html = await screenDashboard(); if (token !== _renderToken) return; renderShell(app, html); bindDashboard(); break;
       case 'picker': renderShell(app, screenPicker()); bindPicker(); break;
-      case 'editor': renderShell(app, await screenEditor()); bindEditor(); break;
-      case 'view': renderShell(app, await screenView(State.params.id)); bindView(); break;
-      case 'review': renderShell(app, await screenReview(State.params.id)); bindReview(); break;
-      case 'teacherSession': renderShell(app, await screenTeacherSession(State.params.subId, State.params.idx)); bindTeacherSession(); break;
-      case 'taskDetail': renderShell(app, await screenTaskDetail(State.params.taskId, State.params.readonly)); bindTaskDetail(); break;
-      case 'communityReport': renderShell(app, await screenCommunityReport(State.params.id)); bindCommunityReport(); break;
-      case 'practiceBank': renderShell(app, await screenPracticeBank()); bindPracticeBank(); break;
-      case 'studentRoster': renderShell(app, await screenStudentRoster()); bindStudentRoster(); break;
-      case 'examAnalysis': renderShell(app, await screenExamAnalysis()); bindExamAnalysis(); break;
+      case 'editor': html = await screenEditor(); if (token !== _renderToken) return; renderShell(app, html); bindEditor(); break;
+      case 'view': html = await screenView(State.params.id); if (token !== _renderToken) return; renderShell(app, html); bindView(); break;
+      case 'review': html = await screenReview(State.params.id); if (token !== _renderToken) return; renderShell(app, html); bindReview(); break;
+      case 'teacherSession': html = await screenTeacherSession(State.params.subId, State.params.idx); if (token !== _renderToken) return; renderShell(app, html); bindTeacherSession(); break;
+      case 'taskDetail': html = await screenTaskDetail(State.params.taskId, State.params.readonly); if (token !== _renderToken) return; renderShell(app, html); bindTaskDetail(); break;
+      case 'communityReport': html = await screenCommunityReport(State.params.id); if (token !== _renderToken) return; renderShell(app, html); bindCommunityReport(); break;
+      case 'practiceBank': html = await screenPracticeBank(); if (token !== _renderToken) return; renderShell(app, html); bindPracticeBank(); break;
+      case 'studentRoster': html = await screenStudentRoster(); if (token !== _renderToken) return; renderShell(app, html); bindStudentRoster(); break;
+      case 'examAnalysis': html = await screenExamAnalysis(); if (token !== _renderToken) return; renderShell(app, html); bindExamAnalysis(); break;
       case 'credsPrint': renderShell(app, screenCredsPrint()); bindCredsPrint(); break;
-      case 'superAdminSchool': renderShell(app, await screenSuperAdminSchool()); bindSuperSchool(); break;
+      case 'superAdminSchool': html = await screenSuperAdminSchool(); if (token !== _renderToken) return; renderShell(app, html); bindSuperSchool(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
-  }catch(e){ renderShell(app, '<p class="error-text">'+esc(e.message)+'</p>'); }
+  }catch(e){ if (token === _renderToken) renderShell(app, '<p class="error-text">'+esc(e.message)+'</p>'); }
 }
 
 function renderShell(app, innerHtml){
