@@ -6303,7 +6303,13 @@ function bindAdminUsers(){
         await DB.updateUser(AdminUI.editingId, patch);
         toast('تم تحديث بيانات المستخدم.');
       } else {
-        await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty, phone:phone, email:email });
+        const createdUser = await DB.createUser({ username:username, password:password, full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty, phone:phone, email:email });
+        if (password) {
+          const newCred = { id: createdUser && createdUser.id, full_name:fullName, username:username, password:password, email:email };
+          const merged = (CredsPrint.items||[]).filter(function(it){ return it.username !== username; }).concat([newCred]);
+          CredsPrint = { school: school, items: merged };
+          saveLastCredsBatch();
+        }
         toast('تمت إضافة المستخدم بنجاح.');
       }
       AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers();
