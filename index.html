@@ -6609,8 +6609,9 @@ function bindAdminStudents(){
 /* ----- لوحة مدير النظام: إدارة المجتمعات المهنية ----- */
 let CommUI = { modalOpen:false, editingId:null };
 async function screenAdminCommunities(){
-  const communities = await DB.listCommunities({});
-  const users = await DB.listUsers({});
+  const isSuper = State.user.role === 'super_admin';
+  const communities = await DB.listCommunities(isSuper ? {} : { school: State.user.school });
+  const users = await DB.listUsers(isSuper ? {} : { school: State.user.school });
 
   const cards = communities.map(function(c){
     const members = users.filter(function(u){ return u.community_id===c.id; });
@@ -6717,7 +6718,7 @@ function bindAdminCommunities(){
   });
   document.querySelectorAll('[data-action="exportLeaderCreds"]').forEach(function(el){
     el.addEventListener('click', async function(){
-      const users = await DB.listUsers({});
+      const users = await DB.listUsers(State.user.role === 'super_admin' ? {} : { school: State.user.school });
       const u = users.find(function(x){ return x.id===el.getAttribute('data-id'); });
       if (!u) return;
       const text = 'اسم المستخدم: '+u.username+' / كلمة المرور: '+u.password;
