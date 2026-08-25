@@ -1003,6 +1003,14 @@ async function remoteFetch(path, opts){
       else if (/not-null|null value in column/i.test(errDetail)) errDetail = 'حقل مطلوب لم يُملأ.';
       throw new Error('تعذّر الاتصال بقاعدة البيانات (' + res.status + ')' + (errDetail ? ': ' + errDetail : ''));
     }
+    const contentRange = res.headers.get('Content-Range');
+    if (contentRange){
+      const m = contentRange.match(/(\d+)-(\d+)\/(\d+|\*)/);
+      if (m && m[3] !== '*' && parseInt(m[2]) < parseInt(m[3]) - 1){
+        console.warn('[remoteFetch] نتائج مقتطعة:', path, contentRange, '— الإجمالي:', m[3]);
+        toast('تحذير: البيانات المعروضة مقتطعة (' + m[3] + ' سجل). تواصل مع المطوّر لتفعيل الترقيم.');
+      }
+    }
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }catch(e){
@@ -1473,6 +1481,7 @@ const DB = {
   async updateUser(id, patch){
     if (isRemote()){
       const newPassword = patch.password;
+      patch = Object.assign({}, patch);
       delete patch.password;
       if (newPassword && getSvcKey()){
         const pwRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
@@ -1960,8 +1969,8 @@ const DB = {
   async updateCounselingCase(id, patch){
     patch.updated_at = nowIso();
     if (isRemote()){
-      await remoteFetch('counseling_cases?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch });
-      return true;
+      const rows = await remoteFetch('counseling_cases?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return (rows && rows[0]) || true;
     }
     const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
     const idx = list.findIndex(function(c){ return c.id===id; });
@@ -2444,8 +2453,11 @@ function buildSignaturePad(name, existingDataUrl, readonly){
 function mountPad(cid, name){
   const canvas = document.getElementById(cid);
   if (!canvas || (Pads[cid] && Pads[cid].el === canvas)) return;
+  if (Pads[cid] && Pads[cid]._ac) Pads[cid]._ac.abort();
   const ctx = canvas.getContext('2d');
   let drawing = false, hasInk = false;
+  const _ac = new AbortController();
+  const sig = _ac.signal;
   function pos(e){
     const rect = canvas.getBoundingClientRect();
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
@@ -2455,15 +2467,14 @@ function mountPad(cid, name){
   function start(e){ drawing=true; hasInk=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); e.preventDefault(); }
   function move(e){ if(!drawing) return; const p=pos(e); ctx.lineTo(p.x,p.y); ctx.strokeStyle='#0B2A4A'; ctx.lineWidth=2.6; ctx.lineCap='round'; ctx.stroke(); e.preventDefault(); }
   function end(){ drawing=false; }
-  canvas.addEventListener('mousedown', start);
-  canvas.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', end);
-  canvas.addEventListener('touchstart', start, {passive:false});
-  canvas.addEventListener('touchmove', move, {passive:false});
-  canvas.addEventListener('touchend', end);
+  canvas.addEventListener('mousedown', start, {signal:sig});
+  canvas.addEventListener('mousemove', move, {signal:sig});
+  window.addEventListener('mouseup', end, {signal:sig});
+  canvas.addEventListener('touchstart', start, {passive:false, signal:sig});
+  canvas.addEventListener('touchmove', move, {passive:false, signal:sig});
+  canvas.addEventListener('touchend', end, {signal:sig});
   Pads[cid] = {
-    el:canvas,
-    name:name,
+    el:canvas, name:name, _ac:_ac,
     clear:function(){ ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false; },
     isEmpty:function(){ return !hasInk; },
     toDataUrl:function(){ return hasInk ? canvas.toDataURL('image/png') : null; }
