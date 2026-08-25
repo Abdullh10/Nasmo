@@ -1333,7 +1333,8 @@ const DB = {
   },
   async getSubmission(id){
     if (isRemote()){
-      const rows = await remoteFetch('submissions?id=eq.' + encodeURIComponent(id));
+      const sf = (State.user && State.user.role !== 'super_admin') ? '&school=eq.' + encodeURIComponent(State.user.school) : '';
+      const rows = await remoteFetch('submissions?id=eq.' + encodeURIComponent(id) + sf);
       return (rows && rows[0]) || null;
     }
     const subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
@@ -5818,7 +5819,7 @@ function hideImportProgress(){
 }
 
 async function importTeacherRows(dataRows, communityId){
-  const existingUsers = await DB.listUsers({});
+  const existingUsers = await DB.listUsers({ school: State.user.school });
   const preExistingUsernames = existingUsers.map(function(u){ return u.username; });
   const allUsernames = preExistingUsernames.slice();
   const skippedExisting = [];
@@ -7586,6 +7587,9 @@ function bindEditor(){
 }
 
 async function persistEditor(targetStatus){
+  if (targetStatus==='pending' && State.user.role==='teacher' && EditorState.createdBy && EditorState.createdBy !== State.user.id){
+    toast('لا يمكنك إرسال نموذج لا تملكه.'); return;
+  }
   if (targetStatus==='pending'){
     const padKey = 'pad_preparer';
     const pad = Pads[padKey];
@@ -7619,6 +7623,7 @@ async function persistEditor(targetStatus){
 let ViewCache = {};
 async function screenView(id){
   const s = await DB.getSubmission(id); ViewCache = s;
+  if (!s || (State.user.role !== 'super_admin' && s.school !== State.user.school)){ go('dashboard'); return ''; }
   const def = formDef(s.form_type);
   if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
