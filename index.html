@@ -1950,10 +1950,14 @@ const DB = {
   },
   async listCounselingCases(school){
     if (isRemote()){
-      return await remoteFetch('counseling_cases?school=eq.' + encodeURIComponent(school) + '&order=created_at.desc') || [];
+      const counselorFilter = (State.user && State.user.role === 'counselor')
+        ? '&counselor_id=eq.' + encodeURIComponent(State.user.id) : '';
+      return await remoteFetch('counseling_cases?school=eq.' + encodeURIComponent(school) + counselorFilter + '&order=created_at.desc') || [];
     }
     const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
-    return list.filter(function(c){ return c.school===school; }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+    let filtered = list.filter(function(c){ return c.school===school; });
+    if (State.user && State.user.role === 'counselor') filtered = filtered.filter(function(c){ return c.counselor_id===State.user.id; });
+    return filtered.sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
   },
   async createCounselingCase(obj){
     obj.created_at = nowIso(); obj.updated_at = nowIso();
@@ -4205,6 +4209,8 @@ function openCounselorReferralModal(students){
             student_section: students[i].section||'',
             referred_by_name: State.user.full_name,
             referral_reason: fullReason,
+            counselor_id: counselorId,
+            counselor_name: counselor ? counselor.full_name : '',
             status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
           });
         }
@@ -4810,7 +4816,11 @@ async function screenAdminSettings(){
     'drop policy if exists "visit_schedules_all" on visit_schedules;',
     "create policy \"visit_schedules_all\" on visit_schedules for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
     'drop policy if exists "counseling_cases_all" on counseling_cases;',
-    "create policy \"counseling_cases_all\" on counseling_cases for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );"
+    "create policy \"counseling_cases_all\" on counseling_cases for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    '',
+    '-- 4) إضافة عمودَي counselor_id و counselor_name لربط الحالة بالمرشد',
+    'alter table counseling_cases add column if not exists counselor_id uuid references auth.users(id) on delete set null;',
+    "alter table counseling_cases add column if not exists counselor_name text default '';"
   ].join('\n');
   return (
     '<div class="program-card">' +
@@ -5248,6 +5258,8 @@ function bindCounselorCases(){
         student_section: (document.getElementById('caseSection')||{}).value||'',
         referred_by_name: State.user.full_name,
         referral_reason: (document.getElementById('caseReason')||{}).value||'',
+        counselor_id: State.user.id,
+        counselor_name: State.user.full_name,
         status: 'open',
         sessions: [],
         counselor_notes: '',
