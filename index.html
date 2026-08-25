@@ -974,6 +974,8 @@ async function refreshAuthToken(){
 
 async function remoteFetch(path, opts){
   opts = opts || {};
+  const controller = new AbortController();
+  const timer = setTimeout(function(){ controller.abort(); }, opts.timeout || 15000);
   const doFetch = async function(){
     const method = opts.method || "GET";
     const headers = {
@@ -984,22 +986,31 @@ async function remoteFetch(path, opts){
     if (opts.prefer) headers["Prefer"] = opts.prefer;
     if (method === "GET") headers["Range"] = opts.range || "0-4999";
     return fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
-      method: method,
-      headers: headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined
+      method: method, headers: headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: controller.signal
     });
   };
-  let res = await doFetch();
-  if (res.status === 401 && AUTH.refreshToken){
-    if (await refreshAuthToken()) res = await doFetch();
-  }
-  if (!res.ok) {
-    let errDetail = '';
-    try{ const j = await res.json(); errDetail = j.message || j.hint || j.details || ''; }catch(e2){}
-    throw new Error("تعذّر الاتصال بقاعدة البيانات السحابية (" + res.status + ")" + (errDetail ? ': ' + errDetail : ''));
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  try{
+    let res = await doFetch();
+    if (res.status === 401 && AUTH.refreshToken){
+      if (await refreshAuthToken()){ res = await doFetch(); }
+      else { clearTimeout(timer); logout(); throw new Error('انتهت جلستك. يرجى تسجيل الدخول مجددًا.'); }
+    }
+    if (!res.ok){
+      let errDetail = '';
+      try{ const j = await res.json(); errDetail = j.message || j.hint || j.details || ''; }catch(e2){}
+      if (/duplicate key|unique.*constraint/i.test(errDetail)) errDetail = 'توجد قيمة مكررة — السجل موجود مسبقًا.';
+      else if (/foreign key/i.test(errDetail)) errDetail = 'لا يمكن حذف هذا السجل لوجود بيانات مرتبطة به.';
+      else if (/not-null|null value in column/i.test(errDetail)) errDetail = 'حقل مطلوب لم يُملأ.';
+      throw new Error('تعذّر الاتصال بقاعدة البيانات (' + res.status + ')' + (errDetail ? ': ' + errDetail : ''));
+    }
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  }catch(e){
+    if (e.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. تحقق من اتصالك بالإنترنت وحاول مجددًا.');
+    throw e;
+  }finally{ clearTimeout(timer); }
 }
 
 /* ---------------------- طبقة البيانات (محلي / سحابي) ---------------------- */
@@ -1025,6 +1036,14 @@ const MAX_EVIDENCE_MB = 1;
 function checkFileSize(file){
   if (file.size > MAX_EVIDENCE_MB * 1024 * 1024){
     toast('الملف "' + file.name + '" يتجاوز الحد الأقصى (' + MAX_EVIDENCE_MB + ' MB). الرجاء ضغطه أو اختيار ملف أصغر.');
+    return false;
+  }
+  return true;
+}
+const ALLOWED_EVIDENCE_TYPES = ['image/', 'application/pdf'];
+function checkEvidenceType(file){
+  if (!ALLOWED_EVIDENCE_TYPES.some(function(t){ return file.type.startsWith(t); })){
+    toast('الملف "' + file.name + '" غير مدعوم. المسموح به: صور أو PDF.');
     return false;
   }
   return true;
@@ -2651,12 +2670,19 @@ function openEditor(formType, submission){
 
 /* ---------------------- التطبيق: الشاشات ---------------------- */
 let _renderToken = 0;
+let _notifCache = null, _notifCacheAt = 0;
+const NOTIF_TTL_MS = 30000;
+function invalidateNotifCache(){ _notifCache = null; }
 async function render(){
   const token = ++_renderToken;
   const app = document.getElementById('app');
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
   if (State.user){
-    State.notifications = await DB.listNotifications({ school: State.user.school });
+    if (!_notifCache || (Date.now() - _notifCacheAt) > NOTIF_TTL_MS){
+      _notifCache = await DB.listNotifications({ school: State.user.school });
+      _notifCacheAt = Date.now();
+    }
+    State.notifications = _notifCache;
     if (token !== _renderToken) return;
     State.communitiesCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
       : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
@@ -2809,7 +2835,7 @@ function bindTopNav(){
       var sw = e.target.closest('.palette-swatch');
       if (sw){ applyPalette(sw.getAttribute('data-palette')); palettePop.classList.remove('open'); }
     });
-    document.addEventListener('click', function(){ palettePop.classList.remove('open'); }, { once: false });
+    document.addEventListener('click', function(){ palettePop.classList.remove('open'); }, { once: true });
   }
 
   const bellBtn = document.querySelector('[data-action="toggleNotif"]');
@@ -2822,7 +2848,7 @@ function bindTopNav(){
       if (!n) return;
       const readBy = n.read_by || [];
       if (readBy.indexOf(State.user.id) === -1){
-        try{ await DB.updateNotification(id, { read_by: readBy.concat([State.user.id]) }); render(); }catch(e){}
+        try{ await DB.updateNotification(id, { read_by: readBy.concat([State.user.id]) }); invalidateNotifCache(); render(); }catch(e){}
       }
     });
   });
@@ -2863,6 +2889,7 @@ function bindTopNav(){
     }
     try{
       await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:target_type, target_id:target_id, type:type, title:title, body:body, due_date: due||null });
+      invalidateNotifCache();
       toast('تم إرسال التنبيه.');
       NotifUI.compose=false; NotifUI.open=true;
       render();
@@ -3437,17 +3464,17 @@ function bindCoordinatorVisits(){
   });
   const sendBtn = document.querySelector('[data-action="sendVisitSchedule"]');
   if (sendBtn) sendBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     const rows = VisitsUI.draft.rows.filter(function(r){ return r.day && r.date && r.visitingTeacherId && r.visitedTeacherId; });
-    if (!rows.length){ toast('يرجى تعبئة اليوم والتاريخ والمعلم الزائر والمعلم المزار في صف واحد على الأقل قبل الإرسال.'); return; }
+    if (!rows.length){ toast('يرجى تعبئة اليوم والتاريخ والمعلم الزائر والمعلم المزار في صف واحد على الأقل قبل الإرسال.'); this.disabled = false; return; }
     if (rows.some(function(r){ return r.visitingTeacherId === r.visitedTeacherId; })){
-      toast('لا يمكن أن يكون المعلم الزائر والمعلم المزار نفس الشخص في الصف الواحد.'); return;
+      toast('لا يمكن أن يكون المعلم الزائر والمعلم المزار نفس الشخص في الصف الواحد.'); this.disabled = false; return;
     }
     try{
       await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
       toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
-      VisitsUI.draft = null;
-      render(); bindCoordinatorVisits();
-    }catch(e){ toast(e.message); }
+      VisitsUI.draft = null; render(); bindCoordinatorVisits();
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="deleteVisitSchedule"]').forEach(function(el){
     el.addEventListener('click', async function(){
@@ -3672,7 +3699,7 @@ function bindCoordinatorGoals(){
   if (glEvidenceInput) glEvidenceInput.addEventListener('change', function(e){
     syncGoalDraftFromForm();
     Array.from(e.target.files).forEach(function(file){
-      if (!checkFileSize(file)) return;
+      if (!checkEvidenceType(file) || !checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         GoalsUI.draft.evidence_files = GoalsUI.draft.evidence_files || [];
@@ -4029,7 +4056,7 @@ function bindPracticeBank(){
   const pkFilesInput = document.getElementById('pkFilesInput');
   if (pkFilesInput) pkFilesInput.addEventListener('change', function(e){
     Array.from(e.target.files).forEach(function(file){
-      if (!checkFileSize(file)) return;
+      if (!checkEvidenceType(file) || !checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         PracticeBankUI.attachments = PracticeBankUI.attachments || [];
@@ -4545,7 +4572,7 @@ async function screenExamAnalysis(){
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" data-action="downloadExamTemplate">تنزيل نموذج Excel لدرجات الاختبار</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="triggerExamImport">رفع ملف الدرجات</button>' +
-        '<input type="file" id="examImportInput" accept=".csv" style="display:none;">' +
+        '<input type="file" id="examImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
       '</div>' +
     '</div>' +
     '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ بيانات طلابك (السجل المدني، الاسم، الصف، الشعبة، درجة الاختبار من 40)، ثم ارفعه هنا. كل طالب تقل درجته عن النصف (20 من 40) يتم رصده تلقائيًا (فرز آلي) ضمن الخطة العلاجية الجماعية الخاصة بصفه وشعبته، وتظهر بعد ذلك متابعة أسبوعية لتقدّمه ضمن الخطة.</p>' +
@@ -4639,18 +4666,26 @@ function bindExamAnalysis(){
   if (importInput) importInput.addEventListener('change', function(){
     const file = importInput.files && importInput.files[0];
     if (!file) return;
+    const isXlsx = /\.(xlsx|xls)$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = function(){
-      const rawRows = parseCsv(String(reader.result));
+      let rawRows;
+      if (isXlsx){
+        const wb = window.XLSX.read(new Uint8Array(reader.result), { type:'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rawRows = window.XLSX.utils.sheet_to_json(ws, { header:1, defval:'' }).map(function(r){ return r.map(function(c){ return String(c==null?'':c); }); });
+      } else {
+        rawRows = parseCsv(String(reader.result));
+      }
       if (!rawRows.length){ toast('الملف فارغ.'); return; }
       let dataRows = rawRows;
-      if (isExamImportHeaderRow(rawRows[0][0])) dataRows = rawRows.slice(1);
+      if (isExamImportHeaderRow((rawRows[0][0]||'').toString())) dataRows = rawRows.slice(1);
       ExamAnalysisUI.rows = parseExamRows(dataRows);
       ExamAnalysisUI.resultModal = null;
       if (!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات صالحة في الملف.'); return; }
       render(); bindExamAnalysis();
     };
-    reader.readAsText(file, 'UTF-8');
+    if (isXlsx){ reader.readAsArrayBuffer(file); } else { reader.readAsText(file, 'UTF-8'); }
   });
   const sortBtn = document.querySelector('[data-action="runExamAutoSort"]');
   if (sortBtn) sortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(e.message); }); });
@@ -5358,7 +5393,7 @@ async function screenTeacherSession(subId, idx){
         inputField('الإجراءات/الأدوات المطبقة ونتيجة تقويم الأسبوع','notes', sess.notes, {type:'textarea'}) +
         '<div class="block-title"><span class="dot"></span> شواهد الأسبوع (صور أوراق عمل، اختبارات، إنجاز الطالب...)</div>' +
         '<div class="evidence-grid">' + files +
-          '<label class="evidence-add">+<input type="file" id="evidenceInput" accept="image/*" multiple style="display:none;"></label>' +
+          '<label class="evidence-add">+<input type="file" id="evidenceInput" accept="image/*,application/pdf" multiple style="display:none;"></label>' +
         '</div>' +
         '<div class="block-title"><span class="dot"></span> توقيع المعلم</div>' +
         buildSignaturePad('teacher_sess', sess.sig, false) +
@@ -5385,7 +5420,7 @@ function bindTeacherSession(){
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
     sess.evidenceFiles = sess.evidenceFiles || [];
     Array.from(e.target.files).forEach(function(file){
-      if (!checkFileSize(file)) return;
+      if (!checkEvidenceType(file) || !checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         sess.evidenceFiles.push(reader.result);
@@ -5491,7 +5526,7 @@ function bindTaskDetail(){
   const evInput = document.getElementById('taskEvidenceInput');
   if (evInput) evInput.addEventListener('change', function(e){
     Array.from(e.target.files).forEach(function(file){
-      if (!checkFileSize(file)) return;
+      if (!checkEvidenceType(file) || !checkFileSize(file)) return;
       const reader = new FileReader();
       reader.onload = function(){
         TaskDetailCache.evidence_files.push(reader.result);
@@ -6446,21 +6481,21 @@ function isAdminStudentImportHeaderRow(first){
   return first === 'السجل المدني' || first === 'رقم الهوية' || first === 'الهوية' || first.toLowerCase() === 'id' || first.toLowerCase() === 'national_id';
 }
 async function importAdminStudentRows(dataRows){
-  let created = 0, skipped = 0;
+  const objs = [];
+  let skipped = 0;
   for (let i=0;i<dataRows.length;i++){
     const r = dataRows[i];
     const national_id = (r[0]||'').trim();
     const fullName = (r[1]||'').trim();
     if (!fullName){ skipped++; continue; }
-    const grade = (r[2]||'').trim();
-    const section = (r[3]||'').trim();
-    try{
-      await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name:fullName, grade:grade, section:section, national_id:national_id, notes:'', assigned_teacher_ids:[] });
-      created++;
-    }catch(e){ skipped++; }
+    objs.push({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name:fullName, grade:(r[2]||'').trim(), section:(r[3]||'').trim(), national_id:national_id, notes:'', assigned_teacher_ids:[], created_at:nowIso() });
   }
-  if (!created){ toast('لم يتم العثور على بيانات طلاب صالحة، يرجى مراجعة تنسيق الملف أو النص.'); return; }
-  toast('تم استيراد '+created+' طالبًا بنجاح'+(skipped?(' (تم تجاوز '+skipped+' سطرًا بلا اسم)'):'')+'.');
+  if (!objs.length){ toast('لم يتم العثور على بيانات طلاب صالحة، يرجى مراجعة تنسيق الملف أو النص.'); return; }
+  try{
+    if (isRemote()){ await remoteFetch('students', { method:'POST', body:objs, prefer:'return=minimal' }); }
+    else { for (let i=0;i<objs.length;i++){ await DB.createStudent(objs[i]); } }
+  }catch(e){ toast('حدث خطأ أثناء الاستيراد: ' + e.message); return; }
+  toast('تم استيراد '+objs.length+' طالبًا بنجاح'+(skipped?(' (تم تجاوز '+skipped+' سطرًا بلا اسم)'):'')+'.');
   AdminStudentUI.pasteOpen = false;
   render(); bindAdminStudents();
 }
@@ -7597,24 +7632,26 @@ function bindReview(){
     el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
   });
   document.querySelector('[data-action="approveSub"]').addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     const pad = Pads['pad_approve'];
-    if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); return; }
+    if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); this.disabled = false; return; }
     const rating = +document.getElementById('reviewRating').value;
     const note = document.getElementById('reviewNote').value.trim();
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
       toast('تم اعتماد وتقييم النموذج بختم رسمي.');
       go('view', { id: ReviewCache.id });
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
   document.querySelector('[data-action="returnSub"]').addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     const comment = document.getElementById('reviewComment').value.trim();
-    if (!comment){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
+    if (!comment){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); this.disabled = false; return; }
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment });
       toast('تم إرجاع النموذج للمُعد للتعديل.');
       go('dashboard');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
 }
 
@@ -7644,8 +7681,17 @@ function bindGlobalAction(el){
     document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
   } catch(e) {}
   const u = loadUserSession();
-  if (u){ State.user = u; go('dashboard'); }
-  else { go('login'); }
+  if (u){
+    State.user = u; go('dashboard');
+    if (isRemote()){
+      remoteFetch('profiles?id=eq.' + encodeURIComponent(u.id)).then(function(rows){
+        if (!rows || !rows[0]){ logout(); return; }
+        if (rows[0].role !== u.role || rows[0].school !== u.school){
+          State.user = rows[0]; setUserSession(rows[0]); render();
+        }
+      }).catch(function(){});
+    }
+  } else { go('login'); }
   setInterval(function(){ if (State.user && State.user.role==='admin') checkConnectivity(); }, 20000);
 })();
 </script>
