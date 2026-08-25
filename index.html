@@ -5272,7 +5272,12 @@ function bindDashboard(){
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 async function screenTeacherTasks(){
-  const subs = await DB.listSubmissions({ school: State.user.school });
+  const [subs, rawTasks, rawGoals, rawVisits] = await Promise.all([
+    DB.listSubmissions({ school: State.user.school }),
+    DB.listTasks({ school: State.user.school }),
+    DB.listGoals({ school: State.user.school }),
+    State.user.community_id ? DB.listVisitSchedules({ school: State.user.school }) : Promise.resolve([])
+  ]);
   const sessTasks = [];
   subs.forEach(function(s){
     if (s.form_type !== 'individualAgreement' || s.status==='draft') return;
@@ -5295,7 +5300,7 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
-  const generalTasks = (await DB.listTasks({ school: State.user.school })).filter(function(t){ return t.assigned_to===State.user.id; });
+  const generalTasks = rawTasks.filter(function(t){ return t.assigned_to===State.user.id; });
   generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(a.due_date||0) - new Date(b.due_date||0)); });
 
   const taskCards = generalTasks.map(function(t){
@@ -5310,7 +5315,7 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
-  const myGoals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return (g.assigned_member_ids||[]).indexOf(State.user.id)>-1; });
+  const myGoals = rawGoals.filter(function(g){ return (g.assigned_member_ids||[]).indexOf(State.user.id)>-1; });
   myGoals.sort(function(a,b){ return ((a.status==='achieved'?1:0) - (b.status==='achieved'?1:0)) || (new Date(a.due_date||0) - new Date(b.due_date||0)); });
   const goalCards = myGoals.map(function(g){
     const rate = goalProgressRate(g);
@@ -5325,9 +5330,7 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
-  const visitSchedules = State.user.community_id
-    ? (await DB.listVisitSchedules({ school: State.user.school })).filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); })
-    : [];
+  const visitSchedules = rawVisits.filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
   const visitScheduleCards = visitSchedules.map(function(s){ return visitScheduleTableHtml(s, {}); }).join('');
 
   const myForms = subs.filter(function(s){ return s.created_by===State.user.id; })
