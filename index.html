@@ -1539,7 +1539,7 @@ const DB = {
   },
   async renameSchool(oldName, newName){
     if (isRemote()){
-      const tables = ['profiles','submissions','notifications','communities','app_settings'];
+      const tables = ['profiles','submissions','notifications','communities','app_settings','tasks','plc_goals','practice_shares','students','visit_schedules','counseling_cases'];
       await Promise.all(tables.map(function(t){
         return remoteFetch(t + '?school=eq.' + encodeURIComponent(oldName), { method:'PATCH', body:{ school:newName } });
       }));
