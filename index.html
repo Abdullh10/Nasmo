@@ -4874,13 +4874,16 @@ async function screenAdminSettings(){
         '<p style="color:var(--muted);font-size:12px;margin-top:8px;">لن يُحذف أي مستخدم لديه سجل في جدول profiles.</p>' +
       '</div>' +
     '</div>' : '') +
-    (isRemote() ?
+    (isRemote() && !localStorage.getItem('nasmo_migration_done') ?
     '<div class="program-card" style="border-color:var(--danger);border-width:2px;">' +
       '<div class="ph"><h3 style="color:var(--danger);">⚠ تحديثات قاعدة البيانات المطلوبة</h3>' +
         '<p>شغّل هذه الأوامر <b>مرة واحدة</b> في <b>Supabase → SQL Editor → New query</b> لتفعيل دور المستشار و super_admin وإصلاح سياسات الأمان (RLS).</p></div>' +
       '<div style="padding:16px 18px;">' +
         '<textarea id="migrationSqlArea" readonly class="input" rows="10" style="font-family:monospace;font-size:11px;direction:ltr;text-align:left;white-space:pre;overflow-x:auto;">'+esc(migrationSql)+'</textarea>' +
-        '<button class="btn btn-gold" data-action="copyMigrationSql" style="margin-top:10px;">نسخ الأوامر</button>' +
+        '<div style="display:flex;gap:8px;margin-top:10px;">' +
+          '<button class="btn btn-gold" data-action="copyMigrationSql">نسخ الأوامر</button>' +
+          '<button class="btn btn-primary" data-action="markMigrationDone">تم التنفيذ ✓</button>' +
+        '</div>' +
       '</div>' +
     '</div>' : '') +
     '<div class="program-card">' +
@@ -4959,6 +4962,12 @@ function bindAdminSettings(){
     const area = document.getElementById('migrationSqlArea');
     if (!area) return;
     navigator.clipboard.writeText(area.value).then(function(){ toast('تم نسخ أوامر SQL.'); }).catch(function(){ area.select(); document.execCommand('copy'); toast('تم نسخ أوامر SQL.'); });
+  });
+  const markDoneBtn = document.querySelector('[data-action="markMigrationDone"]');
+  if (markDoneBtn) markDoneBtn.addEventListener('click', function(){
+    localStorage.setItem('nasmo_migration_done', '1');
+    toast('تم إخفاء البطاقة.');
+    render();
   });
   const purgeBtn = document.querySelector('[data-action="purgeOrphanedAuth"]');
   if (purgeBtn) purgeBtn.addEventListener('click', async function(){
