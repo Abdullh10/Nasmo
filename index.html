@@ -495,11 +495,9 @@ const RCJY_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA+gAAAPoCAYAAAB
 const CONFIG = {
   SUPABASE_URL: "https://witgktuyixtuzjknzexs.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpdGdrdHV5aXh0dXpqa256ZXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MDgwNjksImV4cCI6MjEwMjM4NDA2OX0.TNVM7ms-RpCq8Klx0s5_zs6V8X2zk4rrSfUqbAP0tf0",
-  /* مفتاح service_role — يُستخدم فقط لإنشاء حسابات المعلمين بلا قيود.
-     اذهب إلى: Supabase → Project Settings → API → service_role → انسخ المفتاح والصقه هنا.
-     تحذير: لا تشارك هذا المفتاح مع أحد. */
-  SUPABASE_SERVICE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpdGdrdHV5aXh0dXpqa256ZXhzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjgwODA2OSwiZXhwIjoyMTAyMzg0MDY5fQ.9duhXKiC8AgiPvD3cNnsT2X-nLorQ9qNpjvEmUrSPt8"
+  SUPABASE_SERVICE_KEY: ""
 };
+function getSvcKey(){ return sessionStorage.getItem('nasmo_svc_key') || ''; }
 
 /* SQL_SCHEMA — للإعداد الكامل راجع ملف setup.sql في جذر المشروع.
    المصادقة حقيقية عبر Supabase Auth (auth.users)؛ profiles.id يطابق auth.users.id،
@@ -1382,13 +1380,13 @@ const DB = {
       const email = authEmailFor(obj.username);
       const password = obj.password;
       let newId;
-      if (CONFIG.SUPABASE_SERVICE_KEY){
+      if (getSvcKey()){
         /* Admin API — لا قيود على العدد ولا على المعدل */
         const adminRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users", {
           method: "POST",
           headers: {
-            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
+            "apikey": getSvcKey(),
+            "Authorization": "Bearer " + getSvcKey(),
             "Content-Type": "application/json"
           },
           body: JSON.stringify({ email: email, password: password, email_confirm: true })
@@ -1402,7 +1400,7 @@ const DB = {
             try{
               const listRes = await fetch(
                 CONFIG.SUPABASE_URL + "/auth/v1/admin/users?filter=" + encodeURIComponent(email) + "&page=1&per_page=50",
-                { headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
+                { headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() } }
               );
               if (listRes.ok){
                 const listData = await listRes.json();
@@ -1414,8 +1412,8 @@ const DB = {
                   await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + found.id, {
                     method: "PUT",
                     headers: {
-                      "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-                      "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
+                      "apikey": getSvcKey(),
+                      "Authorization": "Bearer " + getSvcKey(),
                       "Content-Type": "application/json"
                     },
                     body: JSON.stringify({ password: password })
@@ -1454,10 +1452,10 @@ const DB = {
         rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'resolution=merge-duplicates,return=representation' });
       }catch(profileErr){
         /* تراجع: احذف حساب Auth إذا فشل إنشاء ملف المستخدم */
-        if (CONFIG.SUPABASE_SERVICE_KEY){
+        if (getSvcKey()){
           await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + newId, {
             method: "DELETE",
-            headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY }
+            headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() }
           }).catch(function(){});
         }
         throw profileErr;
@@ -1475,12 +1473,12 @@ const DB = {
     if (isRemote()){
       const newPassword = patch.password;
       delete patch.password;
-      if (newPassword && CONFIG.SUPABASE_SERVICE_KEY){
+      if (newPassword && getSvcKey()){
         const pwRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
           method: "PUT",
           headers: {
-            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY,
+            "apikey": getSvcKey(),
+            "Authorization": "Bearer " + getSvcKey(),
             "Content-Type": "application/json"
           },
           body: JSON.stringify({ password: newPassword })
@@ -1507,12 +1505,12 @@ const DB = {
         deletedUsername = prows && prows[0] && prows[0].username;
       }catch(e2){}
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
-      if (CONFIG.SUPABASE_SERVICE_KEY){
+      if (getSvcKey()){
         await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
           method: "DELETE",
           headers: {
-            "apikey": CONFIG.SUPABASE_SERVICE_KEY,
-            "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY
+            "apikey": getSvcKey(),
+            "Authorization": "Bearer " + getSvcKey()
           }
         }).catch(function(){});
       }
@@ -2008,16 +2006,18 @@ const DB = {
   async exportFullBackup(){
     if (isRemote()){
       const backupRange = { range: '0-49999' };
+      const sf = State.user.role === 'super_admin' ? '' : '&school=eq.' + encodeURIComponent(State.user.school);
+      const bq = function(base){ return sf ? (base.includes('?') ? base + sf : base + '?' + sf.slice(1)) : base; };
       const [profiles, communities, submissions, notifications, tasks, goals, appSettings, indicatorStatus, siteSettings] = await Promise.all([
-        remoteFetch('profiles?order=created_at.desc',      backupRange),
-        remoteFetch('communities?order=created_at.asc',    backupRange),
-        remoteFetch('submissions?order=created_at.desc',   backupRange),
-        remoteFetch('notifications?order=created_at.desc', backupRange),
-        remoteFetch('tasks?order=created_at.desc',         backupRange),
-        remoteFetch('plc_goals?order=created_at.desc',     backupRange),
-        remoteFetch('app_settings',                        backupRange),
-        remoteFetch('indicator_status',                    backupRange),
-        remoteFetch('site_settings',                       backupRange)
+        remoteFetch(bq('profiles?order=created_at.desc'),      backupRange),
+        remoteFetch(bq('communities?order=created_at.asc'),    backupRange),
+        remoteFetch(bq('submissions?order=created_at.desc'),   backupRange),
+        remoteFetch(bq('notifications?order=created_at.desc'), backupRange),
+        remoteFetch(bq('tasks?order=created_at.desc'),         backupRange),
+        remoteFetch(bq('plc_goals?order=created_at.desc'),     backupRange),
+        remoteFetch(bq('app_settings'),                        backupRange),
+        remoteFetch(bq('indicator_status'),                    backupRange),
+        remoteFetch('site_settings',                           backupRange)
       ]);
       return {
         version: 1, exported_at: nowIso(),
@@ -4729,6 +4729,77 @@ function adminTabsHtml(){
 }
 async function screenAdminSettings(){
   const s = SiteSettings;
+  const hasSvcKey = !!getSvcKey();
+  const migrationSql = [
+    '-- *** شغّل هذه الأوامر مرة واحدة في Supabase → SQL Editor ***',
+    '',
+    '-- 1) إضافة أدوار counselor و super_admin لجدول profiles',
+    "alter table profiles drop constraint if exists profiles_role_check;",
+    "alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','teacher','admin','counselor','super_admin'));",
+    '',
+    '-- 2) جدول الحالات الإرشادية (للمستشار)',
+    'create table if not exists counseling_cases (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  school text not null,',
+    "  student_name text not null default '',",
+    "  student_grade text default '',",
+    "  student_section text default '',",
+    "  referred_by_name text default '',",
+    "  referral_reason text default '',",
+    "  status text check (status in ('open','in_progress','closed')) default 'open',",
+    "  sessions jsonb default '[]',",
+    "  counselor_notes text default '',",
+    "  parent_phone text default '',",
+    "  close_summary text default '',",
+    '  created_at timestamptz default now(),',
+    '  updated_at timestamptz default now()',
+    ');',
+    'alter table counseling_cases enable row level security;',
+    'create policy "counseling_cases_all" on counseling_cases for all',
+    "  using (school = my_school() or my_role() in ('admin','super_admin'))",
+    "  with check (school = my_school() or my_role() in ('admin','super_admin'));",
+    '',
+    '-- 3) إصلاح سياسات RLS لتمنع admin من رؤية بيانات مدارس أخرى',
+    '--    وتمنح super_admin الوصول الكامل فقط',
+    'drop policy if exists "profiles_select" on profiles;',
+    'drop policy if exists "profiles_insert" on profiles;',
+    'drop policy if exists "profiles_update" on profiles;',
+    'drop policy if exists "profiles_delete" on profiles;',
+    "create policy \"profiles_select\" on profiles for select using ( id = auth.uid() or my_role() in ('admin','super_admin') or school = my_school() );",
+    "create policy \"profiles_insert\" on profiles for insert with check ( my_role() in ('admin','super_admin') );",
+    "create policy \"profiles_update\" on profiles for update using ( id = auth.uid() or my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) ) with check ( id = auth.uid() or my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and role = 'teacher' and school = my_school()) );",
+    "create policy \"profiles_delete\" on profiles for delete using ( my_role() in ('admin','super_admin') );",
+    'drop policy if exists "communities_select" on communities;',
+    'drop policy if exists "communities_write" on communities;',
+    "create policy \"communities_select\" on communities for select using ( school = my_school() or my_role() in ('admin','super_admin') );",
+    "create policy \"communities_write\" on communities for all using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );",
+    'drop policy if exists "notifications_select" on notifications;',
+    'drop policy if exists "notifications_insert" on notifications;',
+    'drop policy if exists "notifications_update" on notifications;',
+    "create policy \"notifications_select\" on notifications for select using ( school = my_school() or my_role() in ('admin','super_admin') );",
+    "create policy \"notifications_insert\" on notifications for insert with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    "create policy \"notifications_update\" on notifications for update using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "submissions_all" on submissions;',
+    "create policy \"submissions_all\" on submissions for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "app_settings_all" on app_settings;',
+    "create policy \"app_settings_all\" on app_settings for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "indicator_status_all" on indicator_status;',
+    "create policy \"indicator_status_all\" on indicator_status for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "site_settings_write" on site_settings;',
+    "create policy \"site_settings_write\" on site_settings for all using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );",
+    'drop policy if exists "tasks_all" on tasks;',
+    "create policy \"tasks_all\" on tasks for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "plc_goals_all" on plc_goals;',
+    "create policy \"plc_goals_all\" on plc_goals for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "practice_shares_all" on practice_shares;',
+    "create policy \"practice_shares_all\" on practice_shares for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "students_all" on students;',
+    "create policy \"students_all\" on students for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "visit_schedules_all" on visit_schedules;',
+    "create policy \"visit_schedules_all\" on visit_schedules for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    'drop policy if exists "counseling_cases_all" on counseling_cases;',
+    "create policy \"counseling_cases_all\" on counseling_cases for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );"
+  ].join('\n');
   return (
     '<div class="program-card">' +
       '<div class="ph"><h3>الإعدادات العامة</h3><p>تُحفظ هذه القيم مرة واحدة وتنعكس في جميع شاشات النظام (العنوان، الصفحة الرئيسية، شاشة الدخول).</p></div>' +
@@ -4758,12 +4829,36 @@ async function screenAdminSettings(){
         '</div>' +
       '</div>' +
     '</div>' +
-    (isRemote() && CONFIG.SUPABASE_SERVICE_KEY ?
+    (isRemote() ?
+    '<div class="program-card">' +
+      '<div class="ph"><h3>مفتاح خدمة Supabase (service_role)</h3><p>يُستخدم لإنشاء الحسابات عبر Admin API بلا قيود معدل. أدخله مرة واحدة لكل جلسة — يُحفظ في ذاكرة المتصفح المؤقتة فقط ولا يُرسل لأي جهة.</p></div>' +
+      '<div style="padding:16px 18px;">' +
+        '<div style="font-size:12.5px;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:' + (hasSvcKey ? 'rgba(var(--success-rgb,52,168,83),0.12);color:var(--success);">' + '✓ مفتاح الخدمة محمّل في الجلسة الحالية' : 'rgba(var(--danger-rgb,234,67,53),0.1);color:var(--danger);">') + (hasSvcKey ? '' : '⚠ لا يوجد مفتاح محمّل — إنشاء الحسابات يعمل بطريقة signUp (قد يكون بطيئاً)') + '</div>' +
+        '<div class="field"><label>مفتاح الخدمة (service_role key)</label>' +
+          '<input class="input" type="password" id="svcKeyInput" placeholder="eyJhbGci..." autocomplete="off">' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button class="btn btn-primary" data-action="saveSvcKey">حفظ في الجلسة الحالية</button>' +
+          (hasSvcKey ? '<button class="btn btn-ghost" data-action="clearSvcKey">مسح المفتاح</button>' : '') +
+        '</div>' +
+        '<p style="color:var(--muted);font-size:11.5px;margin-top:8px;">للحصول على المفتاح: Supabase → Project Settings → API → service_role secret</p>' +
+      '</div>' +
+    '</div>' : '') +
+    (isRemote() && hasSvcKey ?
     '<div class="program-card">' +
       '<div class="ph"><h3>تنظيف الحسابات المعطوبة</h3><p>يبحث في Supabase Auth عن حسابات لا يقابلها سجل في جدول profiles (ناتجة عن استيرادات فاشلة سابقة) ويحذفها نهائياً حتى يمكن إعادة الاستيراد بدون أخطاء.</p></div>' +
       '<div style="padding:16px 18px;">' +
         '<button class="btn btn-danger" data-action="purgeOrphanedAuth">حذف الحسابات المعطوبة من Supabase Auth</button>' +
         '<p style="color:var(--muted);font-size:12px;margin-top:8px;">لن يُحذف أي مستخدم لديه سجل في جدول profiles.</p>' +
+      '</div>' +
+    '</div>' : '') +
+    (isRemote() ?
+    '<div class="program-card" style="border-color:var(--danger);border-width:2px;">' +
+      '<div class="ph"><h3 style="color:var(--danger);">⚠ تحديثات قاعدة البيانات المطلوبة</h3>' +
+        '<p>شغّل هذه الأوامر <b>مرة واحدة</b> في <b>Supabase → SQL Editor → New query</b> لتفعيل دور المستشار و super_admin وإصلاح سياسات الأمان (RLS).</p></div>' +
+      '<div style="padding:16px 18px;">' +
+        '<textarea id="migrationSqlArea" readonly class="input" rows="10" style="font-family:monospace;font-size:11px;direction:ltr;text-align:left;white-space:pre;overflow-x:auto;">'+esc(migrationSql)+'</textarea>' +
+        '<button class="btn btn-gold" data-action="copyMigrationSql" style="margin-top:10px;">نسخ الأوامر</button>' +
       '</div>' +
     '</div>' : '') +
     '<div class="program-card">' +
@@ -4792,7 +4887,7 @@ async function purgeOrphanedAuthAccounts(){
   while(true){
     const res = await fetch(
       CONFIG.SUPABASE_URL + "/auth/v1/admin/users?page=" + page + "&per_page=" + perPage,
-      { headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
+      { headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() } }
     );
     if (!res.ok) throw new Error('فشل جلب قائمة المستخدمين من Auth.');
     const data = await res.json();
@@ -4815,7 +4910,7 @@ async function purgeOrphanedAuthAccounts(){
   for (let i = 0; i < orphaned.length; i++){
     const res = await fetch(
       CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(orphaned[i].id),
-      { method: "DELETE", headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY } }
+      { method: "DELETE", headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() } }
     );
     if (res.ok || res.status === 404) deleted++;
   }
@@ -4823,6 +4918,26 @@ async function purgeOrphanedAuthAccounts(){
 }
 
 function bindAdminSettings(){
+  const saveSvcBtn = document.querySelector('[data-action="saveSvcKey"]');
+  if (saveSvcBtn) saveSvcBtn.addEventListener('click', function(){
+    const key = (document.getElementById('svcKeyInput').value || '').trim();
+    if (!key){ toast('أدخل مفتاح الخدمة أولاً.'); return; }
+    sessionStorage.setItem('nasmo_svc_key', key);
+    toast('تم حفظ مفتاح الخدمة في الجلسة الحالية.');
+    render();
+  });
+  const clearSvcBtn = document.querySelector('[data-action="clearSvcKey"]');
+  if (clearSvcBtn) clearSvcBtn.addEventListener('click', function(){
+    sessionStorage.removeItem('nasmo_svc_key');
+    toast('تم مسح مفتاح الخدمة.');
+    render();
+  });
+  const copyMigBtn = document.querySelector('[data-action="copyMigrationSql"]');
+  if (copyMigBtn) copyMigBtn.addEventListener('click', function(){
+    const area = document.getElementById('migrationSqlArea');
+    if (!area) return;
+    navigator.clipboard.writeText(area.value).then(function(){ toast('تم نسخ أوامر SQL.'); }).catch(function(){ area.select(); document.execCommand('copy'); toast('تم نسخ أوامر SQL.'); });
+  });
   const purgeBtn = document.querySelector('[data-action="purgeOrphanedAuth"]');
   if (purgeBtn) purgeBtn.addEventListener('click', async function(){
     purgeBtn.disabled = true; purgeBtn.textContent = 'جارٍ التنظيف...';
@@ -5735,7 +5850,7 @@ async function importTeacherRows(dataRows, communityId){
   }
 
   /* — حلقة الإنشاء مع عداد تقدم فوري — */
-  const useAdminApi = isRemote() && !!CONFIG.SUPABASE_SERVICE_KEY;
+  const useAdminApi = isRemote() && !!getSvcKey();
   const delayMs = useAdminApi ? 0 : 350; /* Admin API لا يحتاج تأخيراً */
   showImportProgress(0, queue.length, null);
 
@@ -6274,11 +6389,11 @@ function bindAdminUsers(){
         /* 2) حذف كل profiles بطلب واحد */
         await remoteFetch('profiles?id=in.('+ids.join(',')+')', { method:'DELETE' });
         /* 3) حذف auth users بالتوازي */
-        if (CONFIG.SUPABASE_SERVICE_KEY){
+        if (getSvcKey()){
           await Promise.all(ids.map(function(id){
             return fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+encodeURIComponent(id),{
               method:'DELETE',
-              headers:{ 'apikey':CONFIG.SUPABASE_SERVICE_KEY, 'Authorization':'Bearer '+CONFIG.SUPABASE_SERVICE_KEY }
+              headers:{ 'apikey':getSvcKey(), 'Authorization':'Bearer '+getSvcKey() }
             }).catch(function(){});
           }));
         }
