@@ -2304,7 +2304,11 @@ function isNotifUnread(n, userId){ return (n.read_by||[]).indexOf(userId) === -1
 
 function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); persistAuth(); }
 function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
-function logout(){ sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false; go('login'); }
+function logout(){
+  sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
+  CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH);
+  go('login');
+}
 
 function go(screen, params){ State.screen = screen; State.params = params || {}; render(); window.scrollTo(0,0); }
 
@@ -5749,6 +5753,9 @@ function screenCredsPrint(){
         '<button class="btn btn-primary btn-sm" data-action="printCreds">طباعة بطاقات الدخول</button>' +
       '</div>' +
     '</div>' +
+    '<div class="no-print" style="background:var(--warn-bg,#fff8e1);border:1.5px solid var(--warn-border,#f9a825);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:13px;color:var(--text);">' +
+      '⚠ كلمات المرور محفوظة مؤقتًا في هذا الجهاز. بعد الطباعة اضغط <b>مسح القائمة</b>، أو استخدم <b>تنزيل Excel</b> ليُمسح تلقائيًا.' +
+    '</div>' +
     '<div class="creds-print-page">' +
       '<h3 style="text-align:center;margin:0 0 4px;">بطاقات بيانات الدخول للمعلمين</h3>' +
       '<p style="text-align:center;color:var(--muted);font-size:12px;margin:0 0 16px;">'+esc(CredsPrint.school||'')+' · '+fmtDateTime(nowIso())+' — يُنصح بقص كل بطاقة وتسليمها للمعلم المعنيّ بسرية دون اطلاع الآخرين على بياناته.</p>' +
@@ -5764,6 +5771,9 @@ function bindCredsPrint(){
   if (csvBtn) csvBtn.addEventListener('click', function(){
     const rows = [['الاسم','اسم المستخدم','كلمة المرور']].concat((CredsPrint.items||[]).map(function(it){ return [it.full_name, it.username, it.password]; }));
     downloadTextFile('بيانات_دخول_المعلمين.csv', toCsv(rows));
+    CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH);
+    toast('تم تنزيل الملف ومسح كلمات المرور من الجهاز.');
+    go('dashboard');
   });
   const clearBtn = document.querySelector('[data-action="clearCredsBatch"]');
   if (clearBtn) clearBtn.addEventListener('click', function(){
