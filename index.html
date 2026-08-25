@@ -3127,6 +3127,7 @@ async function screenCommunityReport(communityId){
 
   const subsRows = approvedSubs.map(function(s){
     const def = formDef(s.form_type);
+    if (!def) return '';
     return '<tr><td>'+esc(def.title)+'</td><td>'+fmtDate(s.updated_at)+'</td></tr>';
   }).join('');
 
@@ -7416,6 +7417,7 @@ let ViewCache = {};
 async function screenView(id){
   const s = await DB.getSubmission(id); ViewCache = s;
   const def = formDef(s.form_type);
+  if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
   switch(s.form_type){
     case 'groupPlan': body = renderGroupPlan(s.payload, true); break;
@@ -7517,6 +7519,7 @@ let ReviewCache = {};
 async function screenReview(id){
   const s = await DB.getSubmission(id); ReviewCache = s;
   const def = formDef(s.form_type);
+  if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
   switch(s.form_type){
     case 'groupPlan': body = renderGroupPlan(s.payload, true); break;
