@@ -2338,6 +2338,7 @@ function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_s
 function logout(){
   sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH);
+  _notifCache = null; _commCache = null; _pendingCache = null;
   go('login');
 }
 
@@ -2671,8 +2672,14 @@ function openEditor(formType, submission){
 /* ---------------------- التطبيق: الشاشات ---------------------- */
 let _renderToken = 0;
 let _notifCache = null, _notifCacheAt = 0;
+let _commCache = null, _commCacheAt = 0;
+let _pendingCache = null, _pendingCacheAt = 0;
 const NOTIF_TTL_MS = 30000;
+const COMM_TTL_MS = 120000;
+const PENDING_TTL_MS = 60000;
 function invalidateNotifCache(){ _notifCache = null; }
+function invalidateCommCache(){ _commCache = null; }
+function invalidatePendingCache(){ _pendingCache = null; }
 async function render(){
   const token = ++_renderToken;
   const app = document.getElementById('app');
@@ -2684,11 +2691,19 @@ async function render(){
     }
     State.notifications = _notifCache;
     if (token !== _renderToken) return;
-    State.communitiesCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
-      : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
-      : [];
+    if (!_commCache || (Date.now() - _commCacheAt) > COMM_TTL_MS){
+      _commCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
+        : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
+        : [];
+      _commCacheAt = Date.now();
+    }
+    State.communitiesCache = _commCache;
     if (token !== _renderToken) return;
-    State.pendingApprovals = State.user.role==='principal' ? await loadPrincipalPendingApprovals() : [];
+    if (!_pendingCache || (Date.now() - _pendingCacheAt) > PENDING_TTL_MS){
+      _pendingCache = State.user.role==='principal' ? await loadPrincipalPendingApprovals() : [];
+      _pendingCacheAt = Date.now();
+    }
+    State.pendingApprovals = _pendingCache;
     if (token !== _renderToken) return;
   }
   let html;
@@ -3319,6 +3334,7 @@ function bindCoordinatorTasks(){
     if (!title){ toast('يرجى إدخال عنوان المهمة.'); return; }
     try{
       await DB.createTask({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
+      invalidatePendingCache();
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       render(); bindCoordinatorTasks();
@@ -3850,6 +3866,7 @@ function bindPrincipalReview(){
     const note = document.getElementById('glNote').value.trim();
     try{
       await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      invalidatePendingCache();
       toast('تم اعتماد وتقييم الهدف.');
       PrincipalReviewUI.goalReviewId = null;
       render(); bindPrincipalReview();
@@ -3862,6 +3879,7 @@ function bindPrincipalReview(){
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
       await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      invalidatePendingCache();
       toast('تم إرجاع الهدف إلى المنسق للتعديل.');
       PrincipalReviewUI.goalReviewId = null;
       render(); bindPrincipalReview();
@@ -6744,7 +6762,7 @@ function bindAdminCommunities(){
   document.querySelectorAll('[data-action="deleteCommunity"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا المجتمع المهني؟ سيبقى الأعضاء بدون مجتمع.')) return;
-      try{ await DB.deleteCommunity(el.getAttribute('data-id')); toast('تم حذف المجتمع.'); render(); bindAdminCommunities(); }
+      try{ await DB.deleteCommunity(el.getAttribute('data-id')); invalidateCommCache(); toast('تم حذف المجتمع.'); render(); bindAdminCommunities(); }
       catch(e){ toast(e.message); }
     });
   });
@@ -6767,7 +6785,7 @@ function bindAdminCommunities(){
         await DB.createCommunity({ name:name, school:school, meeting_day:day, meeting_time:time });
         toast('تمت إضافة المجتمع بنجاح.');
       }
-      CommUI.modalOpen=false; CommUI.editingId=null; render(); bindAdminCommunities();
+      CommUI.modalOpen=false; CommUI.editingId=null; invalidateCommCache(); render(); bindAdminCommunities();
     }catch(e){ toast(e.message); }
   });
   document.querySelectorAll('[data-action="addLeaderForCommunity"]').forEach(function(el){
@@ -7477,6 +7495,7 @@ async function persistEditor(targetStatus){
   try{
     if (EditorState.id){ await DB.updateSubmission(EditorState.id, payload); }
     else { const created = await DB.createSubmission(payload); EditorState.id = created.id; }
+    if (targetStatus === 'pending') invalidatePendingCache();
     toast(targetStatus==='pending' ? 'تم إرسال النموذج إلى مدير المدرسة للاعتماد.' : 'تم حفظ المسودة بنجاح.');
     go('dashboard');
   }catch(e){ toast(e.message); }
@@ -7639,6 +7658,7 @@ function bindReview(){
     const note = document.getElementById('reviewNote').value.trim();
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
+      invalidatePendingCache();
       toast('تم اعتماد وتقييم النموذج بختم رسمي.');
       go('view', { id: ReviewCache.id });
     }catch(e){ toast(e.message); this.disabled = false; }
@@ -7649,6 +7669,7 @@ function bindReview(){
     if (!comment){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); this.disabled = false; return; }
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment });
+      invalidatePendingCache();
       toast('تم إرجاع النموذج للمُعد للتعديل.');
       go('dashboard');
     }catch(e){ toast(e.message); this.disabled = false; }
