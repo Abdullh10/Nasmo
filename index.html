@@ -1514,6 +1514,18 @@ const DB = {
         const prows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(id) + '&select=username');
         deletedUsername = prows && prows[0] && prows[0].username;
       }catch(e2){}
+      /* صفّر FK references في الجداول الأخرى قبل حذف الـ profile لتجنب خطأ 409 */
+      const uid = encodeURIComponent(id);
+      await Promise.allSettled([
+        remoteFetch('submissions?created_by=eq.'    + uid, { method:'PATCH', body:{ created_by: null } }),
+        remoteFetch('tasks?created_by=eq.'          + uid, { method:'PATCH', body:{ created_by: null } }),
+        remoteFetch('tasks?assigned_to=eq.'         + uid, { method:'PATCH', body:{ assigned_to: null } }),
+        remoteFetch('plc_goals?created_by=eq.'      + uid, { method:'PATCH', body:{ created_by: null } }),
+        remoteFetch('practice_shares?created_by=eq.'+ uid, { method:'PATCH', body:{ created_by: null } }),
+        remoteFetch('students?created_by=eq.'       + uid, { method:'PATCH', body:{ created_by: null } }),
+        remoteFetch('visit_schedules?created_by=eq.'+ uid, { method:'PATCH', body:{ created_by: null } }),
+        remoteFetch('notifications?sender_id=eq.'   + uid, { method:'PATCH', body:{ sender_id: null } }),
+      ]);
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
       if (getSvcKey()){
         await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
@@ -2697,26 +2709,33 @@ async function render(){
   const app = document.getElementById('app');
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
   if (State.user){
-    if (!_notifCache || (Date.now() - _notifCacheAt) > NOTIF_TTL_MS){
-      _notifCache = await DB.listNotifications({ school: State.user.school });
-      _notifCacheAt = Date.now();
+    try{
+      if (!_notifCache || (Date.now() - _notifCacheAt) > NOTIF_TTL_MS){
+        _notifCache = await DB.listNotifications({ school: State.user.school });
+        _notifCacheAt = Date.now();
+      }
+      State.notifications = _notifCache;
+      if (token !== _renderToken) return;
+      if (!_commCache || (Date.now() - _commCacheAt) > COMM_TTL_MS){
+        _commCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
+          : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
+          : [];
+        _commCacheAt = Date.now();
+      }
+      State.communitiesCache = _commCache;
+      if (token !== _renderToken) return;
+      if (!_pendingCache || (Date.now() - _pendingCacheAt) > PENDING_TTL_MS){
+        _pendingCache = State.user.role==='principal' ? await loadPrincipalPendingApprovals() : [];
+        _pendingCacheAt = Date.now();
+      }
+      State.pendingApprovals = _pendingCache;
+      if (token !== _renderToken) return;
+    }catch(e){
+      console.error('[render] فشل تحميل البيانات الأساسية:', e.message);
+      State.notifications = State.notifications || [];
+      State.communitiesCache = State.communitiesCache || [];
+      State.pendingApprovals = State.pendingApprovals || [];
     }
-    State.notifications = _notifCache;
-    if (token !== _renderToken) return;
-    if (!_commCache || (Date.now() - _commCacheAt) > COMM_TTL_MS){
-      _commCache = (State.user.role==='admin'||State.user.role==='super_admin') ? await DB.listCommunities({})
-        : (State.user.role==='coordinator' || State.user.role==='principal') ? await DB.listCommunities({ school: State.user.school })
-        : [];
-      _commCacheAt = Date.now();
-    }
-    State.communitiesCache = _commCache;
-    if (token !== _renderToken) return;
-    if (!_pendingCache || (Date.now() - _pendingCacheAt) > PENDING_TTL_MS){
-      _pendingCache = State.user.role==='principal' ? await loadPrincipalPendingApprovals() : [];
-      _pendingCacheAt = Date.now();
-    }
-    State.pendingApprovals = _pendingCache;
-    if (token !== _renderToken) return;
   }
   let html;
   try{
@@ -2951,13 +2970,16 @@ function bindLogin(){
     const p = document.getElementById('loginPass').value.trim();
     const errBox = document.getElementById('loginError');
     errBox.style.display='none';
+    btn.disabled = true; btn.textContent = 'جارٍ التحقق…';
     try{
       const user = await DB.login(u, p);
       if (!user){ errBox.textContent='اسم المستخدم أو كلمة المرور غير صحيحة.'; errBox.style.display='block'; return; }
       setUserSession(user);
       go('dashboard');
     }catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
+    finally{ btn.disabled = false; btn.textContent = 'دخول'; }
   });
+  document.getElementById('loginUser').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('loginPass').focus(); });
   document.getElementById('loginPass').addEventListener('keydown', function(e){ if(e.key==='Enter') btn.click(); });
 }
 
@@ -4819,8 +4841,27 @@ async function screenAdminSettings(){
     "create policy \"counseling_cases_all\" on counseling_cases for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
     '',
     '-- 4) إضافة عمودَي counselor_id و counselor_name لربط الحالة بالمرشد',
-    'alter table counseling_cases add column if not exists counselor_id uuid references auth.users(id) on delete set null;',
-    "alter table counseling_cases add column if not exists counselor_name text default '';"
+    'alter table counseling_cases add column if not exists counselor_id uuid;',
+    "alter table counseling_cases add column if not exists counselor_name text default '';",
+    '',
+    '-- 5) تحويل FK references إلى profiles(id) لتدعم ON DELETE SET NULL',
+    '--    (يحل مشكلة خطأ 409 عند حذف حسابات لديها بيانات مرتبطة)',
+    'alter table submissions    drop constraint if exists submissions_created_by_fkey;',
+    'alter table submissions    add  constraint submissions_created_by_fkey    foreign key (created_by)  references profiles(id) on delete set null;',
+    'alter table tasks          drop constraint if exists tasks_created_by_fkey;',
+    'alter table tasks          add  constraint tasks_created_by_fkey          foreign key (created_by)  references profiles(id) on delete set null;',
+    'alter table tasks          drop constraint if exists tasks_assigned_to_fkey;',
+    'alter table tasks          add  constraint tasks_assigned_to_fkey         foreign key (assigned_to) references profiles(id) on delete set null;',
+    'alter table plc_goals      drop constraint if exists plc_goals_created_by_fkey;',
+    'alter table plc_goals      add  constraint plc_goals_created_by_fkey      foreign key (created_by)  references profiles(id) on delete set null;',
+    'alter table practice_shares drop constraint if exists practice_shares_created_by_fkey;',
+    'alter table practice_shares add  constraint practice_shares_created_by_fkey foreign key (created_by) references profiles(id) on delete set null;',
+    'alter table students       drop constraint if exists students_created_by_fkey;',
+    'alter table students       add  constraint students_created_by_fkey       foreign key (created_by)  references profiles(id) on delete set null;',
+    'alter table visit_schedules drop constraint if exists visit_schedules_created_by_fkey;',
+    'alter table visit_schedules add  constraint visit_schedules_created_by_fkey foreign key (created_by) references profiles(id) on delete set null;',
+    'alter table notifications  drop constraint if exists notifications_sender_id_fkey;',
+    'alter table notifications  add  constraint notifications_sender_id_fkey   foreign key (sender_id)   references profiles(id) on delete set null;'
   ].join('\n');
   return (
     '<div class="program-card">' +
@@ -5369,6 +5410,7 @@ async function screenDashboard(){
       ? (s.status==='approved'
           ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
           : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>')
+      : !canOpen ? ''
       : (s.status==='pending'
           ? '<button class="btn btn-gold btn-sm" data-action="openReview" data-id="'+s.id+'">مراجعة واعتماد</button>'
           : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>');
@@ -7764,6 +7806,7 @@ function bindView(){
 let ReviewCache = {};
 async function screenReview(id){
   const s = await DB.getSubmission(id); ReviewCache = s;
+  if (!s){ toast('النموذج غير موجود أو انتهت صلاحية الجلسة.'); go('dashboard'); return ''; }
   const def = formDef(s.form_type);
   if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
