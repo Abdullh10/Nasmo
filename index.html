@@ -982,7 +982,7 @@ async function remoteFetch(path, opts){
       "Content-Type": "application/json"
     };
     if (opts.prefer) headers["Prefer"] = opts.prefer;
-    if (method === "GET") headers["Range"] = opts.range || "0-999";
+    if (method === "GET") headers["Range"] = opts.range || "0-4999";
     return fetch(CONFIG.SUPABASE_URL + "/rest/v1/" + path, {
       method: method,
       headers: headers,
@@ -1021,7 +1021,7 @@ const LS_COUNSELING = "dtd_counseling_v1";
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-const MAX_EVIDENCE_MB = 5;
+const MAX_EVIDENCE_MB = 1;
 function checkFileSize(file){
   if (file.size > MAX_EVIDENCE_MB * 1024 * 1024){
     toast('الملف "' + file.name + '" يتجاوز الحد الأقصى (' + MAX_EVIDENCE_MB + ' MB). الرجاء ضغطه أو اختيار ملف أصغر.');
@@ -1434,7 +1434,19 @@ const DB = {
       if (!newId) throw new Error('تعذّر إنشاء حساب المصادقة.');
       obj.id = newId;
       delete obj.password;
-      const rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'resolution=merge-duplicates,return=representation' });
+      let rows;
+      try{
+        rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'resolution=merge-duplicates,return=representation' });
+      }catch(profileErr){
+        /* تراجع: احذف حساب Auth إذا فشل إنشاء ملف المستخدم */
+        if (CONFIG.SUPABASE_SERVICE_KEY){
+          await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + newId, {
+            method: "DELETE",
+            headers: { "apikey": CONFIG.SUPABASE_SERVICE_KEY, "Authorization": "Bearer " + CONFIG.SUPABASE_SERVICE_KEY }
+          }).catch(function(){});
+        }
+        throw profileErr;
+      }
       return rows && rows[0];
     }
     obj.id = uid();
@@ -2469,7 +2481,7 @@ function teacherSelectHtml(label, fieldPath, value, teachers, ro){
   teachers = teachers || [];
   const isManual = EditorState.manualTeacherFields.has(fieldPath) || !!(value && !teachers.some(function(t){ return t.full_name===value; }));
   const opts = teachers.map(function(t){
-    return '<option value="'+esc(t.full_name)+'" '+((!isManual && value===t.full_name)?'selected':'')+'>'+esc(t.full_name)+'</option>';
+    return '<option value="'+esc(t.full_name)+'" data-id="'+esc(t.id||'')+'" '+((!isManual && value===t.full_name)?'selected':'')+'>'+esc(t.full_name)+'</option>';
   }).join('');
   const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم المعلم">' : '';
   return (
@@ -2487,7 +2499,7 @@ function teacherSelectInlineHtml(fieldPath, value, teachers, ro){
   teachers = teachers || [];
   const isManual = EditorState.manualTeacherFields.has(fieldPath) || !!(value && !teachers.some(function(t){ return t.full_name===value; }));
   const opts = teachers.map(function(t){
-    return '<option value="'+esc(t.full_name)+'" '+((!isManual && value===t.full_name)?'selected':'')+'>'+esc(t.full_name)+'</option>';
+    return '<option value="'+esc(t.full_name)+'" data-id="'+esc(t.id||'')+'" '+((!isManual && value===t.full_name)?'selected':'')+'>'+esc(t.full_name)+'</option>';
   }).join('');
   const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب الاسم">' : '';
   return (
@@ -2614,7 +2626,7 @@ function blankSelfEvalCriteria(){
   return obj;
 }
 function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[] }; }
-function blankSession(){ return { teacher:'', subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
+function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
 function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
 function openEditor(formType, submission){
@@ -5212,7 +5224,9 @@ async function screenTeacherTasks(){
   subs.forEach(function(s){
     if (s.form_type !== 'individualAgreement' || s.status==='draft') return;
     (s.payload.sessions||[]).forEach(function(sess, idx){
-      if (sess.teacher === State.user.full_name) sessTasks.push({ sub:s, idx:idx, sess:sess });
+      const matchById = sess.teacher_id && sess.teacher_id === State.user.id;
+      const matchByName = !sess.teacher_id && sess.teacher === State.user.full_name;
+      if (matchById || matchByName) sessTasks.push({ sub:s, idx:idx, sess:sess });
     });
   });
   sessTasks.sort(function(a,b){ return (a.sess.sig?1:0) - (b.sess.sig?1:0); });
@@ -5387,15 +5401,16 @@ function bindTeacherSession(){
     });
   });
   document.querySelector('[data-action="saveTeacherSession"]').addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     const pad = Pads['pad_teacher_sess'];
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
     if (pad && !pad.isEmpty()) sess.sig = pad.toDataUrl();
-    if (!sess.sig){ toast('يرجى التوقيع قبل حفظ الجلسة.'); return; }
+    if (!sess.sig){ toast('يرجى التوقيع قبل حفظ الجلسة.'); this.disabled = false; return; }
     try{
       await DB.updateSubmission(TeacherSessionCache.sub.id, { payload: TeacherSessionCache.sub.payload });
       toast('تم حفظ الجلسة والشواهد بنجاح.');
       go('dashboard');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
 }
 
@@ -7297,9 +7312,12 @@ function bindEditor(){
       if (el.value === '__manual__'){
         EditorState.manualTeacherFields.add(target);
         setPath(EditorState.data, target, '');
+        setPath(EditorState.data, target + '_id', null);
       } else {
         EditorState.manualTeacherFields.delete(target);
         setPath(EditorState.data, target, el.value);
+        const selOpt = el.options[el.selectedIndex];
+        setPath(EditorState.data, target + '_id', (selOpt && selOpt.getAttribute('data-id')) || null);
       }
       render(); bindEditor();
     });
@@ -7379,8 +7397,14 @@ function bindEditor(){
   });
 
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
-  document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){ await persistEditor('draft'); });
-  document.querySelector('[data-action="submitForm"]').addEventListener('click', async function(){ await persistEditor('pending'); });
+  document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
+    try{ await persistEditor('draft'); } finally{ this.disabled = false; }
+  });
+  document.querySelector('[data-action="submitForm"]').addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
+    try{ await persistEditor('pending'); } finally{ this.disabled = false; }
+  });
 }
 
 async function persistEditor(targetStatus){
