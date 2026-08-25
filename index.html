@@ -1117,7 +1117,7 @@ function hijriDateInputHtml(attrsHtml, value, ro, btnStyle){
   return (
     '<span class="hijri-date-field">' +
       '<input type="hidden" '+attrsHtml+' value="'+esc(value||'')+'">' +
-      '<button type="button" class="input hijri-date-btn" data-action="openHijriPicker"'+(ro?' disabled':'')+(btnStyle?' style="'+btnStyle+'"':'')+'>' +
+      '<button type="button" class="input hijri-date-btn" onclick="event.stopPropagation();openHijriPicker(this);"'+(ro?' disabled':'')+(btnStyle?' style="'+btnStyle+'"':'')+'>' +
         '<span class="hijri-date-text"'+(display?'':' style="color:var(--muted);"')+'>'+(display?esc(display):'اختر التاريخ')+'</span>' +
         '<span class="hijri-date-icon">📅</span>' +
       '</button>' +
@@ -1232,10 +1232,6 @@ function openHijriPicker(btn){
   HijriPicker.hy = p.year; HijriPicker.hm = p.month;
   renderHijriPickerPopup();
 }
-document.addEventListener('click', function(e){
-  const btn = e.target.closest('[data-action="openHijriPicker"]');
-  if (btn){ openHijriPicker(btn); }
-}, true);
 
 function localSeed(){
   if (!localStorage.getItem(LS_COMMUNITIES)) {
