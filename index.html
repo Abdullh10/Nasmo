@@ -497,7 +497,7 @@ const CONFIG = {
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndpdGdrdHV5aXh0dXpqa256ZXhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MDgwNjksImV4cCI6MjEwMjM4NDA2OX0.TNVM7ms-RpCq8Klx0s5_zs6V8X2zk4rrSfUqbAP0tf0",
   SUPABASE_SERVICE_KEY: ""
 };
-function getSvcKey(){ return sessionStorage.getItem('nasmo_svc_key') || ''; }
+function getSvcKey(){ return localStorage.getItem('nasmo_svc_key') || ''; }
 
 /* SQL_SCHEMA — للإعداد الكامل راجع ملف setup.sql في جذر المشروع.
    المصادقة حقيقية عبر Supabase Auth (auth.users)؛ profiles.id يطابق auth.users.id،
@@ -4831,9 +4831,9 @@ async function screenAdminSettings(){
     '</div>' +
     (isRemote() ?
     '<div class="program-card">' +
-      '<div class="ph"><h3>مفتاح خدمة Supabase (service_role)</h3><p>يُستخدم لإنشاء الحسابات عبر Admin API بلا قيود معدل. أدخله مرة واحدة لكل جلسة — يُحفظ في ذاكرة المتصفح المؤقتة فقط ولا يُرسل لأي جهة.</p></div>' +
+      '<div class="ph"><h3>مفتاح خدمة Supabase (service_role)</h3><p>يُستخدم لإنشاء الحسابات عبر Admin API بلا قيود معدل. أدخله مرة واحدة على هذا الجهاز — يُحفظ محلياً ولا يُرسل لأي جهة خارجية.</p></div>' +
       '<div style="padding:16px 18px;">' +
-        '<div style="font-size:12.5px;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:' + (hasSvcKey ? 'rgba(var(--success-rgb,52,168,83),0.12);color:var(--success);">' + '✓ مفتاح الخدمة محمّل في الجلسة الحالية' : 'rgba(var(--danger-rgb,234,67,53),0.1);color:var(--danger);">') + (hasSvcKey ? '' : '⚠ لا يوجد مفتاح محمّل — إنشاء الحسابات يعمل بطريقة signUp (قد يكون بطيئاً)') + '</div>' +
+        '<div style="font-size:12.5px;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:' + (hasSvcKey ? 'rgba(var(--success-rgb,52,168,83),0.12);color:var(--success);">' + '✓ مفتاح الخدمة محفوظ على هذا الجهاز' : 'rgba(var(--danger-rgb,234,67,53),0.1);color:var(--danger);">') + (hasSvcKey ? '' : '⚠ لا يوجد مفتاح محمّل — إنشاء الحسابات يعمل بطريقة signUp (قد يكون بطيئاً)') + '</div>' +
         '<div class="field"><label>مفتاح الخدمة (service_role key)</label>' +
           '<input class="input" type="password" id="svcKeyInput" placeholder="eyJhbGci..." autocomplete="off">' +
         '</div>' +
@@ -4922,13 +4922,13 @@ function bindAdminSettings(){
   if (saveSvcBtn) saveSvcBtn.addEventListener('click', function(){
     const key = (document.getElementById('svcKeyInput').value || '').trim();
     if (!key){ toast('أدخل مفتاح الخدمة أولاً.'); return; }
-    sessionStorage.setItem('nasmo_svc_key', key);
-    toast('تم حفظ مفتاح الخدمة في الجلسة الحالية.');
+    localStorage.setItem('nasmo_svc_key', key);
+    toast('تم حفظ مفتاح الخدمة على هذا الجهاز.');
     render();
   });
   const clearSvcBtn = document.querySelector('[data-action="clearSvcKey"]');
   if (clearSvcBtn) clearSvcBtn.addEventListener('click', function(){
-    sessionStorage.removeItem('nasmo_svc_key');
+    localStorage.removeItem('nasmo_svc_key');
     toast('تم مسح مفتاح الخدمة.');
     render();
   });
