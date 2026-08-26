@@ -3024,13 +3024,13 @@ function screenLogin(){
         '<div class="login-h">تسجيل الدخول</div>' +
         '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
         '<div id="loginError" class="error-text" style="display:none;"></div>' +
-        ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
-          '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
-            '<option value="">— اختر مدرستك —</option>' +
-            SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
-          '</select></div>' : '') +
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="loginUser" placeholder="مثال: Abdullh H"></div>' +
         '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
+        ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
+          '<div class="field"><label>المدرسة <span style="font-weight:400;color:var(--muted);font-size:12px;">(اختياري لحساب السوبر أدمن)</span></label><select class="input" id="loginSchool">' +
+            '<option value="">— بدون تحديد (سوبر أدمن) —</option>' +
+            SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
+          '</select></div>' : '') +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
         '<div class="credit-line">برمجة الأستاذ عبدالله حمدي</div>' +
       '</div>' +
@@ -3048,7 +3048,6 @@ function bindLogin(){
     const selectedSchool = schoolEl ? schoolEl.value.trim() : '';
     const errBox = document.getElementById('loginError');
     errBox.style.display='none';
-    if (schoolEl && !selectedSchool){ errBox.textContent='يرجى اختيار المدرسة أولاً.'; errBox.style.display='block'; return; }
     btn.disabled = true; btn.textContent = 'جارٍ التحقق…';
     try{
       const user = await DB.login(u, p);
@@ -6226,9 +6225,10 @@ async function screenSuperAdminSchool(){
     '</tr>';
   }).join('');
   return (
-    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">' +
       '<button class="btn btn-ghost btn-sm" data-action="backToSuperAdmin">‹ العودة للمدارس</button>' +
-      '<h2 style="margin:0;font-size:18px;">'+esc(school)+'</h2>' +
+      '<h2 style="margin:0;font-size:18px;flex:1;">'+esc(school)+'</h2>' +
+      '<button class="btn btn-danger btn-sm" data-action="removeSchoolFromList" data-school="'+esc(school)+'">حذف المدرسة من القائمة</button>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>الاسم</th><th>الصلاحية</th><th>المجتمع</th><th></th></tr></thead>' +
@@ -6244,6 +6244,16 @@ function bindSuperSchool(){
     el.addEventListener('click', async function(){
       showDeleteUserModal(el.getAttribute('data-id'), function(){ render(); bindSuperSchool(); }); return;
     });
+  });
+  const removeSchoolBtn = document.querySelector('[data-action="removeSchoolFromList"]');
+  if (removeSchoolBtn) removeSchoolBtn.addEventListener('click', async function(){
+    const schoolName = removeSchoolBtn.getAttribute('data-school');
+    if (!confirm('هل تريد حذف "'+schoolName+'" من قائمة الدخول؟ لن يُحذف المستخدمون.')) return;
+    const updated = (SiteSettings.schools||[]).filter(function(s){ return s !== schoolName; });
+    await DB.saveSiteSettings({ schools: updated });
+    SiteSettings.schools = updated;
+    toast('تمت إزالة المدرسة من قائمة صفحة الدخول.');
+    State.screen='dashboard'; render(); bindDashboard();
   });
 }
 
