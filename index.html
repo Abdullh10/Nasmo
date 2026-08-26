@@ -2303,7 +2303,7 @@ const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms
 
 /* ---------------------- التنبيهات والرسائل ---------------------- */
 let NotifUI = { open:false, compose:false };
-let SiteSettings = { program_title:'منصة دعم التحصيل الدراسي', program_subtitle:'والفاعلية الجماعية للمعلمين', academic_year:'' };
+let SiteSettings = { program_title:'منصة دعم التحصيل الدراسي', program_subtitle:'والفاعلية الجماعية للمعلمين', academic_year:'', schools:[] };
 const NOTIF_TYPE_LABEL = { meeting:'تذكير اجتماع', submission:'تسليم عمل', demo:'حصة توضيحية', general:'عام' };
 const PENDING_KIND_LABEL = { submission:'نموذج بانتظار الاعتماد', task:'مهمة بانتظار التقييم', goal:'هدف بانتظار التقييم', practice:'ممارسة بانتظار الاعتماد' };
 const LOGOUT_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
@@ -3024,6 +3024,11 @@ function screenLogin(){
         '<div class="login-h">تسجيل الدخول</div>' +
         '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
         '<div id="loginError" class="error-text" style="display:none;"></div>' +
+        ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
+          '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
+            '<option value="">— اختر مدرستك —</option>' +
+            SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
+          '</select></div>' : '') +
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="loginUser" placeholder="مثال: Abdullh H"></div>' +
         '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
@@ -3039,12 +3044,18 @@ function bindLogin(){
   btn.addEventListener('click', async function(){
     const u = document.getElementById('loginUser').value.trim();
     const p = document.getElementById('loginPass').value.trim();
+    const schoolEl = document.getElementById('loginSchool');
+    const selectedSchool = schoolEl ? schoolEl.value.trim() : '';
     const errBox = document.getElementById('loginError');
     errBox.style.display='none';
+    if (schoolEl && !selectedSchool){ errBox.textContent='يرجى اختيار المدرسة أولاً.'; errBox.style.display='block'; return; }
     btn.disabled = true; btn.textContent = 'جارٍ التحقق…';
     try{
       const user = await DB.login(u, p);
       if (!user){ errBox.textContent='اسم المستخدم أو كلمة المرور غير صحيحة.'; errBox.style.display='block'; return; }
+      if (selectedSchool && user.role !== 'super_admin' && user.school !== selectedSchool){
+        errBox.textContent='هذا الحساب لا ينتمي للمدرسة المحددة.'; errBox.style.display='block'; return;
+      }
       setUserSession(user);
       go('dashboard');
     }catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
@@ -4932,7 +4943,10 @@ async function screenAdminSettings(){
     'alter table visit_schedules drop constraint if exists visit_schedules_created_by_fkey;',
     'alter table visit_schedules add  constraint visit_schedules_created_by_fkey foreign key (created_by) references profiles(id) on delete set null;',
     'alter table notifications  drop constraint if exists notifications_sender_id_fkey;',
-    'alter table notifications  add  constraint notifications_sender_id_fkey   foreign key (sender_id)   references profiles(id) on delete set null;'
+    'alter table notifications  add  constraint notifications_sender_id_fkey   foreign key (sender_id)   references profiles(id) on delete set null;',
+    '',
+    '-- 6) إضافة عمود قائمة المدارس لجدول site_settings (لعرضها في صفحة الدخول)',
+    "alter table site_settings add column if not exists schools jsonb default '[]'::jsonb;"
   ].join('\n');
   return (
     '<div class="program-card">' +
@@ -6187,6 +6201,9 @@ function bindSuperAdmin(){
     saveBtn.disabled=true; saveBtn.textContent='جاري الإنشاء…';
     try{
       await DB.createUser({ username:username.trim(), password:password, full_name:fullName.trim(), role:'admin', school:school.trim() });
+      const updatedSchools = Array.from(new Set((SiteSettings.schools||[]).concat([school.trim()]))).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+      await DB.saveSiteSettings({ schools: updatedSchools });
+      SiteSettings.schools = updatedSchools;
       toast('تم إنشاء مدرسة "'+school.trim()+'" بنجاح.');
       SuperAdminUI.addSchoolOpen=false; render(); bindDashboard();
     }catch(e){ toast('فشل الإنشاء: '+e.message); saveBtn.disabled=false; saveBtn.textContent='إنشاء المدرسة'; }
