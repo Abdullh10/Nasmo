@@ -188,6 +188,28 @@ a{ color:var(--teal-dark); }
 .brand-mark{ width:92px; height:92px; flex:none; object-fit:contain; }
 .brand-title{ font-size:18px; font-weight:800; color:var(--navy); line-height:1.3;}
 .brand-sub{ font-size:14px; color:var(--muted); }
+/* --- view mode toggle (mobile / desktop) --- */
+.view-toggle{ display:flex; gap:6px; justify-content:center; margin-bottom:18px; }
+.view-toggle-btn{
+  display:flex; align-items:center; gap:5px; padding:6px 14px;
+  border:1.5px solid var(--border); border-radius:20px; background:var(--surface-2);
+  color:var(--muted); font-size:12.5px; font-weight:600; cursor:pointer; transition:.15s;
+}
+.view-toggle-btn:hover{ border-color:var(--teal); color:var(--teal); }
+.view-toggle-btn.active{ border-color:var(--teal); background:var(--teal); color:#fff; }
+/* mobile mode */
+.login-card.mode-mobile{ padding:32px 20px 28px; }
+.login-card.mode-mobile .brand{ flex-direction:column; align-items:center; text-align:center; gap:10px; margin-bottom:14px; }
+.login-card.mode-mobile .brand-mark{ width:110px; height:110px; }
+/* desktop mode */
+.login-card.mode-desktop .brand-mark{ width:100px; height:100px; }
+.login-card.mode-desktop .brand-title{ font-size:19px; }
+/* auto fallback when no mode selected */
+@media(max-width:540px){
+  .login-card:not(.mode-desktop){ padding:32px 20px 28px; }
+  .login-card:not(.mode-desktop) .brand{ flex-direction:column; align-items:center; text-align:center; gap:10px; margin-bottom:14px; }
+  .login-card:not(.mode-desktop) .brand-mark{ width:110px; height:110px; }
+}
 .login-h{ font-size:23px; margin:20px 0 5px; }
 .login-p{ color:var(--muted); font-size:14.5px; margin-bottom:22px; }
 .field{ margin-bottom:14px; }
@@ -2960,10 +2982,17 @@ function bindTopNav(){
 
 /* ----- شاشة الدخول ----- */
 function screenLogin(){
+  const vm = localStorage.getItem('nasmo_view_mode') || '';
+  const PHONE_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+  const DESKTOP_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polyline points="8 21 12 17 16 21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>';
   return (
     '<button class="theme-toggle-btn" title="تبديل الوضع الداكن/الفاتح" data-action="toggleTheme">'+(getTheme()==='dark'?SUN_SVG:MOON_SVG)+'</button>' +
     '<div class="center-screen">' +
-      '<div class="login-card">' +
+      '<div class="login-card' + (vm ? ' mode-'+vm : '') + '">' +
+        '<div class="view-toggle">' +
+          '<button class="view-toggle-btn'+(vm==='mobile'?' active':'')+'" data-action="setViewMobile">'+PHONE_SVG+' جوال</button>' +
+          '<button class="view-toggle-btn'+(vm==='desktop'?' active':'')+'" data-action="setViewDesktop">'+DESKTOP_SVG+' كمبيوتر</button>' +
+        '</div>' +
         '<div class="brand"><img class="brand-mark" src="logo.png" alt="شعار دعم التحصيل الدراسي"><div><div class="brand-title">'+esc(SiteSettings.program_title)+'</div><div class="brand-sub">'+esc(SiteSettings.program_subtitle)+'</div></div></div>' +
         '<div class="login-h">تسجيل الدخول</div>' +
         '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
@@ -2979,6 +3008,20 @@ function screenLogin(){
 function bindLogin(){
   const themeBtn = document.querySelector('[data-action="toggleTheme"]');
   if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+  function applyViewMode(mode){
+    const card = document.querySelector('.login-card');
+    if (!card) return;
+    card.classList.remove('mode-mobile','mode-desktop');
+    if (mode) card.classList.add('mode-'+mode);
+    document.querySelectorAll('.view-toggle-btn').forEach(function(b){ b.classList.remove('active'); });
+    const active = document.querySelector('[data-action="setView'+( mode==='mobile'?'Mobile':'Desktop')+'"]');
+    if (active) active.classList.add('active');
+    localStorage.setItem('nasmo_view_mode', mode);
+  }
+  const mobileBtn = document.querySelector('[data-action="setViewMobile"]');
+  const desktopBtn = document.querySelector('[data-action="setViewDesktop"]');
+  if (mobileBtn) mobileBtn.addEventListener('click', function(){ applyViewMode('mobile'); });
+  if (desktopBtn) desktopBtn.addEventListener('click', function(){ applyViewMode('desktop'); });
   const btn = document.querySelector('[data-action="doLogin"]');
   btn.addEventListener('click', async function(){
     const u = document.getElementById('loginUser').value.trim();
