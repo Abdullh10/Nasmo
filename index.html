@@ -6138,15 +6138,20 @@ async function screenSuperAdmin(){
   });
   const schools = Object.keys(schoolMap).sort(function(a,b){ return a.localeCompare(b,'ar'); });
   const orphanedSchools = (SiteSettings.schools||[]).filter(function(s){ return !schoolMap[s]; });
+  const registeredSchools = SiteSettings.schools || [];
   const rows = schools.map(function(school){
     const s = schoolMap[school];
+    const inList = registeredSchools.includes(school);
     return '<tr>' +
-      '<td><b>'+esc(school)+'</b></td>' +
+      '<td><b>'+esc(school)+'</b>' + (inList ? ' <span style="font-size:11px;color:var(--teal);">✓ في قائمة الدخول</span>' : '') + '</td>' +
       '<td style="text-align:center;">'+s.admin+'</td>' +
       '<td style="text-align:center;">'+s.coordinator+'</td>' +
       '<td style="text-align:center;">'+s.teacher+'</td>' +
       '<td style="text-align:center;">'+s.total+'</td>' +
-      '<td class="row-actions"><button class="btn btn-ghost btn-sm" data-action="superManageSchool" data-school="'+esc(school)+'">إدارة المدرسة</button></td>' +
+      '<td class="row-actions" style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        (!inList ? '<button class="btn btn-primary btn-sm" data-action="addSchoolToList" data-school="'+esc(school)+'">+ أضف للدخول</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" data-action="superManageSchool" data-school="'+esc(school)+'">إدارة المدرسة</button>' +
+      '</td>' +
     '</tr>';
   }).join('');
   const addModal = SuperAdminUI.addSchoolOpen ? (
@@ -6219,6 +6224,16 @@ function bindSuperAdmin(){
       toast('تم إنشاء مدرسة "'+school.trim()+'" بنجاح.');
       SuperAdminUI.addSchoolOpen=false; render(); bindDashboard();
     }catch(e){ toast('فشل الإنشاء: '+e.message); saveBtn.disabled=false; saveBtn.textContent='إنشاء المدرسة'; }
+  });
+  document.querySelectorAll('[data-action="addSchoolToList"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const schoolName = el.getAttribute('data-school');
+      const updated = Array.from(new Set((SiteSettings.schools||[]).concat([schoolName]))).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+      await DB.saveSiteSettings({ schools: updated });
+      SiteSettings.schools = updated;
+      toast('تمت إضافة "'+schoolName+'" لقائمة صفحة الدخول.');
+      render(); bindDashboard();
+    });
   });
   document.querySelectorAll('[data-action="removeOrphanSchool"]').forEach(function(el){
     el.addEventListener('click', async function(){
