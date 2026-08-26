@@ -188,28 +188,35 @@ a{ color:var(--teal-dark); }
 .brand-mark{ width:92px; height:92px; flex:none; object-fit:contain; }
 .brand-title{ font-size:18px; font-weight:800; color:var(--navy); line-height:1.3;}
 .brand-sub{ font-size:14px; color:var(--muted); }
-/* --- view mode toggle (mobile / desktop) --- */
-.view-toggle{ display:flex; gap:6px; justify-content:center; margin-bottom:18px; }
-.view-toggle-btn{
-  display:flex; align-items:center; gap:5px; padding:6px 14px;
-  border:1.5px solid var(--border); border-radius:20px; background:var(--surface-2);
-  color:var(--muted); font-size:12.5px; font-weight:600; cursor:pointer; transition:.15s;
-}
-.view-toggle-btn:hover{ border-color:var(--teal); color:var(--teal); }
-.view-toggle-btn.active{ border-color:var(--teal); background:var(--teal); color:#fff; }
-/* mobile mode */
-.login-card.mode-mobile{ padding:32px 20px 28px; }
-.login-card.mode-mobile .brand{ flex-direction:column; align-items:center; text-align:center; gap:10px; margin-bottom:14px; }
-.login-card.mode-mobile .brand-mark{ width:110px; height:110px; }
-/* desktop mode */
-.login-card.mode-desktop .brand-mark{ width:100px; height:100px; }
-.login-card.mode-desktop .brand-title{ font-size:19px; }
-/* auto fallback when no mode selected */
+/* --- global view mode --- */
+/* mobile mode: constrain all pages to phone width */
+html[data-view="mobile"] body{ max-width:520px; margin:0 auto; }
+html[data-view="mobile"] .login-card{ padding:32px 20px 28px; }
+html[data-view="mobile"] .brand{ flex-direction:column; align-items:center; text-align:center; gap:10px; margin-bottom:14px; }
+html[data-view="mobile"] .brand-mark{ width:110px; height:110px; }
+/* desktop mode: wider brand */
+html[data-view="desktop"] .brand-mark{ width:100px; height:100px; }
+html[data-view="desktop"] .brand-title{ font-size:19px; }
+/* auto fallback */
 @media(max-width:540px){
-  .login-card:not(.mode-desktop){ padding:32px 20px 28px; }
-  .login-card:not(.mode-desktop) .brand{ flex-direction:column; align-items:center; text-align:center; gap:10px; margin-bottom:14px; }
-  .login-card:not(.mode-desktop) .brand-mark{ width:110px; height:110px; }
+  html:not([data-view="desktop"]) .login-card{ padding:32px 20px 28px; }
+  html:not([data-view="desktop"]) .brand{ flex-direction:column; align-items:center; text-align:center; gap:10px; margin-bottom:14px; }
+  html:not([data-view="desktop"]) .brand-mark{ width:110px; height:110px; }
 }
+/* floating view toggle FAB */
+#view-fab{
+  position:fixed; bottom:18px; left:12px; z-index:999;
+  display:flex; flex-direction:column; gap:5px;
+}
+.view-fab-btn{
+  display:flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:50%;
+  border:1.5px solid var(--border); background:var(--surface);
+  color:var(--muted); cursor:pointer; transition:.15s;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+.view-fab-btn:hover{ border-color:var(--teal); color:var(--teal); }
+.view-fab-btn.active{ border-color:var(--teal); background:var(--teal); color:#fff; }
 .login-h{ font-size:23px; margin:20px 0 5px; }
 .login-p{ color:var(--muted); font-size:14.5px; margin-bottom:22px; }
 .field{ margin-bottom:14px; }
@@ -2311,6 +2318,33 @@ function applyTheme(theme){
 }
 function toggleTheme(){ applyTheme(getTheme()==='dark' ? 'light' : 'dark'); }
 
+const _PHONE_SVG  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+const _DESKTOP_SVG= '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polyline points="8 21 12 17 16 21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>';
+
+function applyViewMode(mode){
+  if (mode) document.documentElement.setAttribute('data-view', mode);
+  else document.documentElement.removeAttribute('data-view');
+  localStorage.setItem('nasmo_view_mode', mode || '');
+  document.querySelectorAll('.view-fab-btn').forEach(function(b){
+    b.classList.toggle('active',
+      (b.dataset.view === mode));
+  });
+}
+function injectViewFab(){
+  if (document.getElementById('view-fab')) return;
+  const vm = localStorage.getItem('nasmo_view_mode') || '';
+  const fab = document.createElement('div');
+  fab.id = 'view-fab';
+  fab.title = 'تبديل العرض';
+  fab.innerHTML =
+    '<button class="view-fab-btn'+(vm==='mobile'?' active':'')+'" data-view="mobile" title="عرض جوال">'  +_PHONE_SVG  +'</button>'+
+    '<button class="view-fab-btn'+(vm==='desktop'?' active':'')+'" data-view="desktop" title="عرض كمبيوتر">'+_DESKTOP_SVG+'</button>';
+  document.body.appendChild(fab);
+  fab.querySelectorAll('.view-fab-btn').forEach(function(b){
+    b.addEventListener('click', function(){ applyViewMode(b.dataset.view); });
+  });
+}
+
 const PALETTES = {
   dark: [
     { id:'navy',   label:'أزرق داكن',  color:'#0B2A4A' },
@@ -2982,17 +3016,10 @@ function bindTopNav(){
 
 /* ----- شاشة الدخول ----- */
 function screenLogin(){
-  const vm = localStorage.getItem('nasmo_view_mode') || '';
-  const PHONE_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
-  const DESKTOP_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><polyline points="8 21 12 17 16 21"/><line x1="8" y1="21" x2="16" y2="21"/></svg>';
   return (
     '<button class="theme-toggle-btn" title="تبديل الوضع الداكن/الفاتح" data-action="toggleTheme">'+(getTheme()==='dark'?SUN_SVG:MOON_SVG)+'</button>' +
     '<div class="center-screen">' +
-      '<div class="login-card' + (vm ? ' mode-'+vm : '') + '">' +
-        '<div class="view-toggle">' +
-          '<button class="view-toggle-btn'+(vm==='mobile'?' active':'')+'" data-action="setViewMobile">'+PHONE_SVG+' جوال</button>' +
-          '<button class="view-toggle-btn'+(vm==='desktop'?' active':'')+'" data-action="setViewDesktop">'+DESKTOP_SVG+' كمبيوتر</button>' +
-        '</div>' +
+      '<div class="login-card">' +
         '<div class="brand"><img class="brand-mark" src="logo.png" alt="شعار دعم التحصيل الدراسي"><div><div class="brand-title">'+esc(SiteSettings.program_title)+'</div><div class="brand-sub">'+esc(SiteSettings.program_subtitle)+'</div></div></div>' +
         '<div class="login-h">تسجيل الدخول</div>' +
         '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
@@ -3008,20 +3035,6 @@ function screenLogin(){
 function bindLogin(){
   const themeBtn = document.querySelector('[data-action="toggleTheme"]');
   if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
-  function applyViewMode(mode){
-    const card = document.querySelector('.login-card');
-    if (!card) return;
-    card.classList.remove('mode-mobile','mode-desktop');
-    if (mode) card.classList.add('mode-'+mode);
-    document.querySelectorAll('.view-toggle-btn').forEach(function(b){ b.classList.remove('active'); });
-    const active = document.querySelector('[data-action="setView'+( mode==='mobile'?'Mobile':'Desktop')+'"]');
-    if (active) active.classList.add('active');
-    localStorage.setItem('nasmo_view_mode', mode);
-  }
-  const mobileBtn = document.querySelector('[data-action="setViewMobile"]');
-  const desktopBtn = document.querySelector('[data-action="setViewDesktop"]');
-  if (mobileBtn) mobileBtn.addEventListener('click', function(){ applyViewMode('mobile'); });
-  if (desktopBtn) desktopBtn.addEventListener('click', function(){ applyViewMode('desktop'); });
   const btn = document.querySelector('[data-action="doLogin"]');
   btn.addEventListener('click', async function(){
     const u = document.getElementById('loginUser').value.trim();
@@ -7987,6 +8000,8 @@ function bindGlobalAction(el){
 (async function init(){
   applyTheme(getTheme());
   applyPalette(getPalette());
+  applyViewMode(localStorage.getItem('nasmo_view_mode') || '');
+  injectViewFab();
   loadAuth();
   /* جلب الإعدادات أولاً لتجنب render مزدوج وضمان صحة العنوان من أول لحظة */
   try {
