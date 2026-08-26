@@ -3027,8 +3027,8 @@ function screenLogin(){
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="loginUser" placeholder="مثال: Abdullh H"></div>' +
         '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
         ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
-          '<div class="field"><label>المدرسة <span style="font-weight:400;color:var(--muted);font-size:12px;">(اختياري لحساب السوبر أدمن)</span></label><select class="input" id="loginSchool">' +
-            '<option value="">— بدون تحديد (سوبر أدمن) —</option>' +
+          '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
+            '<option value="">اختر اسم المدرسة</option>' +
             SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
           '</select></div>' : '') +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
