@@ -6137,6 +6137,7 @@ async function screenSuperAdmin(){
     if (schoolMap[u.school][u.role]!==undefined) schoolMap[u.school][u.role]++;
   });
   const schools = Object.keys(schoolMap).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const orphanedSchools = (SiteSettings.schools||[]).filter(function(s){ return !schoolMap[s]; });
   const rows = schools.map(function(school){
     const s = schoolMap[school];
     return '<tr>' +
@@ -6173,6 +6174,18 @@ async function screenSuperAdmin(){
       '<thead><tr><th>المدرسة</th><th style="text-align:center;">أدمن</th><th style="text-align:center;">منسقون</th><th style="text-align:center;">معلمون</th><th style="text-align:center;">الكل</th><th></th></tr></thead>' +
       '<tbody>'+(rows||'<tr class="empty-row"><td colspan="6">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody>' +
     '</table></div></div>' +
+    (orphanedSchools.length > 0 ?
+      '<div class="program-card" style="margin-top:20px;border-color:var(--danger);border-width:1.5px;">' +
+        '<div class="ph"><h3 style="color:var(--danger);">⚠ مدارس في قائمة الدخول بدون مستخدمين</h3><p>هذه المدارس تظهر في صفحة الدخول لكن لا يوجد لها حسابات. احذفها من القائمة.</p></div>' +
+        '<div style="padding:12px 18px;display:flex;flex-direction:column;gap:8px;">' +
+          orphanedSchools.map(function(s){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
+              '<span style="font-weight:600;">'+esc(s)+'</span>' +
+              '<button class="btn btn-danger btn-sm" data-action="removeOrphanSchool" data-school="'+esc(s)+'">حذف من القائمة</button>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>' : '') +
     addModal
   );
 }
@@ -6206,6 +6219,17 @@ function bindSuperAdmin(){
       toast('تم إنشاء مدرسة "'+school.trim()+'" بنجاح.');
       SuperAdminUI.addSchoolOpen=false; render(); bindDashboard();
     }catch(e){ toast('فشل الإنشاء: '+e.message); saveBtn.disabled=false; saveBtn.textContent='إنشاء المدرسة'; }
+  });
+  document.querySelectorAll('[data-action="removeOrphanSchool"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const schoolName = el.getAttribute('data-school');
+      if (!confirm('حذف "'+schoolName+'" من قائمة صفحة الدخول؟')) return;
+      const updated = (SiteSettings.schools||[]).filter(function(s){ return s !== schoolName; });
+      await DB.saveSiteSettings({ schools: updated });
+      SiteSettings.schools = updated;
+      toast('تمت إزالة "'+schoolName+'" من القائمة.');
+      render(); bindDashboard();
+    });
   });
 }
 
@@ -6242,7 +6266,17 @@ function bindSuperSchool(){
   if (backBtn) backBtn.addEventListener('click', function(){ State.screen='dashboard'; render(); bindDashboard(); });
   document.querySelectorAll('[data-action="superDeleteUser"]').forEach(function(el){
     el.addEventListener('click', async function(){
-      showDeleteUserModal(el.getAttribute('data-id'), function(){ render(); bindSuperSchool(); }); return;
+      const schoolName = SuperAdminUI.managingSchool;
+      showDeleteUserModal(el.getAttribute('data-id'), async function(){
+        const remaining = await DB.listUsers({ school: schoolName });
+        const nonSuper = remaining.filter(function(u){ return u.role !== 'super_admin'; });
+        if (nonSuper.length === 0 && (SiteSettings.schools||[]).includes(schoolName)){
+          const updated = (SiteSettings.schools||[]).filter(function(s){ return s !== schoolName; });
+          await DB.saveSiteSettings({ schools: updated });
+          SiteSettings.schools = updated;
+        }
+        render(); bindSuperSchool();
+      }); return;
     });
   });
   const removeSchoolBtn = document.querySelector('[data-action="removeSchoolFromList"]');
