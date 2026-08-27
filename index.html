@@ -2647,14 +2647,61 @@ function studentOptionsHtml(students, value, isManual){
   }
   return students.map(opt).join('');
 }
+function studentOptionsHtmlByGrade(students, value, isManual){
+  students = students || [];
+  const gradeMap = {};
+  const noGrade = [];
+  students.forEach(function(s){
+    const g = s.student_grade || '';
+    if (!g){ noGrade.push(s); return; }
+    if (!gradeMap[g]) gradeMap[g] = [];
+    gradeMap[g].push(s);
+  });
+  const grades = Object.keys(gradeMap).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  function opt(s){ return '<option value="'+esc(s.full_name)+'" '+((!isManual && value===s.full_name)?'selected':'')+'>'+esc(s.full_name)+(s.student_section?' — '+esc(s.student_section):'')+'</option>'; }
+  let html = '';
+  grades.forEach(function(g){ html += '<optgroup label="'+esc(g)+'">' + gradeMap[g].map(opt).join('') + '</optgroup>'; });
+  if (noGrade.length) html += noGrade.map(opt).join('');
+  return html;
+}
 function studentSelectHtml(label, fieldPath, value, students, ro){
   if (ro) return inputField(label, fieldPath, value, {readonly:true});
   students = students || [];
   const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = studentOptionsHtml(students, value, isManual);
+  const gradeFilter = (EditorState.studentGradeFilters && EditorState.studentGradeFilters[fieldPath]) || '';
+  const sectionFilter = (EditorState.studentSectionFilters && EditorState.studentSectionFilters[fieldPath]) || '';
+  const uniqueGrades = students
+    .map(function(s){ return s.student_grade||''; })
+    .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const uniqueSections = gradeFilter
+    ? students.filter(function(s){ return s.student_grade===gradeFilter; })
+        .map(function(s){ return s.student_section||''; })
+        .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
+        .sort(function(a,b){ return a.localeCompare(b,'ar'); })
+    : [];
+  let filteredStudents = students;
+  if (gradeFilter) filteredStudents = filteredStudents.filter(function(s){ return s.student_grade===gradeFilter; });
+  if (sectionFilter) filteredStudents = filteredStudents.filter(function(s){ return (s.student_section||'')===sectionFilter; });
+  const opts = studentOptionsHtml(filteredStudents, value, isManual);
   const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
+  const cascadeHtml = uniqueGrades.length ? (
+    '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+      '<select class="input" style="flex:1;" data-action="studentGradeFilter" data-target="'+fieldPath+'">' +
+        '<option value="">— كل الصفوف —</option>' +
+        uniqueGrades.map(function(g){ return '<option value="'+esc(g)+'" '+(gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+      '</select>' +
+      (uniqueSections.length ? (
+        '<select class="input" style="flex:1;" data-action="studentSectionFilter" data-target="'+fieldPath+'">' +
+          '<option value="">— كل الشعب —</option>' +
+          uniqueSections.map(function(sec){ return '<option value="'+esc(sec)+'" '+(sectionFilter===sec?'selected':'')+'>'+esc(sec)+'</option>'; }).join('') +
+        '</select>'
+      ) : '') +
+    '</div>'
+  ) : '';
   return (
     '<div class="field"><label>'+esc(label)+'</label>' +
+      cascadeHtml +
       '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
         '<option value="">— اختر الطالب —</option>' + opts +
         '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
@@ -2667,7 +2714,7 @@ function studentSelectInlineHtml(fieldPath, value, students, ro){
   if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
   students = students || [];
   const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = studentOptionsHtml(students, value, isManual);
+  const opts = studentOptionsHtmlByGrade(students, value, isManual);
   const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
   return (
     '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
@@ -2757,10 +2804,11 @@ function openEditor(formType, submission){
       createdByName: submission.created_by_name, createdBy: submission.created_by,
       returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at,
       manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [],
-      studentPickOpen: false, studentPickList: null, studentPickSelected: []
+      studentPickOpen: false, studentPickList: null, studentPickSelected: [],
+      studentGradeFilters: {}, studentSectionFilters: {}
     };
   } else {
-    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [], studentPickOpen: false, studentPickList: null, studentPickSelected: [] };
+    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [], studentPickOpen: false, studentPickList: null, studentPickSelected: [], studentGradeFilters: {}, studentSectionFilters: {} };
   }
   go('editor', { formType: formType });
 }
@@ -4420,7 +4468,8 @@ function openPlanForStudent(formType, student){
     createdByName:State.user.full_name, createdBy:State.user.id,
     returnComment:null, principalSig:null, approved_at:null,
     manualTeacherFields:new Set(), teachers:[], manualStudentFields:new Set(), students:[],
-    studentPickOpen:false, studentPickList:null, studentPickSelected:[]
+    studentPickOpen:false, studentPickList:null, studentPickSelected:[],
+    studentGradeFilters:{}, studentSectionFilters:{}
   };
   go('editor', { formType:formType });
 }
@@ -8096,6 +8145,21 @@ function bindEditor(){
         EditorState.manualStudentFields.delete(target);
         setPath(EditorState.data, target, el.value);
       }
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="studentGradeFilter"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const target = el.getAttribute('data-target');
+      EditorState.studentGradeFilters[target] = el.value;
+      EditorState.studentSectionFilters[target] = '';
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="studentSectionFilter"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const target = el.getAttribute('data-target');
+      EditorState.studentSectionFilters[target] = el.value;
       render(); bindEditor();
     });
   });
