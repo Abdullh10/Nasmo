@@ -5348,6 +5348,7 @@ async function screenCounselorCases(){
     );
   }).join('');
 
+  CounselorUI._students = sortedStudents;
   const caseModal = CounselorUI.modalOpen ? counselorCaseModal(editing, teachers, sortedStudents) : '';
   /* حالات مفتوحة/قيد المتابعة بدون جلسة خلال آخر 30 يوم */
   const now = Date.now();
@@ -5422,6 +5423,10 @@ function counselorCaseModal(c, teachers, students){
   teachers = teachers || [];
   students = students || [];
   const isNew = !c;
+  const uniqueGrades = students
+    .map(function(s){ return s.student_grade||''; })
+    .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
   const sessions = c ? (c.sessions||[]) : [];
   const sessionsHtml = sessions.length
     ? '<div style="margin-bottom:12px;">' + sessions.map(function(s,i){
@@ -5437,17 +5442,25 @@ function counselorCaseModal(c, teachers, students){
       '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:540px;">' +
         '<h3 style="margin-bottom:16px;">'+(isNew ? 'إضافة حالة جديدة' : 'الحالة الإرشادية — '+esc(c.student_name))+'</h3>' +
         (isNew ? (
-          '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
-            '<select class="input" id="caseStudentSel">' +
-              '<option value="">— اختر الطالب —</option>' +
-              students.map(function(s){ return '<option value="'+esc(s.full_name)+'" data-grade="'+esc(s.student_grade||'')+'" data-section="'+esc(s.student_section||'')+'">'+esc(s.full_name)+(s.student_grade?' — '+esc(s.student_grade):'')+(s.student_section?' '+esc(s.student_section):'')+'</option>'; }).join('') +
+          '<div class="field"><label>المرحلة الدراسية <span style="color:var(--danger);">*</span></label>' +
+            '<select class="input" id="caseGradeSel">' +
+              '<option value="">— اختر المرحلة —</option>' +
+              uniqueGrades.map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('') +
               '<option value="__manual__">أخرى (إدخال يدوي)</option>' +
             '</select>' +
           '</div>' +
-          '<div class="field" id="caseStudentManualField" style="display:none;"><label>اسم الطالب (يدوي)</label><input class="input" id="caseStudentName"></div>' +
-          '<div style="display:flex;gap:8px;">' +
-            '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade"></div>' +
-            '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection"></div>' +
+          '<div class="field" id="caseSectionField" style="display:none;"><label>الشعبة</label>' +
+            '<select class="input" id="caseSectionSel"><option value="">— اختر الشعبة —</option></select>' +
+          '</div>' +
+          '<div class="field" id="caseStudentField" style="display:none;"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
+            '<select class="input" id="caseStudentSel"><option value="">— اختر الطالب —</option></select>' +
+          '</div>' +
+          '<div id="caseManualBlock" style="display:none;">' +
+            '<div style="display:flex;gap:8px;">' +
+              '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade"></div>' +
+              '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection"></div>' +
+            '</div>' +
+            '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label><input class="input" id="caseStudentName"></div>' +
           '</div>' +
           '<div class="field"><label>المُحيل</label>' +
             '<select class="input" id="caseReferredBy">' +
@@ -5527,21 +5540,53 @@ function bindCounselorCases(){
     });
   });
 
-  const studentSel = document.getElementById('caseStudentSel');
-  if (studentSel) studentSel.addEventListener('change', function(){
-    const manualField = document.getElementById('caseStudentManualField');
-    if (this.value === '__manual__'){
-      if (manualField) manualField.style.display = '';
-      document.getElementById('caseGrade').value = '';
-      document.getElementById('caseSection').value = '';
-    } else {
-      if (manualField) manualField.style.display = 'none';
-      const opt = this.options[this.selectedIndex];
-      if (opt && this.value){
-        document.getElementById('caseGrade').value = opt.getAttribute('data-grade') || '';
-        document.getElementById('caseSection').value = opt.getAttribute('data-section') || '';
-      }
+  const gradeSelEl = document.getElementById('caseGradeSel');
+  if (gradeSelEl) gradeSelEl.addEventListener('change', function(){
+    const grade = this.value;
+    const sectionField = document.getElementById('caseSectionField');
+    const studentField = document.getElementById('caseStudentField');
+    const manualBlock = document.getElementById('caseManualBlock');
+    const sectionSel = document.getElementById('caseSectionSel');
+    const studentSel2 = document.getElementById('caseStudentSel');
+    if (grade === '__manual__'){
+      if (sectionField) sectionField.style.display = 'none';
+      if (studentField) studentField.style.display = 'none';
+      if (manualBlock) manualBlock.style.display = '';
+      return;
     }
+    if (manualBlock) manualBlock.style.display = 'none';
+    if (!grade){
+      if (sectionField) sectionField.style.display = 'none';
+      if (studentField) studentField.style.display = 'none';
+      return;
+    }
+    const allStudents = CounselorUI._students || [];
+    const sections = allStudents
+      .filter(function(s){ return s.student_grade === grade; })
+      .map(function(s){ return s.student_section||''; })
+      .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
+      .sort(function(a,b){ return a.localeCompare(b,'ar'); });
+    sectionSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
+      sections.map(function(sec){ return '<option value="'+esc(sec)+'">'+esc(sec)+'</option>'; }).join('') +
+      (sections.length > 1 ? '<option value="__all__">كل الشعب</option>' : '');
+    if (sectionField) sectionField.style.display = '';
+    if (studentField) studentField.style.display = 'none';
+    if (studentSel2) studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>';
+  });
+  const sectionSelEl = document.getElementById('caseSectionSel');
+  if (sectionSelEl) sectionSelEl.addEventListener('change', function(){
+    const section = this.value;
+    const grade = (document.getElementById('caseGradeSel')||{}).value || '';
+    const studentField = document.getElementById('caseStudentField');
+    const studentSel2 = document.getElementById('caseStudentSel');
+    if (!section){ if (studentField) studentField.style.display = 'none'; return; }
+    const allStudents = CounselorUI._students || [];
+    const filtered = allStudents.filter(function(s){
+      return s.student_grade === grade && (section === '__all__' || (s.student_section||'') === section);
+    });
+    studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>' +
+      filtered.map(function(s){ return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+'</option>'; }).join('');
+    if (studentField) studentField.style.display = '';
   });
   const referredBySel = document.getElementById('caseReferredBy');
   if (referredBySel) referredBySel.addEventListener('change', function(){
@@ -5581,12 +5626,20 @@ function bindCounselorCases(){
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const isNew = !CounselorUI.editingId;
     if (isNew){
+      const gradeSelEl2 = document.getElementById('caseGradeSel');
+      const isManualEntry = gradeSelEl2 && gradeSelEl2.value === '__manual__';
       const studentSelEl = document.getElementById('caseStudentSel');
-      const studentSelVal = studentSelEl ? studentSelEl.value : '';
-      const studentName = (studentSelVal==='__manual__' || !studentSelVal)
+      const studentName = isManualEntry
         ? ((document.getElementById('caseStudentName')||{}).value||'').trim()
-        : studentSelVal;
+        : (studentSelEl ? studentSelEl.value : '');
       if (!studentName.trim()){ toast('يرجى إدخال اسم الطالب.'); return; }
+      const studentGrade = isManualEntry
+        ? ((document.getElementById('caseGrade')||{}).value||'')
+        : (gradeSelEl2 ? gradeSelEl2.value : '');
+      const sectionSelEl2 = document.getElementById('caseSectionSel');
+      const studentSection = isManualEntry
+        ? ((document.getElementById('caseSection')||{}).value||'')
+        : (sectionSelEl2 && sectionSelEl2.value !== '__all__' ? sectionSelEl2.value : '');
       const referredBySel = document.getElementById('caseReferredBy');
       const referredByVal = referredBySel ? referredBySel.value : State.user.full_name;
       const referredByName = referredByVal==='__other__'
@@ -5595,8 +5648,8 @@ function bindCounselorCases(){
       const obj = {
         school: State.user.school,
         student_name: studentName.trim(),
-        student_grade: (document.getElementById('caseGrade')||{}).value||'',
-        student_section: (document.getElementById('caseSection')||{}).value||'',
+        student_grade: studentGrade,
+        student_section: studentSection,
         referred_by_name: referredByName,
         referral_reason: (document.getElementById('caseReason')||{}).value||'',
         counselor_id: State.user.id,
