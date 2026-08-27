@@ -3300,6 +3300,30 @@ async function screenPrincipalCommunities(){
       approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate, scorecard:scorecard };
   });
 
+  PrincipalCommUI._rows = rows;
+
+  const scoredRows = rows.filter(function(r){ return r.scorecard != null; }).slice().sort(function(a,b){ return b.scorecard - a.scorecard; });
+  const bestRow = scoredRows.length ? scoredRows[0] : null;
+  const worstRow = scoredRows.length > 1 ? scoredRows[scoredRows.length-1] : null;
+  const highlightCards = (bestRow || worstRow) ? (
+    '<div style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;">' +
+    (bestRow ? (
+      '<div class="program-card" style="flex:1;min-width:200px;border-right:4px solid var(--teal);padding:14px 18px;">' +
+        '<div style="font-size:12px;color:var(--teal);font-weight:600;margin-bottom:6px;">الأفضل أداءً</div>' +
+        '<div style="font-size:16px;font-weight:700;">'+esc(bestRow.community.name)+'</div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+(bestRow.leader?esc(bestRow.leader.full_name):'بلا منسق')+' · نتيجة: <b style="color:var(--teal);">'+bestRow.scorecard+'/100</b></div>' +
+      '</div>'
+    ) : '') +
+    (worstRow ? (
+      '<div class="program-card" style="flex:1;min-width:200px;border-right:4px solid var(--danger);padding:14px 18px;">' +
+        '<div style="font-size:12px;color:var(--danger);font-weight:600;margin-bottom:6px;">يحتاج دعمًا</div>' +
+        '<div style="font-size:16px;font-weight:700;">'+esc(worstRow.community.name)+'</div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+(worstRow.leader?esc(worstRow.leader.full_name):'بلا منسق')+' · نتيجة: <b style="color:var(--danger);">'+worstRow.scorecard+'/100</b></div>' +
+      '</div>'
+    ) : '') +
+    '</div>'
+  ) : '';
+
   const summaryTable = (
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th><th>نسبة الحضور</th><th>التقييم الذاتي</th><th>تقدم الأهداف</th><th>متوسط تقييم المدير</th><th>نتيجة البرنامج النهائية (بطاقة الأداء)</th></tr></thead>' +
@@ -3369,7 +3393,8 @@ async function screenPrincipalCommunities(){
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
     dashTabsHtml() +
-    '<div class="section-head"><h2>تقييم المجتمعات المهنية</h2></div>' +
+    '<div class="section-head"><h2>تقييم المجتمعات المهنية</h2><button class="btn btn-ghost btn-sm no-print" data-action="printSchoolReport">طباعة تقرير المدرسة</button></div>' +
+    highlightCards +
     '<div style="color:var(--muted);font-size:13px;margin-bottom:14px;">رسائل وإحصائيات كل مجتمع مهني تظهر هنا منفصلة عن المجتمعات الأخرى، لمساعدتك على تقييم أداء كل منسق ومجتمعه وتحديد فرص التجويد.</div>' +
     '<div class="program-card" style="margin-bottom:18px;"><div style="padding:14px 18px;font-size:13px;color:var(--ink);line-height:1.9;">' +
       '<b>طريقة حساب نتيجة البرنامج النهائية (من 100):</b><br>' +
@@ -3392,6 +3417,36 @@ function bindPrincipalCommunities(){
   });
   document.querySelectorAll('[data-action="openCommunityReport"]').forEach(function(el){
     el.addEventListener('click', function(){ go('communityReport', { id: el.getAttribute('data-id') }); });
+  });
+  var printBtn = document.querySelector('[data-action="printSchoolReport"]');
+  if (printBtn) printBtn.addEventListener('click', function(){
+    var rows = PrincipalCommUI._rows || [];
+    var html = '<html dir="rtl"><head><meta charset="utf-8"><title>تقرير المجتمعات المهنية</title>' +
+      '<style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;}h2,h3{text-align:center;}table{width:100%;border-collapse:collapse;font-size:12px;margin-top:16px;}th,td{border:1px solid #bbb;padding:6px 8px;text-align:right;}th{background:#f0f0f0;font-weight:600;}.meta{text-align:center;color:#666;font-size:13px;margin-bottom:8px;}</style>' +
+      '</head><body>' +
+      '<h2>تقرير المجتمعات المهنية</h2>' +
+      '<h3>'+esc(State.user.school)+'</h3>' +
+      '<p class="meta">التاريخ: '+new Date().toLocaleDateString('ar-SA')+'</p>' +
+      '<table><thead><tr><th>المجتمع</th><th>المنسق</th><th>الأعضاء</th><th>معتمدة</th><th>انتظار</th><th>مرتجعة</th><th>المهام</th><th>الحضور</th><th>التقييم الذاتي</th><th>الأهداف</th><th>تقييم المدير</th><th>النتيجة النهائية</th></tr></thead><tbody>' +
+      rows.map(function(r){
+        return '<tr>' +
+          '<td>'+esc(r.community.name)+'</td>' +
+          '<td>'+(r.leader?esc(r.leader.full_name):'—')+'</td>' +
+          '<td>'+r.members.length+'</td>' +
+          '<td>'+r.subCounts.approved+'</td>' +
+          '<td>'+r.subCounts.pending+'</td>' +
+          '<td>'+r.subCounts.returned+'</td>' +
+          '<td>'+r.doneTasks+'/'+r.tasks.length+'</td>' +
+          '<td>'+pctLabel(r.attendanceRate)+'</td>' +
+          '<td>'+pctLabel(r.selfEvalRate)+'</td>' +
+          '<td>'+pctLabel(r.goalsRate)+'</td>' +
+          '<td>'+ratingAvgLabel(r.ratingRate)+'</td>' +
+          '<td>'+(r.scorecard==null?'—':r.scorecard+'/100')+'</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></body></html>';
+    var win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); win.print(); }
   });
 }
 
@@ -5768,11 +5823,51 @@ async function screenDashboard(){
       await screenIndicators()
     );
   }
-  const subs = await DB.listSubmissions({ school: State.user.school });
+  let subs, pTasks, pGoals;
+  if (State.user.role === 'principal') {
+    [subs, pTasks, pGoals] = await Promise.all([
+      DB.listSubmissions({ school: State.user.school }),
+      DB.listTasks({ school: State.user.school }),
+      DB.listGoals({ school: State.user.school })
+    ]);
+  } else {
+    subs = await DB.listSubmissions({ school: State.user.school });
+    pTasks = []; pGoals = [];
+  }
   State.allSubs = subs;
   const mine = State.user.role==='coordinator' ? subs.filter(function(s){ return s.created_by===State.user.id; }) : subs;
   const counts = { draft:0, pending:0, approved:0, returned:0 };
   mine.forEach(function(s){ counts[s.status] = (counts[s.status]||0)+1; });
+
+  const now = new Date();
+  const staleSubs = State.user.role==='principal' ? subs.filter(function(s){
+    return s.status==='pending' && ((now - new Date(s.updated_at)) / 86400000) > 7;
+  }) : [];
+  const staleWarning = staleSubs.length ? (
+    '<div style="background:#fff5f5;border-right:4px solid var(--danger);border-radius:8px;padding:12px 16px;margin-bottom:14px;">' +
+      '<b style="color:var(--danger);">تنبيه: نماذج معلقة تجاوزت 7 أيام</b>' +
+      '<div style="margin-top:4px;font-size:13px;">'+staleSubs.length+' نموذج بانتظار اعتمادك منذ أكثر من أسبوع. يُرجى مراجعتها في أقرب وقت.</div>' +
+    '</div>'
+  ) : '';
+
+  const commCount = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; }).length;
+  const pendingTasksReview = (pTasks||[]).filter(function(t){ return t.status==='pending'; }).length;
+  const pendingGoalsReview = (pGoals||[]).filter(function(g){ return g.status==='pending'; }).length;
+
+  const broadcastModal = (State.user.role==='principal' && PrincipalUI.broadcastOpen) ? (
+    '<div class="modal-overlay" data-action="closePrincipalBroadcast">' +
+    '<div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">' +
+      '<div class="modal-head"><h3>إشعار لجميع المعلمين</h3><button class="btn-close" data-action="closePrincipalBroadcast">×</button></div>' +
+      '<div class="modal-body">' +
+        '<label>عنوان الإشعار<input id="pBcastTitle" class="inp" placeholder="مثال: تذكير بتسليم النماذج"></label>' +
+        '<label style="margin-top:10px;display:block;">نص الرسالة<textarea id="pBcastBody" class="inp" rows="4" placeholder="اكتب رسالتك هنا..."></textarea></label>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<button class="btn btn-primary" data-action="sendPrincipalBroadcast">إرسال</button>' +
+        '<button class="btn btn-ghost" data-action="closePrincipalBroadcast">إلغاء</button>' +
+      '</div>' +
+    '</div></div>'
+  ) : '';
 
   const kpis = State.user.role==='coordinator' ? (
     '<div class="kpi-grid">' +
@@ -5787,6 +5882,9 @@ async function screenDashboard(){
       '<div class="kpi-card accent-success"><div class="v">'+counts.approved+'</div><div class="l">معتمدة هذا الفصل</div></div>' +
       '<div class="kpi-card accent-danger"><div class="v">'+counts.returned+'</div><div class="l">مُرتجعة</div></div>' +
       '<div class="kpi-card"><div class="v">'+subs.length+'</div><div class="l">إجمالي النماذج بالمدرسة</div></div>' +
+      '<div class="kpi-card"><div class="v">'+commCount+'</div><div class="l">المجتمعات المهنية</div></div>' +
+      '<div class="kpi-card accent-pending"><div class="v">'+pendingTasksReview+'</div><div class="l">مهام بانتظار مراجعتك</div></div>' +
+      '<div class="kpi-card accent-pending"><div class="v">'+pendingGoalsReview+'</div><div class="l">أهداف بانتظار مراجعتك</div></div>' +
     '</div>'
   );
 
@@ -5830,11 +5928,16 @@ async function screenDashboard(){
     : '';
 
   return (
+    broadcastModal +
     '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
     dashTabsHtml() +
     kpis +
-    '<div class="section-head"><h2>' + (State.user.role==='coordinator' ? 'نماذجي' : 'جميع النماذج') + '</h2>' + newBtn + '</div>' +
+    staleWarning +
+    '<div class="section-head"><h2>' + (State.user.role==='coordinator' ? 'نماذجي' : 'جميع النماذج') + '</h2>' +
+      (State.user.role==='principal' ? '<button class="btn btn-gold btn-sm" data-action="openPrincipalBroadcast">📢 إشعار للمعلمين</button>' : '') +
+      newBtn +
+    '</div>' +
     tableBlock
   );
 }
@@ -5851,6 +5954,39 @@ function bindDashboard(){
   else if (State.dashTab==='visits' && State.user.role==='coordinator') bindCoordinatorVisits();
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
   else if (State.dashTab==='indicators') bindIndicators();
+  else if (State.user.role==='principal') bindPrincipalMain();
+}
+function bindPrincipalMain(){
+  var openBtn = document.querySelector('[data-action="openPrincipalBroadcast"]');
+  if (openBtn) openBtn.addEventListener('click', function(){
+    PrincipalUI.broadcastOpen = true;
+    render();
+  });
+  document.querySelectorAll('[data-action="closePrincipalBroadcast"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      PrincipalUI.broadcastOpen = false;
+      render();
+    });
+  });
+  var sendBtn = document.querySelector('[data-action="sendPrincipalBroadcast"]');
+  if (sendBtn) sendBtn.addEventListener('click', async function(){
+    var title = (document.getElementById('pBcastTitle')||{}).value||'';
+    var body = (document.getElementById('pBcastBody')||{}).value||'';
+    if (!title.trim()) { alert('يرجى كتابة عنوان الإشعار'); return; }
+    sendBtn.disabled = true;
+    await DB.createNotification({
+      school: State.user.school,
+      sender_id: State.user.id,
+      sender_name: State.user.full_name,
+      target_type: 'school',
+      target_id: null,
+      type: 'general',
+      title: title.trim(),
+      body: body.trim()
+    });
+    PrincipalUI.broadcastOpen = false;
+    render();
+  });
 }
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
@@ -6530,6 +6666,7 @@ function bindCredsPrint(){
 }
 /* ==================== لوحة السوبر أدمن ==================== */
 let SuperAdminUI = { addSchoolOpen: false, managingSchool: null, broadcastOpen: false };
+let PrincipalUI = { broadcastOpen: false };
 
 async function screenSuperAdmin(){
   const [allUsers, allSubs] = await Promise.all([
