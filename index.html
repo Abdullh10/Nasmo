@@ -2786,7 +2786,7 @@ function blankData(formType){
   switch(formType){
     case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'' };
     case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], description:'', recommendations:'', parentNote:'' };
-    case 'individualAgreement': return { studentName:'', grade:'', sessions:[ blankSession() ], parentSuggested:'' };
+    case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'' };
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
     case 'plcMeetingMinutes': return { school:State.user.school, plc:'', date:today, time:'', meetingType:'اجتماع دوري', attendees:[ {name:'', spec:'', present:true} ], agenda:[''], summary:'', decisions:[ {decision:'', responsible:'', deadline:''} ] };
     case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
@@ -4518,7 +4518,7 @@ function openPlanForStudent(formType, student){
   const today = new Date().toISOString().slice(0,10);
   let data;
   if (formType === 'individualAgreement'){
-    data = { studentName: student.full_name, grade: student.grade||'', sessions: [blankSession()], parentSuggested: '' };
+    data = { studentName: student.full_name, grade: student.grade||'', section: student.section||'', sessions: [blankSession()], parentSuggested: '' };
   } else if (formType === 'groupPlan'){
     const row = blankStudentRow();
     row.name = student.full_name;
@@ -4583,8 +4583,7 @@ async function screenStudentRoster(){
           (isAdmin
             ? '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
               '<button class="btn btn-danger btn-sm" data-action="deleteStudent" data-id="'+s.id+'">حذف</button>'
-            : '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="groupPlan" '+dName+'>خطة جماعية</button>' +
-              '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="individualAgreement" '+dName+'>خطة فردية</button>' +
+            : '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="individualAgreement" '+dName+'>خطة فردية</button>' +
               '<button class="btn btn-ghost btn-sm" data-action="referStudentCounselor" data-id="'+s.id+'" '+dName+'>إحالة للمرشد الطلابي</button>'
           ) +
         '</td>' +
@@ -8124,10 +8123,17 @@ function renderIndividualAgreement(d, ro, teachers, students){
       '</div>'
     );
   }).join('');
+  const studentBlock = d.studentName
+    ? ('<div class="field-grid cols-3">' +
+        inputField('اسم الطالب','studentName',d.studentName,{readonly:true}) +
+        inputField('الصف','grade',d.grade,{readonly:true}) +
+        inputField('الشعبة','section',d.section||'',{readonly:true}) +
+      '</div>')
+    : (ro
+        ? ('<div class="field-grid cols-2">'+inputField('اسم الطالب','studentName',d.studentName,{readonly:true})+inputField('الصف','grade',d.grade,{readonly:true})+'</div>')
+        : ('<div class="field-grid cols-2">'+studentSelectHtml('اسم الطالب','studentName',d.studentName,students,false)+inputField('الصف','grade',d.grade,{readonly:false})+'</div>'));
   return (
-    '<div class="field-grid cols-2">' +
-      studentSelectHtml('اسم الطالب','studentName',d.studentName,students,ro) + inputField('الصف','grade',d.grade,{readonly:ro}) +
-    '</div>' +
+    studentBlock +
     '<div class="upload-note">انطلاقًا من حرص المدرسة على دعم تحصيل الطلاب، أُدرج الطالب أعلاه في الخطة الفردية. تُسجَّل أدناه جلسات المتابعة الأسبوعية لكل معلم على حدة.</div>' +
     '<div class="block-title"><span class="dot"></span> جلسات المتابعة الأسبوعية</div>' +
     sessions + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="sessions">+ إضافة جلسة متابعة أسبوعية</button>') +
@@ -8396,8 +8402,11 @@ function bindAllStudentSearches(){
         setPath(EditorState.data, fieldPath, '');
     });
     stuSel.addEventListener('change', function(){
-      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data)
+      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data){
         setPath(EditorState.data, fieldPath, this.value);
+        if ('grade' in EditorState.data) setPath(EditorState.data, 'grade', gradeSel.value);
+        if ('section' in EditorState.data) setPath(EditorState.data, 'section', secSel.value);
+      }
     });
   });
 }
