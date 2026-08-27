@@ -5304,7 +5304,12 @@ const CASE_STATUS_LABEL = { open:'مفتوحة', in_progress:'قيد المتا�
 const CASE_STATUS_CLASS = { open:'pending', in_progress:'approved', closed:'' };
 
 async function screenCounselorCases(){
-  const cases = await DB.listCounselingCases(State.user.school);
+  const [cases, schoolUsers] = await Promise.all([
+    DB.listCounselingCases(State.user.school),
+    DB.listUsers({ school: State.user.school })
+  ]);
+  const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||u.role==='principal'; })
+    .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const grades = cases.map(function(c){ return c.student_grade||''; }).filter(Boolean)
     .filter(function(v,i,a){ return a.indexOf(v)===i; })
     .sort(function(a,b){ return a.localeCompare(b,'ar'); });
@@ -5341,7 +5346,22 @@ async function screenCounselorCases(){
     );
   }).join('');
 
-  const caseModal = CounselorUI.modalOpen ? counselorCaseModal(editing) : '';
+  const caseModal = CounselorUI.modalOpen ? counselorCaseModal(editing, teachers) : '';
+  /* حالات مفتوحة/قيد المتابعة بدون جلسة خلال آخر 30 يوم */
+  const now = Date.now();
+  const staleThreshold = 30 * 24 * 60 * 60 * 1000;
+  const staleCases = cases.filter(function(c){
+    if (c.status==='closed') return false;
+    const sessions = c.sessions||[];
+    const lastDate = sessions.length ? sessions[sessions.length-1].date : c.created_at;
+    return (now - new Date(lastDate).getTime()) > staleThreshold;
+  });
+  const staleAlert = staleCases.length > 0 ? (
+    '<div style="background:var(--warn-bg,#fff8e1);border:1.5px solid var(--warn-border,#f9a825);border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:13px;">' +
+      '<b>⚠ '+staleCases.length+' حالة بدون متابعة منذ أكثر من 30 يوم:</b> ' +
+      staleCases.map(function(c){ return '<span style="margin-right:8px;">'+esc(c.student_name)+'</span>'; }).join('') +
+    '</div>'
+  ) : '';
 
   const statsTab = CounselorUI.tab === 'stats' ? (
     '<div class="kpi-grid">' +
@@ -5392,11 +5412,12 @@ async function screenCounselorCases(){
     '<div style="margin:12px 0;">' +
       '<button class="btn btn-primary" data-action="addCase">+ إضافة حالة</button>' +
     '</div>' +
-    casesTab + statsTab + caseModal
+    staleAlert + casesTab + statsTab + caseModal
   );
 }
 
-function counselorCaseModal(c){
+function counselorCaseModal(c, teachers){
+  teachers = teachers || [];
   const isNew = !c;
   const sessions = c ? (c.sessions||[]) : [];
   const sessionsHtml = sessions.length
@@ -5418,6 +5439,14 @@ function counselorCaseModal(c){
             '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade"></div>' +
             '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection"></div>' +
           '</div>' +
+          '<div class="field"><label>المُحيل</label>' +
+            '<select class="input" id="caseReferredBy">' +
+              '<option value="'+esc(State.user.full_name)+'">'+esc(State.user.full_name)+' (أنا)</option>' +
+              teachers.filter(function(t){ return t.id!==State.user.id; }).map(function(t){ return '<option value="'+esc(t.full_name)+'">'+esc(t.full_name)+' — '+esc(ROLE_LABEL[t.role]||t.role)+'</option>'; }).join('') +
+              '<option value="__other__">أخرى (أدخل يدوياً)</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="field" id="caseReferredByOtherField" style="display:none;"><label>اسم المُحيل</label><input class="input" id="caseReferredByOther"></div>' +
           '<div class="field"><label>سبب الإحالة</label><textarea class="input" id="caseReason" rows="2"></textarea></div>' +
           '<div class="field"><label>جوال ولي الأمر (للواتساب)</label><input class="input" id="caseParentPhone" placeholder="مثال: 0501234567"></div>'
         ) : (
@@ -5445,6 +5474,7 @@ function counselorCaseModal(c){
         )) +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="saveCase">'+(isNew?'إضافة الحالة':'حفظ التعديلات')+'</button>' +
+          (!isNew ? '<button class="btn btn-ghost btn-block" data-action="printCase">طباعة التقرير الإرشادي</button>' : '') +
           (!isNew && c.parent_phone ? '<a href="https://wa.me/'+encodeURIComponent(c.parent_phone.replace(/[^0-9]/g,''))+'" target="_blank" class="btn btn-ghost btn-block" style="color:#25D366;text-align:center;">تواصل مع ولي الأمر عبر واتساب</a>' : '') +
           '<button class="btn btn-ghost btn-block" data-action="closeCaseModal">إغلاق</button>' +
         '</div>' +
@@ -5487,18 +5517,57 @@ function bindCounselorCases(){
     });
   });
 
+  const referredBySel = document.getElementById('caseReferredBy');
+  if (referredBySel) referredBySel.addEventListener('change', function(){
+    const otherField = document.getElementById('caseReferredByOtherField');
+    if (otherField) otherField.style.display = this.value==='__other__' ? '' : 'none';
+  });
+  const printCaseBtn = document.querySelector('[data-action="printCase"]');
+  if (printCaseBtn) printCaseBtn.addEventListener('click', async function(){
+    if (!CounselorUI.editingId) return;
+    const cases = await DB.listCounselingCases(State.user.school);
+    const c = cases.find(function(x){ return x.id===CounselorUI.editingId; });
+    if (!c) return;
+    const sessions = (c.sessions||[]);
+    const win = window.open('','_blank','width=800,height=900');
+    win.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>تقرير إرشادي</title>' +
+      '<style>body{font-family:Arial,sans-serif;padding:32px;direction:rtl;}h1{font-size:20px;margin-bottom:4px;}' +
+      'table{width:100%;border-collapse:collapse;margin:16px 0;}td,th{border:1px solid #ccc;padding:8px;font-size:13px;}' +
+      'th{background:#f4f4f4;}.section{margin-top:20px;}.section-title{font-weight:bold;font-size:14px;margin-bottom:8px;border-bottom:2px solid #333;padding-bottom:4px;}' +
+      '</style></head><body>' +
+      '<h1>التقرير الإرشادي الفردي</h1>' +
+      '<p style="color:#666;font-size:12px;">'+esc(State.user.school)+' — '+new Date().toLocaleDateString('ar-SA')+'</p>' +
+      '<div class="section"><div class="section-title">بيانات الطالب</div>' +
+      '<table><tr><th>الاسم</th><td>'+esc(c.student_name)+'</td><th>الصف</th><td>'+esc(c.student_grade||'—')+'</td><th>الشعبة</th><td>'+esc(c.student_section||'—')+'</td></tr>' +
+      '<tr><th>المُحيل</th><td>'+esc(c.referred_by_name||'—')+'</td><th>تاريخ الإحالة</th><td>'+fmtDate(c.created_at)+'</td><th>الحالة</th><td>'+esc(CASE_STATUS_LABEL[c.status]||c.status)+'</td></tr></table>' +
+      '<p><b>سبب الإحالة:</b> '+esc(c.referral_reason||'—')+'</p></div>' +
+      (sessions.length ? '<div class="section"><div class="section-title">الجلسات الإرشادية ('+sessions.length+')</div>' +
+      '<table><thead><tr><th>#</th><th>التاريخ</th><th>ملاحظات الجلسة</th></tr></thead><tbody>' +
+      sessions.map(function(s,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(s.date)+'</td><td>'+esc(s.notes)+'</td></tr>'; }).join('') +
+      '</tbody></table></div>' : '') +
+      (c.close_summary ? '<div class="section"><div class="section-title">ملخص الإغلاق</div><p>'+esc(c.close_summary)+'</p></div>' : '') +
+      '<p style="margin-top:40px;font-size:12px;color:#999;">تم إنشاء هذا التقرير بواسطة نظام نسمو</p>' +
+      '</body></html>');
+    win.document.close();
+    win.print();
+  });
   const saveBtn = document.querySelector('[data-action="saveCase"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const isNew = !CounselorUI.editingId;
     if (isNew){
       const studentName = (document.getElementById('caseStudentName')||{}).value||'';
       if (!studentName.trim()){ toast('يرجى إدخال اسم الطالب.'); return; }
+      const referredBySel = document.getElementById('caseReferredBy');
+      const referredByVal = referredBySel ? referredBySel.value : State.user.full_name;
+      const referredByName = referredByVal==='__other__'
+        ? ((document.getElementById('caseReferredByOther')||{}).value||'').trim() || State.user.full_name
+        : referredByVal;
       const obj = {
         school: State.user.school,
         student_name: studentName.trim(),
         student_grade: (document.getElementById('caseGrade')||{}).value||'',
         student_section: (document.getElementById('caseSection')||{}).value||'',
-        referred_by_name: State.user.full_name,
+        referred_by_name: referredByName,
         referral_reason: (document.getElementById('caseReason')||{}).value||'',
         counselor_id: State.user.id,
         counselor_name: State.user.full_name,
