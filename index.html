@@ -7359,6 +7359,7 @@ function teacherSortToggleHtml(){
 }
 async function screenAdminStudents(){
   const students = await DB.listStudents({ school: State.user.school });
+  AdminStudentUI._rows = students;
   const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher'; });
   const communities = await DB.listCommunities({ school: State.user.school });
 
@@ -7673,14 +7674,14 @@ function bindAdminStudents(){
     if (!teacherIds.length){ toast('يرجى تحديد معلم واحد على الأقل.'); return; }
     const studentIds = AdminStudentUI.selectedIds.slice();
     try{
-      const allStudents = await DB.listStudents({ school: State.user.school });
-      for (let i=0;i<studentIds.length;i++){
-        const s = allStudents.find(function(x){ return x.id===studentIds[i]; });
-        if (!s) continue;
+      const allStudents = AdminStudentUI._rows || await DB.listStudents({ school: State.user.school });
+      await Promise.all(studentIds.map(async function(sid){
+        const s = allStudents.find(function(x){ return x.id===sid; });
+        if (!s) return;
         const current = Array.isArray(s.assigned_teacher_ids) ? s.assigned_teacher_ids.slice() : [];
         teacherIds.forEach(function(tid){ if (current.indexOf(tid)===-1) current.push(tid); });
         await DB.updateStudent(s.id, { assigned_teacher_ids: current });
-      }
+      }));
       toast('تم إسناد المعلمين المحددين لـ '+studentIds.length+' طالبًا.');
       AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
       render(); bindAdminStudents();
