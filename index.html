@@ -2006,6 +2006,17 @@ const DB = {
     localStorage.setItem(LS_STUDENTS, JSON.stringify(list));
     return true;
   },
+  async bulkDeleteStudents(ids){
+    if (!ids || !ids.length) return true;
+    if (isRemote()){
+      await remoteFetch('students?id=in.(' + ids.map(encodeURIComponent).join(',') + ')', { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]');
+    list = list.filter(function(s){ return ids.indexOf(s.id) === -1; });
+    localStorage.setItem(LS_STUDENTS, JSON.stringify(list));
+    return true;
+  },
   async listCounselingCases(school){
     if (isRemote()){
       const counselorFilter = (State.user && State.user.role === 'counselor')
@@ -7643,7 +7654,7 @@ function bindAdminStudents(){
     if (!ids.length) return;
     if (!confirm('هل تريد حذف '+ids.length+' طالبًا محددًا؟ لا يمكن التراجع عن هذا الإجراء.')) return;
     try{
-      for (let i=0;i<ids.length;i++){ await DB.deleteStudent(ids[i]); }
+      await DB.bulkDeleteStudents(ids);
       toast('تم حذف '+ids.length+' طالبًا.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(e.message); }
