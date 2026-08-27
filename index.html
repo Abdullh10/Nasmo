@@ -6231,32 +6231,39 @@ function bindCredsPrint(){
   });
 }
 /* ==================== لوحة السوبر أدمن ==================== */
-let SuperAdminUI = { addSchoolOpen: false, managingSchool: null };
+let SuperAdminUI = { addSchoolOpen: false, managingSchool: null, broadcastOpen: false };
 
 async function screenSuperAdmin(){
-  const allUsers = await DB.listUsers({});
+  const [allUsers, allSubs] = await Promise.all([
+    DB.listUsers({}),
+    isRemote() ? remoteFetch('submissions?select=school', { range:'0-49999' }) : Promise.resolve([])
+  ]);
   const schoolMap = {};
   allUsers.forEach(function(u){
     if (!u.school) return;
-    if (!schoolMap[u.school]) schoolMap[u.school] = { total:0, admin:0, coordinator:0, teacher:0, principal:0, counselor:0 };
+    if (!schoolMap[u.school]) schoolMap[u.school] = { total:0, admin:0, coordinator:0, teacher:0, principal:0, counselor:0, submissions:0 };
     schoolMap[u.school].total++;
     if (schoolMap[u.school][u.role]!==undefined) schoolMap[u.school][u.role]++;
   });
+  (allSubs||[]).forEach(function(s){ if (s.school && schoolMap[s.school]) schoolMap[s.school].submissions++; });
   const schools = Object.keys(schoolMap).sort(function(a,b){ return a.localeCompare(b,'ar'); });
   const orphanedSchools = (SiteSettings.schools||[]).filter(function(s){ return !schoolMap[s]; });
   const registeredSchools = SiteSettings.schools || [];
+  const totalUsers = allUsers.filter(function(u){ return u.role!=='super_admin'; }).length;
+  const totalTeachers = allUsers.filter(function(u){ return u.role==='teacher'; }).length;
+  const totalSubs = (allSubs||[]).length;
   const rows = schools.map(function(school){
     const s = schoolMap[school];
     const inList = registeredSchools.includes(school);
     return '<tr>' +
       '<td><b>'+esc(school)+'</b>' + (inList ? ' <span style="font-size:11px;color:var(--teal);">✓ في قائمة الدخول</span>' : '') + '</td>' +
-      '<td style="text-align:center;">'+s.admin+'</td>' +
       '<td style="text-align:center;">'+s.coordinator+'</td>' +
       '<td style="text-align:center;">'+s.teacher+'</td>' +
       '<td style="text-align:center;">'+s.total+'</td>' +
+      '<td style="text-align:center;font-weight:600;color:var(--teal);">'+s.submissions+'</td>' +
       '<td class="row-actions" style="display:flex;gap:6px;flex-wrap:wrap;">' +
         (!inList ? '<button class="btn btn-primary btn-sm" data-action="addSchoolToList" data-school="'+esc(school)+'">+ أضف للدخول</button>' : '') +
-        '<button class="btn btn-ghost btn-sm" data-action="superManageSchool" data-school="'+esc(school)+'">إدارة المدرسة</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="superManageSchool" data-school="'+esc(school)+'">إدارة</button>' +
       '</td>' +
     '</tr>';
   }).join('');
@@ -6275,14 +6282,40 @@ async function screenSuperAdmin(){
       '</div>' +
     '</div>'
   ) : '';
+  const broadcastModal = SuperAdminUI.broadcastOpen ? (
+    '<div class="modal-bg" data-action="closeBroadcastModal">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>إذاعة إشعار لجميع المدارس</h3>' +
+        '<div class="field"><label>العنوان</label><input class="input" id="bcTitle" placeholder="عنوان الإشعار"></div>' +
+        '<div class="field"><label>نص الرسالة</label><textarea class="input" id="bcBody" rows="3" placeholder="اكتب رسالتك هنا..."></textarea></div>' +
+        '<div class="field"><label>المستهدف</label>' +
+          '<select class="input" id="bcTarget">' +
+            '<option value="all">جميع المدارس</option>' +
+            schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
+          '</select>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost" data-action="closeBroadcastModal">إلغاء</button>' +
+          '<button class="btn btn-primary" data-action="confirmBroadcast">إرسال الإشعار</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة السوبر أدمن</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة جميع المدارس المشتركة في المنصة</div>' +
-    '<div style="display:flex;gap:8px;margin-bottom:20px;">' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:16px;">إدارة جميع المدارس المشتركة في المنصة</div>' +
+    '<div class="kpi-grid" style="margin-bottom:20px;">' +
+      '<div class="kpi-card"><div class="v">'+schools.length+'</div><div class="l">مدارس</div></div>' +
+      '<div class="kpi-card accent-pending"><div class="v">'+totalUsers+'</div><div class="l">مستخدمون</div></div>' +
+      '<div class="kpi-card"><div class="v">'+totalTeachers+'</div><div class="l">معلمون</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+totalSubs+'</div><div class="l">نماذج مُرسلة</div></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
       '<button class="btn btn-primary" data-action="superAddSchool">+ إضافة مدرسة جديدة</button>' +
+      '<button class="btn btn-gold" data-action="openBroadcast">إذاعة إشعار لجميع المدارس</button>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>المدرسة</th><th style="text-align:center;">أدمن</th><th style="text-align:center;">منسقون</th><th style="text-align:center;">معلمون</th><th style="text-align:center;">الكل</th><th></th></tr></thead>' +
+      '<thead><tr><th>المدرسة</th><th style="text-align:center;">منسقون</th><th style="text-align:center;">معلمون</th><th style="text-align:center;">الكل</th><th style="text-align:center;">النماذج</th><th></th></tr></thead>' +
       '<tbody>'+(rows||'<tr class="empty-row"><td colspan="6">لا توجد مدارس مسجلة بعد.</td></tr>')+'</tbody>' +
     '</table></div></div>' +
     (orphanedSchools.length > 0 ?
@@ -6297,7 +6330,7 @@ async function screenSuperAdmin(){
           }).join('') +
         '</div>' +
       '</div>' : '') +
-    addModal
+    addModal + broadcastModal
   );
 }
 
@@ -6351,6 +6384,38 @@ function bindSuperAdmin(){
       toast('تمت إزالة "'+schoolName+'" من القائمة.');
       render(); bindDashboard();
     });
+  });
+  const openBcBtn = document.querySelector('[data-action="openBroadcast"]');
+  if (openBcBtn) openBcBtn.addEventListener('click', function(){ SuperAdminUI.broadcastOpen=true; render(); bindDashboard(); });
+  const closeBcEls = document.querySelectorAll('[data-action="closeBroadcastModal"]');
+  closeBcEls.forEach(function(el){ el.addEventListener('click', function(){ SuperAdminUI.broadcastOpen=false; render(); bindDashboard(); }); });
+  const confirmBcBtn = document.querySelector('[data-action="confirmBroadcast"]');
+  if (confirmBcBtn) confirmBcBtn.addEventListener('click', async function(){
+    const title = (document.getElementById('bcTitle')||{}).value||'';
+    const body  = (document.getElementById('bcBody') ||{}).value||'';
+    const target= (document.getElementById('bcTarget')||{}).value||'all';
+    if (!title.trim()||!body.trim()){ toast('يرجى تعبئة العنوان والرسالة.'); return; }
+    confirmBcBtn.disabled=true; confirmBcBtn.textContent='جاري الإرسال…';
+    try{
+      const allUsers = await DB.listUsers({});
+      const schools = target==='all'
+        ? Array.from(new Set(allUsers.filter(function(u){ return u.school; }).map(function(u){ return u.school; })))
+        : [target];
+      for (var i=0;i<schools.length;i++){
+        await DB.createNotification({
+          school: schools[i],
+          sender_id: State.user.id,
+          sender_name: State.user.full_name || 'السوبر أدمن',
+          target_type: 'school',
+          target_id: null,
+          type: 'general',
+          title: title.trim(),
+          body: body.trim()
+        });
+      }
+      toast('تم إرسال الإشعار لـ '+schools.length+' مدرسة.');
+      SuperAdminUI.broadcastOpen=false; invalidateNotifCache(); render(); bindDashboard();
+    }catch(e){ toast('فشل الإرسال: '+e.message); confirmBcBtn.disabled=false; confirmBcBtn.textContent='إرسال الإشعار'; }
   });
 }
 
