@@ -5855,12 +5855,15 @@ function bindDashboard(){
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 async function screenTeacherTasks(){
-  const [subs, rawTasks, rawGoals, rawVisits] = await Promise.all([
+  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
     DB.listTasks({ school: State.user.school }),
     DB.listGoals({ school: State.user.school }),
-    State.user.community_id ? DB.listVisitSchedules({ school: State.user.school }) : Promise.resolve([])
+    State.user.community_id ? DB.listVisitSchedules({ school: State.user.school }) : Promise.resolve([]),
+    DB.listStudents({ school: State.user.school })
   ]);
+
+  /* — جلسات الخطة الفردية — */
   const sessTasks = [];
   subs.forEach(function(s){
     if (s.form_type !== 'individualAgreement' || s.status==='draft') return;
@@ -5872,6 +5875,97 @@ async function screenTeacherTasks(){
   });
   sessTasks.sort(function(a,b){ return (a.sess.sig?1:0) - (b.sess.sig?1:0); });
 
+  /* — إحصاءات النماذج — */
+  const myForms = subs.filter(function(s){ return s.created_by===State.user.id; })
+    .sort(function(a,b){ return new Date(b.created_at||0) - new Date(a.created_at||0); });
+  const approvedCount = myForms.filter(function(s){ return s.status==='approved'; }).length;
+  const pendingCount  = myForms.filter(function(s){ return s.status==='pending'; }).length;
+  const returnedCount = myForms.filter(function(s){ return s.status==='returned'; }).length;
+
+  const trackedNames = new Set();
+  myForms.forEach(function(s){
+    if (s.payload.studentName) trackedNames.add(s.payload.studentName);
+    (s.payload.students||[]).forEach(function(st){ if (st.name) trackedNames.add(st.name); });
+    (s.payload.behaviorStudents||[]).forEach(function(st){ if (st.name) trackedNames.add(st.name); });
+  });
+
+  /* — المهام والمتأخرات — */
+  const generalTasks = rawTasks.filter(function(t){ return t.assigned_to===State.user.id; });
+  generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0)-(b.status==='done'?1:0)) || (new Date(a.due_date||0)-new Date(b.due_date||0)); });
+  const now = new Date();
+  const overdueTasks = generalTasks.filter(function(t){ return t.status!=='done' && t.due_date && new Date(t.due_date) < now; });
+
+  const completedSessions = sessTasks.filter(function(t){ return !!t.sess.sig; }).length;
+
+  /* — بطاقات KPI — */
+  function tKpi(val, lbl, color){
+    return '<div class="program-card" style="text-align:center;padding:14px 10px;">' +
+      '<div style="font-size:26px;font-weight:700;color:'+color+';">'+val+'</div>' +
+      '<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">'+lbl+'</div>' +
+    '</div>';
+  }
+  const kpiHtml =
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:10px;margin-bottom:18px;">' +
+      tKpi(approvedCount, 'نماذج معتمدة', 'var(--success)') +
+      tKpi(pendingCount,  'بانتظار الاعتماد', 'var(--pending)') +
+      tKpi(returnedCount, 'نماذج مُرجَعة', returnedCount>0?'var(--danger)':'var(--muted)') +
+      tKpi(trackedNames.size, 'طلاب تحت المتابعة', 'var(--primary)') +
+      tKpi(overdueTasks.length>0?overdueTasks.length:'✓', overdueTasks.length>0?'مهام متأخرة':'لا تأخير', overdueTasks.length>0?'var(--danger)':'var(--success)') +
+      tKpi(sessTasks.length?completedSessions+'/'+sessTasks.length:'—', 'جلسات أُكملت', 'var(--primary)') +
+    '</div>';
+
+  /* — تنبيه المهام المتأخرة — */
+  const overdueAlert = overdueTasks.length ? (
+    '<div style="background:color-mix(in srgb,var(--danger) 12%,transparent);border:1.5px solid var(--danger);color:var(--danger);padding:11px 16px;border-radius:10px;margin-bottom:14px;font-weight:600;font-size:13.5px;">' +
+    '⚠ لديك '+overdueTasks.length+' مهمة متأخرة تجاوزت موعد التسليم — راجع قسم المهام أدناه.' +
+    '</div>'
+  ) : '';
+
+  /* — ملخص الطلاب المعيَّنين — */
+  const myStudents = schoolStudents.filter(function(s){
+    return Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(State.user.id) > -1;
+  }).sort(function(a,b){ return (a.student_grade||'').localeCompare(b.student_grade||'','ar') || (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+
+  const formsByStudent = {};
+  myForms.forEach(function(s){
+    function mark(name){
+      if (!name) return;
+      if (!formsByStudent[name]) formsByStudent[name] = [];
+      formsByStudent[name].push(s);
+    }
+    if (s.payload.studentName) mark(s.payload.studentName);
+    (s.payload.students||[]).forEach(function(st){ mark(st.name); });
+    (s.payload.behaviorStudents||[]).forEach(function(st){ mark(st.name); });
+  });
+
+  const studentRows = myStudents.map(function(s){
+    const formsForSt = formsByStudent[s.full_name] || [];
+    const badges = formsForSt.map(function(f){
+      const def = formDef(f.form_type);
+      return '<span class="badge '+f.status+'" style="font-size:10.5px;margin-left:3px;">'+(def?def.title.slice(0,6)+'…':f.form_type)+'</span>';
+    }).join('');
+    const stSess = sessTasks.filter(function(t){ return t.sub.payload.studentName===s.full_name; });
+    const sessText = stSess.length ? (stSess.filter(function(t){return !!t.sess.sig;}).length+'/'+stSess.length+' جلسات') : '—';
+    return (
+      '<tr>' +
+        '<td><b>'+esc(s.full_name)+'</b></td>' +
+        '<td>'+esc(s.student_grade||'—')+'</td>' +
+        '<td>'+esc(s.student_section||'—')+'</td>' +
+        '<td>'+(badges||'<span style="color:var(--muted);font-size:11.5px;">لا يوجد</span>')+'</td>' +
+        '<td>'+esc(sessText)+'</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const studentSummaryHtml = myStudents.length ? (
+    '<div class="section-head" style="margin-top:20px;"><h2>طلابي المعيَّنون إليّ ('+myStudents.length+')</h2></div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th></tr></thead>' +
+      '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="5">—</td></tr>')+'</tbody>' +
+    '</table></div></div>'
+  ) : '';
+
+  /* — بطاقات الجلسات — */
   const sessCards = sessTasks.map(function(t){
     const done = !!t.sess.sig;
     return (
@@ -5883,14 +5977,13 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
-  const generalTasks = rawTasks.filter(function(t){ return t.assigned_to===State.user.id; });
-  generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(a.due_date||0) - new Date(b.due_date||0)); });
-
+  /* — بطاقات المهام — */
   const taskCards = generalTasks.map(function(t){
     const done = t.status==='done';
+    const overdue = !done && t.due_date && new Date(t.due_date) < now;
     return (
-      '<div class="task-card">' +
-        '<div class="meta"><b>'+esc(t.title)+'</b>' +
+      '<div class="task-card"'+(overdue?' style="border-color:var(--danger);"':'')+' >' +
+        '<div class="meta"><b>'+esc(t.title)+(overdue?' <span style="color:var(--danger);font-size:11px;">متأخرة</span>':'')+'</b>' +
           (t.description ? '<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'+esc(t.description)+'</div>' : '') +
           '<span>المُكلِّف: '+esc(t.created_by_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+' · '+(done?'<span style="color:var(--success);font-weight:700;">مكتملة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التنفيذ</span>')+'</span></div>' +
         '<button class="btn '+(done?'btn-ghost':'btn-primary')+' btn-sm" data-action="openTaskDetail" data-id="'+t.id+'">'+(done?'تعديل التنفيذ':'تنفيذ المهمة ورفع الشواهد')+'</button>' +
@@ -5898,8 +5991,9 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
+  /* — خطط التحسين — */
   const myGoals = rawGoals.filter(function(g){ return (g.assigned_member_ids||[]).indexOf(State.user.id)>-1; });
-  myGoals.sort(function(a,b){ return ((a.status==='achieved'?1:0) - (b.status==='achieved'?1:0)) || (new Date(a.due_date||0) - new Date(b.due_date||0)); });
+  myGoals.sort(function(a,b){ return ((a.status==='achieved'?1:0)-(b.status==='achieved'?1:0)) || (new Date(a.due_date||0)-new Date(b.due_date||0)); });
   const goalCards = myGoals.map(function(g){
     const rate = goalProgressRate(g);
     const statusLbl = g.status==='achieved' ? 'تم تحقيقه' : g.status==='missed' ? 'لم يتحقق' : 'قيد التنفيذ';
@@ -5913,11 +6007,11 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
-  const visitSchedules = rawVisits.filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
+  /* — جدول الزيارات — */
+  const visitSchedules = rawVisits.filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
   const visitScheduleCards = visitSchedules.map(function(s){ return visitScheduleTableHtml(s, {}); }).join('');
 
-  const myForms = subs.filter(function(s){ return s.created_by===State.user.id; })
-    .sort(function(a,b){ return new Date(b.created_at||0) - new Date(a.created_at||0); });
+  /* — جدول نماذجي — */
   const myFormsRows = myForms.map(function(s){
     const def = formDef(s.form_type);
     return (
@@ -5926,7 +6020,7 @@ async function screenTeacherTasks(){
         '<td>'+fmtDate(s.created_at)+'</td>' +
         '<td><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></td>' +
         '<td class="row-actions">' +
-          (s.status==='draft' || s.status==='returned'
+          (s.status==='draft'||s.status==='returned'
             ? '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">إكمال التعبئة</button>'
             : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>') +
         '</td>' +
@@ -5936,7 +6030,9 @@ async function screenTeacherTasks(){
 
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:16px;">'+esc(State.user.school)+'</div>' +
+    kpiHtml +
+    overdueAlert +
     '<div class="section-head"><h2>الخطط العلاجية والنماذج الخاصة بي</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" data-action="goStudentRoster">بيانات الطلاب</button>' +
@@ -5948,12 +6044,13 @@ async function screenTeacherTasks(){
     '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">من هنا يمكنك إنشاء خطة علاجية جماعية للطلاب المتعثرين، ثم خطة فردية أكاديمية لمن يحتاج متابعة مكثّفة، وخطة علاجية سلوكية لمن لديهم سلوكيات مستهدَفة، بعد تسجيل بيانات طلابك في "بيانات الطلاب".</p>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>النموذج</th><th>تاريخ الإنشاء</th><th>الحالة</th><th></th></tr></thead>' +
-      '<tbody>' + (myFormsRows || '<tr class="empty-row"><td colspan="4">لم تُنشئ أي نموذج بعد.</td></tr>') + '</tbody>' +
+      '<tbody>'+(myFormsRows||'<tr class="empty-row"><td colspan="4">لم تُنشئ أي نموذج بعد.</td></tr>')+'</tbody>' +
     '</table></div></div>' +
+    studentSummaryHtml +
     (visitScheduleCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> جدول الزيارات التبادلية المعتمد من منسق مجتمعك</div>' + visitScheduleCards) : '') +
-    (taskCards ? ('<div class="block-title" style="margin-top:'+(visitScheduleCards?'22px':'0')+';"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
-    (goalCards ? ('<div class="block-title" style="margin-top:'+((visitScheduleCards||taskCards)?'22px':'0')+';"><span class="dot"></span> خطط تحسين موكَّل إليك تنفيذها</div>' + goalCards) : '') +
-    (sessCards ? ('<div class="block-title" style="margin-top:'+((visitScheduleCards||taskCards||goalCards)?'22px':'0')+';"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية</div>' + sessCards) : '')
+    (taskCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
+    (goalCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> خطط تحسين موكَّل إليك تنفيذها</div>' + goalCards) : '') +
+    (sessCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية ('+completedSessions+'/'+sessTasks.length+' مكتملة)</div>' + sessCards) : '')
   );
 }
 function bindTeacherTasks(){
