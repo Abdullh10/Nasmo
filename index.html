@@ -2678,13 +2678,13 @@ function studentOptionsHtmlByGrade(students, value, isManual){
   return html;
 }
 function _stuSearchJson(students){
-  return esc(JSON.stringify((students||[]).map(function(s){ return {n:s.full_name, g:s.student_grade||'', sec:s.student_section||''}; })));
+  return esc(JSON.stringify((students||[]).map(function(s){ return {n:s.full_name, g:s.grade||s.student_grade||'', sec:s.section||s.student_section||''}; })));
 }
 function _stuCascadeHtml(fieldPath, value, students){
   var gradeMap = {};
   var grades = [];
   (students||[]).forEach(function(s){
-    var g = s.student_grade||''; var sec = s.student_section||''; var n = s.full_name;
+    var g = s.grade||s.student_grade||''; var sec = s.section||s.student_section||''; var n = s.full_name;
     if (!g) return;
     if (!gradeMap[g]){ gradeMap[g] = {}; grades.push(g); }
     if (sec){ if (!gradeMap[g][sec]) gradeMap[g][sec] = []; gradeMap[g][sec].push(n); }
