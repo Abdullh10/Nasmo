@@ -5304,12 +5304,14 @@ const CASE_STATUS_LABEL = { open:'مفتوحة', in_progress:'قيد المتا�
 const CASE_STATUS_CLASS = { open:'pending', in_progress:'approved', closed:'' };
 
 async function screenCounselorCases(){
-  const [cases, schoolUsers] = await Promise.all([
+  const [cases, schoolUsers, schoolStudents] = await Promise.all([
     DB.listCounselingCases(State.user.school),
-    DB.listUsers({ school: State.user.school })
+    DB.listUsers({ school: State.user.school }),
+    DB.listStudents({ school: State.user.school })
   ]);
   const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||u.role==='principal'; })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+  const sortedStudents = schoolStudents.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const grades = cases.map(function(c){ return c.student_grade||''; }).filter(Boolean)
     .filter(function(v,i,a){ return a.indexOf(v)===i; })
     .sort(function(a,b){ return a.localeCompare(b,'ar'); });
@@ -5346,7 +5348,7 @@ async function screenCounselorCases(){
     );
   }).join('');
 
-  const caseModal = CounselorUI.modalOpen ? counselorCaseModal(editing, teachers) : '';
+  const caseModal = CounselorUI.modalOpen ? counselorCaseModal(editing, teachers, sortedStudents) : '';
   /* حالات مفتوحة/قيد المتابعة بدون جلسة خلال آخر 30 يوم */
   const now = Date.now();
   const staleThreshold = 30 * 24 * 60 * 60 * 1000;
@@ -5416,8 +5418,9 @@ async function screenCounselorCases(){
   );
 }
 
-function counselorCaseModal(c, teachers){
+function counselorCaseModal(c, teachers, students){
   teachers = teachers || [];
+  students = students || [];
   const isNew = !c;
   const sessions = c ? (c.sessions||[]) : [];
   const sessionsHtml = sessions.length
@@ -5434,7 +5437,14 @@ function counselorCaseModal(c, teachers){
       '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:540px;">' +
         '<h3 style="margin-bottom:16px;">'+(isNew ? 'إضافة حالة جديدة' : 'الحالة الإرشادية — '+esc(c.student_name))+'</h3>' +
         (isNew ? (
-          '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label><input class="input" id="caseStudentName"></div>' +
+          '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
+            '<select class="input" id="caseStudentSel">' +
+              '<option value="">— اختر الطالب —</option>' +
+              students.map(function(s){ return '<option value="'+esc(s.full_name)+'" data-grade="'+esc(s.student_grade||'')+'" data-section="'+esc(s.student_section||'')+'">'+esc(s.full_name)+(s.student_grade?' — '+esc(s.student_grade):'')+(s.student_section?' '+esc(s.student_section):'')+'</option>'; }).join('') +
+              '<option value="__manual__">أخرى (إدخال يدوي)</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="field" id="caseStudentManualField" style="display:none;"><label>اسم الطالب (يدوي)</label><input class="input" id="caseStudentName"></div>' +
           '<div style="display:flex;gap:8px;">' +
             '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade"></div>' +
             '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection"></div>' +
@@ -5517,6 +5527,22 @@ function bindCounselorCases(){
     });
   });
 
+  const studentSel = document.getElementById('caseStudentSel');
+  if (studentSel) studentSel.addEventListener('change', function(){
+    const manualField = document.getElementById('caseStudentManualField');
+    if (this.value === '__manual__'){
+      if (manualField) manualField.style.display = '';
+      document.getElementById('caseGrade').value = '';
+      document.getElementById('caseSection').value = '';
+    } else {
+      if (manualField) manualField.style.display = 'none';
+      const opt = this.options[this.selectedIndex];
+      if (opt && this.value){
+        document.getElementById('caseGrade').value = opt.getAttribute('data-grade') || '';
+        document.getElementById('caseSection').value = opt.getAttribute('data-section') || '';
+      }
+    }
+  });
   const referredBySel = document.getElementById('caseReferredBy');
   if (referredBySel) referredBySel.addEventListener('change', function(){
     const otherField = document.getElementById('caseReferredByOtherField');
@@ -5555,7 +5581,11 @@ function bindCounselorCases(){
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const isNew = !CounselorUI.editingId;
     if (isNew){
-      const studentName = (document.getElementById('caseStudentName')||{}).value||'';
+      const studentSelEl = document.getElementById('caseStudentSel');
+      const studentSelVal = studentSelEl ? studentSelEl.value : '';
+      const studentName = (studentSelVal==='__manual__' || !studentSelVal)
+        ? ((document.getElementById('caseStudentName')||{}).value||'').trim()
+        : studentSelVal;
       if (!studentName.trim()){ toast('يرجى إدخال اسم الطالب.'); return; }
       const referredBySel = document.getElementById('caseReferredBy');
       const referredByVal = referredBySel ? referredBySel.value : State.user.full_name;
