@@ -226,12 +226,7 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
   background:var(--surface-2); color:var(--text); transition:.15s;
 }
 .input:focus,select.input:focus,textarea.input:focus{ outline:none; border-color:var(--teal); background:var(--surface); box-shadow:0 0 0 3px rgba(14,124,123,.12); }
-.stu-search{ position:relative; }
-.stu-search-dd{ position:absolute; top:100%; right:0; left:0; background:var(--card); border:1.5px solid var(--teal); border-top:none; border-radius:0 0 8px 8px; max-height:230px; overflow-y:auto; z-index:120; box-shadow:0 8px 20px rgba(0,0,0,.13); display:none; }
-.stu-search-opt{ padding:9px 14px; cursor:pointer; font-size:13.5px; border-bottom:1px solid var(--border); }
-.stu-search-opt:last-child{ border-bottom:none; }
-.stu-search-opt:hover{ background:rgba(14,124,123,.08); }
-.stu-search-opt .opt-meta{ font-size:11px; color:var(--muted); margin-top:2px; }
+.stu-cascade{ display:flex; flex-direction:column; gap:6px; }
 .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:8px; padding:11px 18px; font-weight:700; font-size:14px; transition:.15s; }
 .btn-primary{ background:var(--navy); color:#fff; }
 .btn-primary:hover{ background:var(--navy-2); }
@@ -2674,25 +2669,56 @@ function studentOptionsHtmlByGrade(students, value, isManual){
 function _stuSearchJson(students){
   return esc(JSON.stringify((students||[]).map(function(s){ return {n:s.full_name, g:s.student_grade||'', sec:s.student_section||''}; })));
 }
-function studentSelectHtml(label, fieldPath, value, students, ro){
-  if (ro) return inputField(label, fieldPath, value, {readonly:true});
+function _stuCascadeHtml(fieldPath, value, students){
+  var gradeMap = {};
+  var grades = [];
+  (students||[]).forEach(function(s){
+    var g = s.student_grade||''; var sec = s.student_section||''; var n = s.full_name;
+    if (!g) return;
+    if (!gradeMap[g]){ gradeMap[g] = {}; grades.push(g); }
+    if (sec){ if (!gradeMap[g][sec]) gradeMap[g][sec] = []; gradeMap[g][sec].push(n); }
+  });
+  grades.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  var preGrade = '', preSec = '';
+  if (value){
+    for (var gi=0; gi<grades.length; gi++){
+      var g = grades[gi];
+      var ks = Object.keys(gradeMap[g]).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+      for (var si=0; si<ks.length; si++){
+        if ((gradeMap[g][ks[si]]||[]).indexOf(value) > -1){ preGrade = g; preSec = ks[si]; break; }
+      }
+      if (preGrade) break;
+    }
+  }
+  var gradeOpts = '<option value="">— اختر الصف —</option>' +
+    grades.map(function(g){ return '<option value="'+esc(g)+'"'+(g===preGrade?' selected':'')+'>'+esc(g)+'</option>'; }).join('');
+  var secOpts = '<option value="">— اختر الشعبة —</option>';
+  if (preGrade){
+    Object.keys(gradeMap[preGrade]).sort(function(a,b){ return a.localeCompare(b,'ar'); }).forEach(function(sec){
+      secOpts += '<option value="'+esc(sec)+'"'+(sec===preSec?' selected':'')+'>'+esc(sec)+'</option>';
+    });
+  }
+  var stuOpts = '<option value="">— اختر الطالب —</option>';
+  if (preGrade && preSec){
+    (gradeMap[preGrade][preSec]||[]).forEach(function(n){
+      stuOpts += '<option value="'+esc(n)+'"'+(n===value?' selected':'')+'>'+esc(n)+'</option>';
+    });
+  }
   return (
-    '<div class="field"><label>'+esc(label)+'</label>' +
-    '<div class="stu-search" data-target="'+esc(fieldPath)+'" data-stud="'+_stuSearchJson(students)+'">' +
-      '<input type="text" class="input stu-search-inp" value="'+esc(value||'')+'" placeholder="ابحث باسم الطالب أو لقبه..." autocomplete="off">' +
-      '<div class="stu-search-dd"></div>' +
-    '</div>' +
+    '<div class="stu-cascade" data-target="'+esc(fieldPath)+'" data-stud="'+_stuSearchJson(students)+'">' +
+      '<select class="input" data-role="grade">'+gradeOpts+'</select>' +
+      '<select class="input" data-role="section"'+(preGrade?'':' style="display:none;"')+'>'+secOpts+'</select>' +
+      '<select class="input" data-role="student"'+(preSec?'':' style="display:none;"')+'>'+stuOpts+'</select>' +
     '</div>'
   );
 }
+function studentSelectHtml(label, fieldPath, value, students, ro){
+  if (ro) return inputField(label, fieldPath, value, {readonly:true});
+  return '<div class="field"><label>'+esc(label)+'</label>' + _stuCascadeHtml(fieldPath, value, students) + '</div>';
+}
 function studentSelectInlineHtml(fieldPath, value, students, ro){
   if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
-  return (
-    '<div class="stu-search" data-target="'+esc(fieldPath)+'" data-stud="'+_stuSearchJson(students)+'">' +
-      '<input type="text" class="input stu-search-inp" value="'+esc(value||'')+'" placeholder="ابحث باسم الطالب..." autocomplete="off">' +
-      '<div class="stu-search-dd"></div>' +
-    '</div>'
-  );
+  return _stuCascadeHtml(fieldPath, value, students);
 }
 function studentMultiPickButtonHtml(list){
   return '<button class="btn btn-ghost btn-sm" data-action="openStudentPick" data-list="'+list+'">+ إضافة عدة طلاب دفعة واحدة</button>';
@@ -5528,10 +5554,7 @@ function counselorCaseModal(c, teachers, students){
             '<select class="input" id="caseSectionSel"><option value="">— اختر الشعبة —</option></select>' +
           '</div>' +
           '<div class="field" id="caseStudentField" style="display:none;"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
-            '<div class="stu-search" id="caseStudentWrap" data-stud="[]">' +
-              '<input type="text" class="input stu-search-inp" id="caseStudentSel" placeholder="ابحث باسم الطالب أو لقبه..." autocomplete="off">' +
-              '<div class="stu-search-dd"></div>' +
-            '</div>' +
+            '<select class="input" id="caseStudentSel"><option value="">— اختر الطالب —</option></select>' +
           '</div>' +
           '<div id="caseManualBlock" style="display:none;">' +
             '<div style="display:flex;gap:8px;">' +
@@ -5663,13 +5686,11 @@ function bindCounselorCases(){
     const filtered = allStudents.filter(function(s){
       return s.student_grade === grade && (section === '__all__' || (s.student_section||'') === section);
     });
-    var caseStudentWrap = document.getElementById('caseStudentWrap');
-    if (caseStudentWrap) {
-      caseStudentWrap.setAttribute('data-stud', JSON.stringify(filtered.map(function(s){ return {n:s.full_name, g:s.student_grade||'', sec:s.student_section||''}; })));
-      caseStudentWrap._ssBound = false;
-      bindAllStudentSearches();
+    if (studentSel2) {
+      studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>' +
+        filtered.map(function(s){ return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+'</option>'; }).join('');
+      studentSel2.value = '';
     }
-    if (studentSel2) studentSel2.value = '';
     if (studentField) studentField.style.display = '';
   });
   const referredBySel = document.getElementById('caseReferredBy');
@@ -8323,48 +8344,48 @@ function defaultRowFor(list){
 }
 
 function bindAllStudentSearches(){
-  document.querySelectorAll('.stu-search').forEach(function(wrap){
+  document.querySelectorAll('.stu-cascade').forEach(function(wrap){
     if (wrap._ssBound) return;
     wrap._ssBound = true;
-    var inp = wrap.querySelector('.stu-search-inp');
-    var dd  = wrap.querySelector('.stu-search-dd');
     var fieldPath = wrap.getAttribute('data-target');
     var students = [];
     try { students = JSON.parse(wrap.getAttribute('data-stud')||'[]'); } catch(e){}
-
-    function showDd(q){
-      var ql = (q||'').trim().toLowerCase();
-      var matches = ql
-        ? students.filter(function(s){ return s.n.toLowerCase().indexOf(ql) > -1; })
-        : students;
-      if (!matches.length){ dd.style.display = 'none'; return; }
-      dd.innerHTML = matches.slice(0, 60).map(function(s){
-        return '<div class="stu-search-opt" data-val="'+esc(s.n)+'">' +
-          esc(s.n) +
-          (s.g||s.sec ? '<div class="opt-meta">'+esc(s.g)+(s.sec?' / '+esc(s.sec):'')+'</div>' : '') +
-        '</div>';
-      }).join('');
-      dd.style.display = 'block';
-    }
-
-    inp.addEventListener('focus',  function(){ showDd(this.value); });
-    inp.addEventListener('input',  function(){ showDd(this.value); });
-    inp.addEventListener('blur',   function(){
-      setTimeout(function(){ dd.style.display = 'none'; }, 200);
-      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data){
-        setPath(EditorState.data, fieldPath, inp.value);
-      }
+    var gradeMap = {};
+    students.forEach(function(s){
+      var g = s.g||''; var sec = s.sec||''; var n = s.n;
+      if (!g) return;
+      if (!gradeMap[g]) gradeMap[g] = {};
+      if (sec){ if (!gradeMap[g][sec]) gradeMap[g][sec] = []; gradeMap[g][sec].push(n); }
     });
-    dd.addEventListener('mousedown', function(e){
-      var opt = e.target.closest('.stu-search-opt');
-      if (!opt) return;
-      e.preventDefault();
-      var val = opt.getAttribute('data-val');
-      inp.value = val;
-      dd.style.display = 'none';
-      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data){
-        setPath(EditorState.data, fieldPath, val);
-      }
+    var gradeSel = wrap.querySelector('[data-role="grade"]');
+    var secSel   = wrap.querySelector('[data-role="section"]');
+    var stuSel   = wrap.querySelector('[data-role="student"]');
+    if (!gradeSel || !secSel || !stuSel) return;
+    gradeSel.addEventListener('change', function(){
+      var grade = this.value;
+      stuSel.style.display = 'none';
+      stuSel.innerHTML = '<option value="">— اختر الطالب —</option>';
+      if (!grade){ secSel.style.display = 'none'; secSel.innerHTML = '<option value="">— اختر الشعبة —</option>'; return; }
+      var secs = Object.keys(gradeMap[grade]||{}).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+      secSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
+        secs.map(function(sec){ return '<option value="'+esc(sec)+'">'+esc(sec)+'</option>'; }).join('');
+      secSel.style.display = '';
+      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data)
+        setPath(EditorState.data, fieldPath, '');
+    });
+    secSel.addEventListener('change', function(){
+      var sec = this.value; var grade = gradeSel.value;
+      if (!sec){ stuSel.style.display = 'none'; stuSel.innerHTML = '<option value="">— اختر الطالب —</option>'; return; }
+      var names = (gradeMap[grade]||{})[sec] || [];
+      stuSel.innerHTML = '<option value="">— اختر الطالب —</option>' +
+        names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
+      stuSel.style.display = '';
+      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data)
+        setPath(EditorState.data, fieldPath, '');
+    });
+    stuSel.addEventListener('change', function(){
+      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data)
+        setPath(EditorState.data, fieldPath, this.value);
     });
   });
 }
