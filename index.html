@@ -3052,8 +3052,9 @@ function bindLogin(){
     try{
       const user = await DB.login(u, p);
       if (!user){ errBox.textContent='اسم المستخدم أو كلمة المرور غير صحيحة.'; errBox.style.display='block'; return; }
-      if (selectedSchool && user.role !== 'super_admin' && user.school !== selectedSchool){
-        errBox.textContent='هذا الحساب لا ينتمي للمدرسة المحددة.'; errBox.style.display='block'; return;
+      if (schoolEl && user.role !== 'super_admin'){
+        if (!selectedSchool){ errBox.textContent='يرجى اختيار المدرسة التي تنتمي إليها.'; errBox.style.display='block'; return; }
+        if (user.school !== selectedSchool){ errBox.textContent='هذا الحساب لا ينتمي للمدرسة المحددة.'; errBox.style.display='block'; return; }
       }
       setUserSession(user);
       go('dashboard');
