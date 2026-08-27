@@ -1067,6 +1067,7 @@ const LS_COUNSELING = "dtd_counseling_v1";
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function safeDataUrl(url){ return /^data:(image\/|application\/pdf|application\/octet-stream|text\/)/.test(url||'') ? url : ''; }
 const MAX_EVIDENCE_MB = 1;
 function checkFileSize(file){
   if (file.size > MAX_EVIDENCE_MB * 1024 * 1024){
@@ -2521,7 +2522,7 @@ const Pads = {};
 function buildSignaturePad(name, existingDataUrl, readonly){
   if (readonly){
     if (existingDataUrl){
-      return '<div class="sig-box"><img class="sig-img" src="'+existingDataUrl+'" alt="توقيع"></div>';
+      return '<div class="sig-box"><img class="sig-img" src="'+esc(safeDataUrl(existingDataUrl))+'" alt="توقيع"></div>';
     }
     return '<div class="upload-note">لا يوجد توقيع مسجَّل لهذا الحقل.</div>';
   }
@@ -2529,7 +2530,7 @@ function buildSignaturePad(name, existingDataUrl, readonly){
   setTimeout(function(){ mountPad(cid, name, existingDataUrl); }, 0);
   return (
     '<div class="sig-box" id="wrap_'+cid+'">' +
-      (existingDataUrl ? '<img class="sig-img" src="'+existingDataUrl+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
+      (existingDataUrl ? '<img class="sig-img" src="'+esc(safeDataUrl(existingDataUrl))+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
       '<canvas id="'+cid+'" width="500" height="140"></canvas>' +
       '<div class="sig-actions">' +
         '<span class="sig-name">وقّع بإصبعك أو بالماوس داخل الإطار</span>' +
@@ -4185,12 +4186,12 @@ function attachmentThumbHtml(f, i, removable, rmvAction){
   const isImg = /^image\//.test(f.type||'');
   const rmv = removable ? '<button type="button" class="rmv-ev" data-action="'+(rmvAction||'rmvPracticeFile')+'" data-i="'+i+'">✕</button>' : '';
   if (isImg){
-    return '<div class="evidence-thumb"><img src="'+f.data+'">'+rmv+'</div>';
+    return '<div class="evidence-thumb"><img src="'+esc(safeDataUrl(f.data))+'">'+rmv+'</div>';
   }
   const icon = /pdf/i.test(f.type||'') || /\.pdf$/i.test(f.name||'') ? '📕' : '📄';
   return (
     '<div class="evidence-thumb file">' +
-      '<a href="'+f.data+'" target="_blank" download="'+esc(f.name||'')+'" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;color:inherit;text-decoration:none;gap:2px;">' +
+      '<a href="'+esc(safeDataUrl(f.data))+'" target="_blank" download="'+esc(f.name||'')+'" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;color:inherit;text-decoration:none;gap:2px;">' +
         '<span class="file-ic">'+icon+'</span>' +
         '<span style="font-size:10px;line-height:1.1;max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(f.name||'')+'</span>' +
       '</a>' +
@@ -5670,7 +5671,7 @@ function bindCounselorCases(){
       .map(function(s){ return s.student_section||''; })
       .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
       .sort(function(a,b){ return a.localeCompare(b,'ar'); });
-    sectionSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
+    if (sectionSel) sectionSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
       sections.map(function(sec){ return '<option value="'+esc(sec)+'">'+esc(sec)+'</option>'; }).join('') +
       (sections.length > 1 ? '<option value="__all__">كل الشعب</option>' : '');
     if (sectionField) sectionField.style.display = '';
@@ -5688,7 +5689,7 @@ function bindCounselorCases(){
     const filtered = allStudents.filter(function(s){
       return s.student_grade === grade && (section === '__all__' || (s.student_section||'') === section);
     });
-    studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>' +
+    if (studentSel2) studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>' +
       filtered.map(function(s){ return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+'</option>'; }).join('');
     if (studentField) studentField.style.display = '';
   });
@@ -5728,6 +5729,7 @@ function bindCounselorCases(){
   });
   const saveBtn = document.querySelector('[data-action="saveCase"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
+    if (saveBtn.disabled) return;
     const isNew = !CounselorUI.editingId;
     if (isNew){
       const gradeSelEl2 = document.getElementById('caseGradeSel');
@@ -5737,6 +5739,7 @@ function bindCounselorCases(){
         ? ((document.getElementById('caseStudentName')||{}).value||'').trim()
         : (studentSelEl ? studentSelEl.value : '');
       if (!studentName.trim()){ toast('يرجى إدخال اسم الطالب.'); return; }
+      saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
       const studentGrade = isManualEntry
         ? ((document.getElementById('caseGrade')||{}).value||'')
         : (gradeSelEl2 ? gradeSelEl2.value : '');
@@ -5765,8 +5768,9 @@ function bindCounselorCases(){
         close_summary: ''
       };
       try{ await DB.createCounselingCase(obj); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(e.message); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
     } else {
+      saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
       const cases = await DB.listCounselingCases(State.user.school);
       const c = cases.find(function(x){ return x.id===CounselorUI.editingId; });
       if (!c) return;
@@ -5780,7 +5784,7 @@ function bindCounselorCases(){
       const patch = { status:newStatus, counselor_notes:notes, parent_phone:phone, sessions:sessions, updated_at:nowIso() };
       if (closeSummary) patch.close_summary = closeSummary;
       try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(e.message); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
   });
 }
@@ -5855,7 +5859,7 @@ async function screenDashboard(){
   const pendingGoalsReview = (pGoals||[]).filter(function(g){ return g.status==='pending'; }).length;
 
   const broadcastModal = (State.user.role==='principal' && PrincipalUI.broadcastOpen) ? (
-    '<div class="modal-overlay" data-action="closePrincipalBroadcast">' +
+    '<div class="modal-bg" data-action="closePrincipalBroadcast">' +
     '<div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">' +
       '<div class="modal-head"><h3>إشعار لجميع المعلمين</h3><button class="btn-close" data-action="closePrincipalBroadcast">×</button></div>' +
       '<div class="modal-body">' +
@@ -5972,20 +5976,26 @@ function bindPrincipalMain(){
   if (sendBtn) sendBtn.addEventListener('click', async function(){
     var title = (document.getElementById('pBcastTitle')||{}).value||'';
     var body = (document.getElementById('pBcastBody')||{}).value||'';
-    if (!title.trim()) { alert('يرجى كتابة عنوان الإشعار'); return; }
-    sendBtn.disabled = true;
-    await DB.createNotification({
-      school: State.user.school,
-      sender_id: State.user.id,
-      sender_name: State.user.full_name,
-      target_type: 'school',
-      target_id: null,
-      type: 'general',
-      title: title.trim(),
-      body: body.trim()
-    });
-    PrincipalUI.broadcastOpen = false;
-    render();
+    if (!title.trim()) { toast('يرجى كتابة عنوان الإشعار'); return; }
+    sendBtn.disabled = true; sendBtn.textContent = 'جارٍ الإرسال…';
+    try {
+      await DB.createNotification({
+        school: State.user.school,
+        sender_id: State.user.id,
+        sender_name: State.user.full_name,
+        target_type: 'school',
+        target_id: null,
+        type: 'general',
+        title: title.trim(),
+        body: body.trim()
+      });
+      toast('تم إرسال الإشعار لجميع المعلمين.');
+      PrincipalUI.broadcastOpen = false;
+      render();
+    } catch(e) {
+      toast('تعذّر إرسال الإشعار: ' + e.message);
+      sendBtn.disabled = false; sendBtn.textContent = 'إرسال';
+    }
   });
 }
 
@@ -6078,7 +6088,7 @@ async function screenTeacherTasks(){
     const formsForSt = formsByStudent[s.full_name] || [];
     const badges = formsForSt.map(function(f){
       const def = formDef(f.form_type);
-      return '<span class="badge '+f.status+'" style="font-size:10.5px;margin-left:3px;">'+(def?def.title.slice(0,6)+'…':f.form_type)+'</span>';
+      return '<span class="badge '+esc(f.status)+'" style="font-size:10.5px;margin-left:3px;">'+(def?def.title.slice(0,6)+'…':esc(f.form_type))+'</span>';
     }).join('');
     const stSess = sessTasks.filter(function(t){ return t.sub.payload.studentName===s.full_name; });
     const sessText = stSess.length ? (stSess.filter(function(t){return !!t.sess.sig;}).length+'/'+stSess.length+' جلسات') : '—';
@@ -6212,7 +6222,7 @@ async function screenTeacherSession(subId, idx){
   const s = TeacherSessionCache.sub;
   const sess = s.payload.sessions[idx];
   const files = (sess.evidenceFiles||[]).map(function(f, i){
-    return '<div class="evidence-thumb"><img src="'+f+'"><button type="button" class="rmv-ev" data-action="rmvEvidence" data-i="'+i+'">✕</button></div>';
+    return '<div class="evidence-thumb"><img src="'+esc(safeDataUrl(f))+'"><button type="button" class="rmv-ev" data-action="rmvEvidence" data-i="'+i+'">✕</button></div>';
   }).join('');
   return (
     '<div class="sheet-wrap">' +
@@ -7252,11 +7262,11 @@ function bindAdminUsers(){
         /* 1) جلب usernames لتنظيف بطاقات الدخول (طلب واحد) */
         let deletedUsernames = [];
         try{
-          const rows = await remoteFetch('profiles?id=in.('+ids.join(',')+')'+'&select=id,username');
+          const rows = await remoteFetch('profiles?id=in.('+ids.map(encodeURIComponent).join(',')+')'+'&select=id,username');
           deletedUsernames = (rows||[]).map(function(r){ return r.username; }).filter(Boolean);
         }catch(e2){}
         /* 2) حذف كل profiles بطلب واحد */
-        await remoteFetch('profiles?id=in.('+ids.join(',')+')', { method:'DELETE' });
+        await remoteFetch('profiles?id=in.('+ids.map(encodeURIComponent).join(',')+')', { method:'DELETE' });
         /* 3) حذف auth users بالتوازي */
         if (getSvcKey()){
           await Promise.all(ids.map(function(id){
@@ -8097,7 +8107,7 @@ function renderIndividualAgreement(d, ro, teachers, students){
         '</div>' +
         inputField('التاريخ','sessions.'+i+'.date',s.date,{type:'date',readonly:ro}) +
         inputField('الإجراءات/الأدوات المطبقة ونتيجة تقويم الأسبوع','sessions.'+i+'.notes',s.notes,{type:'textarea',readonly:ro,placeholder:'مثال: تطبيق استراتيجية ... وتقويم الطالب بنهاية الأسبوع أظهر ...'}) +
-        ((s.evidenceFiles && s.evidenceFiles.length) ? ('<div class="field"><label>شواهد المعلم</label><div class="evidence-grid">' + s.evidenceFiles.map(function(f){ return '<div class="evidence-thumb"><img src="'+f+'"></div>'; }).join('') + '</div></div>') : '') +
+        ((s.evidenceFiles && s.evidenceFiles.length) ? ('<div class="field"><label>شواهد المعلم</label><div class="evidence-grid">' + s.evidenceFiles.map(function(f){ return '<div class="evidence-thumb"><img src="'+esc(safeDataUrl(f))+'"></div>'; }).join('') + '</div></div>') : '') +
         '<div class="field"><label>توقيع المعلم</label>' + buildSignaturePad('sessions.'+i, s.sig, ro) + '</div>' +
       '</div>'
     );
