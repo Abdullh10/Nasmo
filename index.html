@@ -226,6 +226,12 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
   background:var(--surface-2); color:var(--text); transition:.15s;
 }
 .input:focus,select.input:focus,textarea.input:focus{ outline:none; border-color:var(--teal); background:var(--surface); box-shadow:0 0 0 3px rgba(14,124,123,.12); }
+.stu-search{ position:relative; }
+.stu-search-dd{ position:absolute; top:100%; right:0; left:0; background:var(--card); border:1.5px solid var(--teal); border-top:none; border-radius:0 0 8px 8px; max-height:230px; overflow-y:auto; z-index:120; box-shadow:0 8px 20px rgba(0,0,0,.13); display:none; }
+.stu-search-opt{ padding:9px 14px; cursor:pointer; font-size:13.5px; border-bottom:1px solid var(--border); }
+.stu-search-opt:last-child{ border-bottom:none; }
+.stu-search-opt:hover{ background:rgba(14,124,123,.08); }
+.stu-search-opt .opt-meta{ font-size:11px; color:var(--muted); margin-top:2px; }
 .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:8px; padding:11px 18px; font-weight:700; font-size:14px; transition:.15s; }
 .btn-primary{ background:var(--navy); color:#fff; }
 .btn-primary:hover{ background:var(--navy-2); }
@@ -2665,63 +2671,27 @@ function studentOptionsHtmlByGrade(students, value, isManual){
   if (noGrade.length) html += noGrade.map(opt).join('');
   return html;
 }
+function _stuSearchJson(students){
+  return esc(JSON.stringify((students||[]).map(function(s){ return {n:s.full_name, g:s.student_grade||'', sec:s.student_section||''}; })));
+}
 function studentSelectHtml(label, fieldPath, value, students, ro){
   if (ro) return inputField(label, fieldPath, value, {readonly:true});
-  students = students || [];
-  const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const gradeFilter = (EditorState.studentGradeFilters && EditorState.studentGradeFilters[fieldPath]) || '';
-  const sectionFilter = (EditorState.studentSectionFilters && EditorState.studentSectionFilters[fieldPath]) || '';
-  const uniqueGrades = students
-    .map(function(s){ return s.student_grade||''; })
-    .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
-    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
-  const uniqueSections = gradeFilter
-    ? students.filter(function(s){ return s.student_grade===gradeFilter; })
-        .map(function(s){ return s.student_section||''; })
-        .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
-        .sort(function(a,b){ return a.localeCompare(b,'ar'); })
-    : [];
-  let filteredStudents = students;
-  if (gradeFilter) filteredStudents = filteredStudents.filter(function(s){ return s.student_grade===gradeFilter; });
-  if (sectionFilter) filteredStudents = filteredStudents.filter(function(s){ return (s.student_section||'')===sectionFilter; });
-  const opts = studentOptionsHtml(filteredStudents, value, isManual);
-  const manualInput = isManual ? '<input class="input" style="margin-top:8px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
-  const cascadeHtml = uniqueGrades.length ? (
-    '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
-      '<select class="input" style="flex:1;" data-action="studentGradeFilter" data-target="'+fieldPath+'">' +
-        '<option value="">— كل الصفوف —</option>' +
-        uniqueGrades.map(function(g){ return '<option value="'+esc(g)+'" '+(gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
-      '</select>' +
-      (uniqueSections.length ? (
-        '<select class="input" style="flex:1;" data-action="studentSectionFilter" data-target="'+fieldPath+'">' +
-          '<option value="">— كل الشعب —</option>' +
-          uniqueSections.map(function(sec){ return '<option value="'+esc(sec)+'" '+(sectionFilter===sec?'selected':'')+'>'+esc(sec)+'</option>'; }).join('') +
-        '</select>'
-      ) : '') +
-    '</div>'
-  ) : '';
   return (
     '<div class="field"><label>'+esc(label)+'</label>' +
-      cascadeHtml +
-      '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
-        '<option value="">— اختر الطالب —</option>' + opts +
-        '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
-      '</select>' +
-      manualInput +
+    '<div class="stu-search" data-target="'+esc(fieldPath)+'" data-stud="'+_stuSearchJson(students)+'">' +
+      '<input type="text" class="input stu-search-inp" value="'+esc(value||'')+'" placeholder="ابحث باسم الطالب أو لقبه..." autocomplete="off">' +
+      '<div class="stu-search-dd"></div>' +
+    '</div>' +
     '</div>'
   );
 }
 function studentSelectInlineHtml(fieldPath, value, students, ro){
   if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
-  students = students || [];
-  const isManual = EditorState.manualStudentFields.has(fieldPath) || !!(value && !students.some(function(s){ return s.full_name===value; }));
-  const opts = studentOptionsHtmlByGrade(students, value, isManual);
-  const manualInput = isManual ? '<input class="input" style="margin-top:6px;" data-field="'+fieldPath+'" value="'+esc(value||'')+'" placeholder="اكتب اسم الطالب">' : '';
   return (
-    '<select class="input" data-action="studentSelect" data-target="'+fieldPath+'">' +
-      '<option value="">— اختر الطالب —</option>' + opts +
-      '<option value="__manual__" '+(isManual?'selected':'')+'>أخرى (إدخال يدوي)</option>' +
-    '</select>' + manualInput
+    '<div class="stu-search" data-target="'+esc(fieldPath)+'" data-stud="'+_stuSearchJson(students)+'">' +
+      '<input type="text" class="input stu-search-inp" value="'+esc(value||'')+'" placeholder="ابحث باسم الطالب..." autocomplete="off">' +
+      '<div class="stu-search-dd"></div>' +
+    '</div>'
   );
 }
 function studentMultiPickButtonHtml(list){
@@ -5558,7 +5528,10 @@ function counselorCaseModal(c, teachers, students){
             '<select class="input" id="caseSectionSel"><option value="">— اختر الشعبة —</option></select>' +
           '</div>' +
           '<div class="field" id="caseStudentField" style="display:none;"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
-            '<select class="input" id="caseStudentSel"><option value="">— اختر الطالب —</option></select>' +
+            '<div class="stu-search" id="caseStudentWrap" data-stud="[]">' +
+              '<input type="text" class="input stu-search-inp" id="caseStudentSel" placeholder="ابحث باسم الطالب أو لقبه..." autocomplete="off">' +
+              '<div class="stu-search-dd"></div>' +
+            '</div>' +
           '</div>' +
           '<div id="caseManualBlock" style="display:none;">' +
             '<div style="display:flex;gap:8px;">' +
@@ -5612,6 +5585,7 @@ function counselorCaseModal(c, teachers, students){
 }
 
 function bindCounselorCases(){
+  bindAllStudentSearches();
   document.querySelectorAll('[data-action="counselorFilter"]').forEach(function(el){
     el.addEventListener('click', function(){
       const st = el.getAttribute('data-status');
@@ -5676,7 +5650,7 @@ function bindCounselorCases(){
       (sections.length > 1 ? '<option value="__all__">كل الشعب</option>' : '');
     if (sectionField) sectionField.style.display = '';
     if (studentField) studentField.style.display = 'none';
-    if (studentSel2) studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>';
+    if (studentSel2) studentSel2.value = '';
   });
   const sectionSelEl = document.getElementById('caseSectionSel');
   if (sectionSelEl) sectionSelEl.addEventListener('change', function(){
@@ -5689,8 +5663,13 @@ function bindCounselorCases(){
     const filtered = allStudents.filter(function(s){
       return s.student_grade === grade && (section === '__all__' || (s.student_section||'') === section);
     });
-    if (studentSel2) studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>' +
-      filtered.map(function(s){ return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+'</option>'; }).join('');
+    var caseStudentWrap = document.getElementById('caseStudentWrap');
+    if (caseStudentWrap) {
+      caseStudentWrap.setAttribute('data-stud', JSON.stringify(filtered.map(function(s){ return {n:s.full_name, g:s.student_grade||'', sec:s.student_section||''}; })));
+      caseStudentWrap._ssBound = false;
+      bindAllStudentSearches();
+    }
+    if (studentSel2) studentSel2.value = '';
     if (studentField) studentField.style.display = '';
   });
   const referredBySel = document.getElementById('caseReferredBy');
@@ -8343,6 +8322,53 @@ function defaultRowFor(list){
   }
 }
 
+function bindAllStudentSearches(){
+  document.querySelectorAll('.stu-search').forEach(function(wrap){
+    if (wrap._ssBound) return;
+    wrap._ssBound = true;
+    var inp = wrap.querySelector('.stu-search-inp');
+    var dd  = wrap.querySelector('.stu-search-dd');
+    var fieldPath = wrap.getAttribute('data-target');
+    var students = [];
+    try { students = JSON.parse(wrap.getAttribute('data-stud')||'[]'); } catch(e){}
+
+    function showDd(q){
+      var ql = (q||'').trim().toLowerCase();
+      var matches = ql
+        ? students.filter(function(s){ return s.n.toLowerCase().indexOf(ql) > -1; })
+        : students;
+      if (!matches.length){ dd.style.display = 'none'; return; }
+      dd.innerHTML = matches.slice(0, 60).map(function(s){
+        return '<div class="stu-search-opt" data-val="'+esc(s.n)+'">' +
+          esc(s.n) +
+          (s.g||s.sec ? '<div class="opt-meta">'+esc(s.g)+(s.sec?' / '+esc(s.sec):'')+'</div>' : '') +
+        '</div>';
+      }).join('');
+      dd.style.display = 'block';
+    }
+
+    inp.addEventListener('focus',  function(){ showDd(this.value); });
+    inp.addEventListener('input',  function(){ showDd(this.value); });
+    inp.addEventListener('blur',   function(){
+      setTimeout(function(){ dd.style.display = 'none'; }, 200);
+      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data){
+        setPath(EditorState.data, fieldPath, inp.value);
+      }
+    });
+    dd.addEventListener('mousedown', function(e){
+      var opt = e.target.closest('.stu-search-opt');
+      if (!opt) return;
+      e.preventDefault();
+      var val = opt.getAttribute('data-val');
+      inp.value = val;
+      dd.style.display = 'none';
+      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data){
+        setPath(EditorState.data, fieldPath, val);
+      }
+    });
+  });
+}
+
 function bindEditor(){
   document.querySelectorAll('[data-field]').forEach(function(el){
     const evt = (el.tagName==='SELECT') ? 'change' : 'input';
@@ -8379,34 +8405,7 @@ function bindEditor(){
       render(); bindEditor();
     });
   });
-  document.querySelectorAll('[data-action="studentSelect"]').forEach(function(el){
-    el.addEventListener('change', function(){
-      const target = el.getAttribute('data-target');
-      if (el.value === '__manual__'){
-        EditorState.manualStudentFields.add(target);
-        setPath(EditorState.data, target, '');
-      } else {
-        EditorState.manualStudentFields.delete(target);
-        setPath(EditorState.data, target, el.value);
-      }
-      render(); bindEditor();
-    });
-  });
-  document.querySelectorAll('[data-action="studentGradeFilter"]').forEach(function(el){
-    el.addEventListener('change', function(){
-      const target = el.getAttribute('data-target');
-      EditorState.studentGradeFilters[target] = el.value;
-      EditorState.studentSectionFilters[target] = '';
-      render(); bindEditor();
-    });
-  });
-  document.querySelectorAll('[data-action="studentSectionFilter"]').forEach(function(el){
-    el.addEventListener('change', function(){
-      const target = el.getAttribute('data-target');
-      EditorState.studentSectionFilters[target] = el.value;
-      render(); bindEditor();
-    });
-  });
+  bindAllStudentSearches();
   document.querySelectorAll('[data-action="toggleAttend"]').forEach(function(el){
     el.addEventListener('change', function(){ EditorState.data.attendees[+el.getAttribute('data-idx')].present = el.checked; });
   });
