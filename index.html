@@ -2770,9 +2770,9 @@ let _renderToken = 0;
 let _notifCache = null, _notifCacheAt = 0;
 let _commCache = null, _commCacheAt = 0;
 let _pendingCache = null, _pendingCacheAt = 0;
-const NOTIF_TTL_MS = 30000;
-const COMM_TTL_MS = 120000;
-const PENDING_TTL_MS = 60000;
+const NOTIF_TTL_MS = 90000;
+const COMM_TTL_MS = 300000;
+const PENDING_TTL_MS = 120000;
 function invalidateNotifCache(){ _notifCache = null; }
 function invalidateCommCache(){ _commCache = null; }
 function invalidatePendingCache(){ _pendingCache = null; }
@@ -2781,32 +2781,42 @@ async function render(){
   const app = document.getElementById('app');
   if (!State.user && State.screen!=='login'){ State.screen='login'; }
   if (State.user){
-    try{
-      const needNotif   = !_notifCache   || (Date.now() - _notifCacheAt)   > NOTIF_TTL_MS;
-      const needComm    = !_commCache    || (Date.now() - _commCacheAt)    > COMM_TTL_MS;
-      const needPending = !_pendingCache || (Date.now() - _pendingCacheAt) > PENDING_TTL_MS;
-      if (needNotif || needComm || needPending){
+    const hasCache = !!(_notifCache && _commCache !== null && _pendingCache !== null);
+    const needNotif   = !_notifCache   || (Date.now() - _notifCacheAt)   > NOTIF_TTL_MS;
+    const needComm    = !_commCache    || (Date.now() - _commCacheAt)    > COMM_TTL_MS;
+    const needPending = !_pendingCache || (Date.now() - _pendingCacheAt) > PENDING_TTL_MS;
+    if (!hasCache){
+      /* أول تحميل — لا توجد بيانات، انتظر الجلب */
+      try{
         const [freshNotif, freshComm, freshPending] = await Promise.all([
-          needNotif   ? DB.listNotifications({ school: State.user.school }) : Promise.resolve(_notifCache),
-          needComm    ? ((State.user.role==='admin'||State.user.role==='super_admin') ? DB.listCommunities({})
-                        : (State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
-                        : Promise.resolve([])) : Promise.resolve(_commCache),
-          needPending ? (State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])) : Promise.resolve(_pendingCache)
+          DB.listNotifications({ school: State.user.school }),
+          (State.user.role==='admin'||State.user.role==='super_admin') ? DB.listCommunities({})
+            : (State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
+            : Promise.resolve([]),
+          State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])
         ]);
         if (token !== _renderToken) return;
-        if (needNotif)   { _notifCache   = freshNotif;   _notifCacheAt   = Date.now(); }
-        if (needComm)    { _commCache    = freshComm;    _commCacheAt    = Date.now(); }
-        if (needPending) { _pendingCache = freshPending; _pendingCacheAt = Date.now(); }
-      }
-      State.notifications    = _notifCache;
-      State.communitiesCache = _commCache;
-      State.pendingApprovals = _pendingCache;
-    }catch(e){
-      console.error('[render] فشل تحميل البيانات الأساسية:', e.message);
-      State.notifications    = State.notifications    || [];
-      State.communitiesCache = State.communitiesCache || [];
-      State.pendingApprovals = State.pendingApprovals || [];
+        _notifCache = freshNotif; _notifCacheAt = Date.now();
+        _commCache  = freshComm;  _commCacheAt  = Date.now();
+        _pendingCache = freshPending; _pendingCacheAt = Date.now();
+      }catch(e){ console.error('[render] فشل التحميل الأول:', e.message); }
+    } else if (needNotif || needComm || needPending){
+      /* cache موجود لكن قديم — اعرض فوراً ثم حدّث في الخلفية */
+      Promise.all([
+        needNotif   ? DB.listNotifications({ school: State.user.school }) : Promise.resolve(_notifCache),
+        needComm    ? ((State.user.role==='admin'||State.user.role==='super_admin') ? DB.listCommunities({})
+                      : (State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
+                      : Promise.resolve([])) : Promise.resolve(_commCache),
+        needPending ? (State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])) : Promise.resolve(_pendingCache)
+      ]).then(function(results){
+        if (needNotif)   { _notifCache   = results[0]; _notifCacheAt   = Date.now(); }
+        if (needComm)    { _commCache    = results[1]; _commCacheAt    = Date.now(); }
+        if (needPending) { _pendingCache = results[2]; _pendingCacheAt = Date.now(); }
+      }).catch(function(e){ console.error('[render:bg] فشل تحديث البيانات:', e.message); });
     }
+    State.notifications    = _notifCache   || [];
+    State.communitiesCache = _commCache    || [];
+    State.pendingApprovals = _pendingCache || [];
   }
   let html;
   try{
