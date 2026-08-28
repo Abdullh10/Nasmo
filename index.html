@@ -2997,7 +2997,7 @@ function topNav(){
   );
 }
 function notifComposeModal(){
-  const communities = State.communitiesCache || [];
+  const communities = (State.communitiesCache || []).filter(function(c){ return c.school === State.user.school; });
   const isAdmin = State.user.role==='admin';
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
   return (
