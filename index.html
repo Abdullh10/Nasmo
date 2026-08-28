@@ -451,6 +451,7 @@ textarea.input{ resize:vertical; min-height:64px; }
 .modal-box{ background:var(--surface); color:var(--text); border-radius:14px; padding:24px; max-width:440px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.25); max-height:calc(100dvh - 32px); overflow-y:auto; margin:auto; }
 .modal-box h3{ font-size:16px; margin-bottom:6px; }
 .modal-box p{ color:var(--muted); font-size:13px; margin-bottom:16px; }
+.check-row{ display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer; font-size:14px; }
 .modal-actions{ display:flex; gap:10px; margin-top:16px; }
 
 .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:12px 22px; border-radius:30px; font-size:13.5px; font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.2); z-index:110; }
@@ -5876,11 +5877,25 @@ async function screenDashboard(){
   const pendingTasksReview = (pTasks||[]).filter(function(t){ return t.status==='pending'; }).length;
   const pendingGoalsReview = (pGoals||[]).filter(function(g){ return g.status==='pending'; }).length;
 
+  const _bcastTeachers = PrincipalUI.teachers || [];
+  const _teacherChecks = _bcastTeachers.map(function(t){
+    return '<label class="check-row"><input type="checkbox" class="pBcastTeacher" value="'+esc(t.id)+'"> '+esc(t.full_name)+'</label>';
+  }).join('');
   const broadcastModal = (State.user.role==='principal' && PrincipalUI.broadcastOpen) ? (
     '<div class="modal-bg" data-action="closePrincipalBroadcast">' +
-    '<div class="modal-box" style="max-width:440px;" onclick="event.stopPropagation()">' +
-      '<div class="modal-head"><h3>إشعار لجميع المعلمين</h3><button class="btn-close" data-action="closePrincipalBroadcast">×</button></div>' +
+    '<div class="modal-box" style="max-width:460px;" onclick="event.stopPropagation()">' +
+      '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><h3 style="margin:0;">إشعار المعلمين</h3><button class="btn-close" data-action="closePrincipalBroadcast">×</button></div>' +
       '<div class="modal-body">' +
+        '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="font-weight:600;display:block;margin-bottom:8px;">إرسال إلى</label>' +
+          '<div style="display:flex;gap:24px;">' +
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="pBcastMode" value="all" checked> جميع المعلمين</label>' +
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="pBcastMode" value="specific"> معلمين محددين</label>' +
+          '</div>' +
+        '</div>' +
+        '<div id="pTeacherList" style="display:none;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:12px;">' +
+          (_teacherChecks || '<p style="color:var(--muted);font-size:13px;margin:0;">لا يوجد معلمون مسجلون.</p>') +
+        '</div>' +
         '<label>عنوان الإشعار<input id="pBcastTitle" class="inp" placeholder="مثال: تذكير بتسليم النماذج"></label>' +
         '<label style="margin-top:10px;display:block;">نص الرسالة<textarea id="pBcastBody" class="inp" rows="4" placeholder="اكتب رسالتك هنا..."></textarea></label>' +
       '</div>' +
@@ -5980,7 +5995,12 @@ function bindDashboard(){
 }
 function bindPrincipalMain(){
   var openBtn = document.querySelector('[data-action="openPrincipalBroadcast"]');
-  if (openBtn) openBtn.addEventListener('click', function(){
+  if (openBtn) openBtn.addEventListener('click', async function(){
+    if (!PrincipalUI.teachers || !PrincipalUI.teachers.length) {
+      try {
+        PrincipalUI.teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher'; });
+      } catch(e) { PrincipalUI.teachers = []; }
+    }
     PrincipalUI.broadcastOpen = true;
     render();
   });
@@ -5990,24 +6010,53 @@ function bindPrincipalMain(){
       render();
     });
   });
+  document.querySelectorAll('[name="pBcastMode"]').forEach(function(radio){
+    radio.addEventListener('change', function(){
+      var list = document.getElementById('pTeacherList');
+      if (list) list.style.display = this.value === 'specific' ? '' : 'none';
+    });
+  });
   var sendBtn = document.querySelector('[data-action="sendPrincipalBroadcast"]');
   if (sendBtn) sendBtn.addEventListener('click', async function(){
     var title = (document.getElementById('pBcastTitle')||{}).value||'';
     var body = (document.getElementById('pBcastBody')||{}).value||'';
     if (!title.trim()) { toast('يرجى كتابة عنوان الإشعار'); return; }
+    var modeEl = document.querySelector('[name="pBcastMode"]:checked');
+    var mode = modeEl ? modeEl.value : 'all';
+    var targetIds = [];
+    if (mode === 'specific') {
+      document.querySelectorAll('.pBcastTeacher:checked').forEach(function(cb){ targetIds.push(cb.value); });
+      if (!targetIds.length) { toast('يرجى اختيار معلم واحد على الأقل'); return; }
+    }
     sendBtn.disabled = true; sendBtn.textContent = 'جارٍ الإرسال…';
     try {
-      await DB.createNotification({
-        school: State.user.school,
-        sender_id: State.user.id,
-        sender_name: State.user.full_name,
-        target_type: 'school',
-        target_id: null,
-        type: 'general',
-        title: title.trim(),
-        body: body.trim()
-      });
-      toast('تم إرسال الإشعار لجميع المعلمين.');
+      if (mode === 'all') {
+        await DB.createNotification({
+          school: State.user.school,
+          sender_id: State.user.id,
+          sender_name: State.user.full_name,
+          target_type: 'school',
+          target_id: null,
+          type: 'general',
+          title: title.trim(),
+          body: body.trim()
+        });
+        toast('تم إرسال الإشعار لجميع المعلمين.');
+      } else {
+        await Promise.all(targetIds.map(function(tid){
+          return DB.createNotification({
+            school: State.user.school,
+            sender_id: State.user.id,
+            sender_name: State.user.full_name,
+            target_type: 'user',
+            target_id: tid,
+            type: 'general',
+            title: title.trim(),
+            body: body.trim()
+          });
+        }));
+        toast('تم إرسال الإشعار لـ ' + targetIds.length + ' معلم.');
+      }
       PrincipalUI.broadcastOpen = false;
       render();
     } catch(e) {
@@ -6694,7 +6743,7 @@ function bindCredsPrint(){
 }
 /* ==================== لوحة السوبر أدمن ==================== */
 let SuperAdminUI = { addSchoolOpen: false, managingSchool: null, broadcastOpen: false };
-let PrincipalUI = { broadcastOpen: false };
+let PrincipalUI = { broadcastOpen: false, teachers: [] };
 
 async function screenSuperAdmin(){
   const [allUsers, allSubs] = await Promise.all([
