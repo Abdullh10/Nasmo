@@ -5544,7 +5544,7 @@ function counselorCaseModal(c, teachers, students){
   students = students || [];
   const isNew = !c;
   const uniqueGrades = students
-    .map(function(s){ return s.student_grade||''; })
+    .map(function(s){ return s.grade||s.student_grade||''; })
     .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
     .sort(function(a,b){ return a.localeCompare(b,'ar'); });
   const sessions = c ? (c.sessions||[]) : [];
@@ -5647,8 +5647,7 @@ function bindCounselorCases(){
   if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); bindCounselorCases(); });
 
   const closeModal = function(){ CounselorUI.modalOpen=false; CounselorUI.editingId=null; render(); bindCounselorCases(); };
-  const closeBg = document.querySelector('[data-action="closeCaseModal"]');
-  if (closeBg) closeBg.addEventListener('click', closeModal);
+  document.querySelectorAll('[data-action="closeCaseModal"]').forEach(function(el){ el.addEventListener('click', closeModal); });
 
   document.querySelectorAll('[data-action="openCase"]').forEach(function(el){
     el.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=el.getAttribute('data-id'); render(); bindCounselorCases(); });
@@ -5683,8 +5682,8 @@ function bindCounselorCases(){
     }
     const allStudents = CounselorUI._students || [];
     const sections = allStudents
-      .filter(function(s){ return s.student_grade === grade; })
-      .map(function(s){ return s.student_section||''; })
+      .filter(function(s){ return (s.grade||s.student_grade||'') === grade; })
+      .map(function(s){ return s.section||s.student_section||''; })
       .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
       .sort(function(a,b){ return a.localeCompare(b,'ar'); });
     if (sectionSel) sectionSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
@@ -5703,7 +5702,7 @@ function bindCounselorCases(){
     if (!section){ if (studentField) studentField.style.display = 'none'; return; }
     const allStudents = CounselorUI._students || [];
     const filtered = allStudents.filter(function(s){
-      return s.student_grade === grade && (section === '__all__' || (s.student_section||'') === section);
+      return (s.grade||s.student_grade||'') === grade && (section === '__all__' || (s.section||s.student_section||'') === section);
     });
     if (studentSel2) {
       studentSel2.innerHTML = '<option value="">— اختر الطالب —</option>' +
