@@ -226,7 +226,9 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
   background:var(--surface-2); color:var(--text); transition:.15s;
 }
 .input:focus,select.input:focus,textarea.input:focus{ outline:none; border-color:var(--teal); background:var(--surface); box-shadow:0 0 0 3px rgba(14,124,123,.12); }
-.stu-cascade{ display:flex; flex-direction:column; gap:6px; }
+.stu-cascade{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+@media(max-width:700px){ .stu-cascade{ grid-template-columns:1fr; } }
+.stu-cascade .field{ margin-bottom:0; }
 .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:8px; padding:11px 18px; font-weight:700; font-size:14px; transition:.15s; }
 .btn-primary{ background:var(--navy); color:#fff; }
 .btn-primary:hover{ background:var(--navy-2); }
@@ -2717,15 +2719,21 @@ function _stuCascadeHtml(fieldPath, value, students){
   }
   return (
     '<div class="stu-cascade" data-target="'+esc(fieldPath)+'" data-stud="'+_stuSearchJson(students)+'">' +
-      '<select class="input" data-role="grade">'+gradeOpts+'</select>' +
-      '<select class="input" data-role="section"'+(preGrade?'':' style="display:none;"')+'>'+secOpts+'</select>' +
-      '<select class="input" data-role="student"'+(preSec?'':' style="display:none;"')+'>'+stuOpts+'</select>' +
+      '<div class="field"><label>الصف</label>' +
+        '<select class="input" data-role="grade">'+gradeOpts+'</select>' +
+      '</div>' +
+      '<div class="field"><label>الشعبة</label>' +
+        '<select class="input" data-role="section"'+(preGrade?'':' style="visibility:hidden;"')+'>'+secOpts+'</select>' +
+      '</div>' +
+      '<div class="field"><label>اسم الطالب</label>' +
+        '<select class="input" data-role="student"'+(preSec?'':' style="visibility:hidden;"')+'>'+stuOpts+'</select>' +
+      '</div>' +
     '</div>'
   );
 }
 function studentSelectHtml(label, fieldPath, value, students, ro){
   if (ro) return inputField(label, fieldPath, value, {readonly:true});
-  return '<div class="field"><label>'+esc(label)+'</label>' + _stuCascadeHtml(fieldPath, value, students) + '</div>';
+  return _stuCascadeHtml(fieldPath, value, students);
 }
 function studentSelectInlineHtml(fieldPath, value, students, ro){
   if (ro) return '<input class="input" data-field="'+fieldPath+'" value="'+esc(value||'')+'" disabled>';
@@ -8045,8 +8053,8 @@ function renderGroupPlan(d, ro, students){
     return (
       '<div class="session-card" data-row="students" data-idx="'+i+'">' +
         '<div class="session-head"><span class="ttl">طالب ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="students" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
+        studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro) +
         '<div class="field-grid cols-2">' +
-          '<div class="field"><label>الاسم</label>'+studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro)+'</div>' +
           inputField('درجة اختبار نهاية الفصل (من 40)','students.'+i+'.examScore',s.examScore,{type:'number',readonly:ro}) +
         '</div>' +
         '<div class="field-grid cols-2">' +
@@ -8130,8 +8138,8 @@ function renderIndividualAgreement(d, ro, teachers, students){
         inputField('الشعبة','section',d.section||'',{readonly:true}) +
       '</div>')
     : (ro
-        ? ('<div class="field-grid cols-2">'+inputField('اسم الطالب','studentName',d.studentName,{readonly:true})+inputField('الصف','grade',d.grade,{readonly:true})+'</div>')
-        : ('<div class="field-grid cols-2">'+studentSelectHtml('اسم الطالب','studentName',d.studentName,students,false)+inputField('الصف','grade',d.grade,{readonly:false})+'</div>'));
+        ? ('<div class="field-grid">' + inputField('الصف','grade',d.grade,{readonly:true}) + inputField('الشعبة','section',d.section||'',{readonly:true}) + inputField('اسم الطالب','studentName',d.studentName,{readonly:true}) + '</div>')
+        : studentSelectHtml('اسم الطالب','studentName',d.studentName,students,false));
   return (
     studentBlock +
     '<div class="upload-note">انطلاقًا من حرص المدرسة على دعم تحصيل الطلاب، أُدرج الطالب أعلاه في الخطة الفردية. تُسجَّل أدناه جلسات المتابعة الأسبوعية لكل معلم على حدة.</div>' +
@@ -8148,7 +8156,7 @@ function renderBehavioralPlan(d, ro, students){
     return (
       '<div class="session-card" data-row="behaviorStudents" data-idx="'+i+'">' +
         '<div class="session-head"><span class="ttl">طالب ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="behaviorStudents" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
-        '<div class="field"><label>الاسم</label>'+studentSelectInlineHtml('behaviorStudents.'+i+'.name', s.name, students, ro)+'</div>' +
+        studentSelectInlineHtml('behaviorStudents.'+i+'.name', s.name, students, ro) +
         '<div class="field-grid cols-2">' +
           inputField('السلوك المستهدَف','behaviorStudents.'+i+'.behavior',s.behavior,{type:'textarea',readonly:ro}) +
           inputField('الأسباب المحتملة','behaviorStudents.'+i+'.causes',s.causes,{type:'textarea',readonly:ro}) +
@@ -8381,29 +8389,33 @@ function bindAllStudentSearches(){
     if (!gradeSel || !secSel || !stuSel) return;
     gradeSel.addEventListener('change', function(){
       var grade = this.value;
-      stuSel.style.display = 'none';
-      stuSel.innerHTML = '<option value="">— اختر الطالب —</option>';
-      if (!grade){ secSel.style.display = 'none'; secSel.innerHTML = '<option value="">— اختر الشعبة —</option>'; return; }
+      stuSel.style.visibility = 'hidden'; stuSel.innerHTML = '<option value="">— اختر الطالب —</option>';
+      if (!grade){ secSel.style.visibility = 'hidden'; secSel.innerHTML = '<option value="">— اختر الشعبة —</option>'; return; }
       var secs = Object.keys(gradeMap[grade]||{}).sort(function(a,b){ return a.localeCompare(b,'ar'); });
       secSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
         secs.map(function(sec){ return '<option value="'+esc(sec)+'">'+esc(sec)+'</option>'; }).join('');
-      secSel.style.display = '';
-      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data)
-        setPath(EditorState.data, fieldPath, '');
+      secSel.style.visibility = '';
+      if (typeof EditorState !== 'undefined' && EditorState && EditorState.data){
+        if (fieldPath) setPath(EditorState.data, fieldPath, '');
+        if ('grade' in EditorState.data) setPath(EditorState.data, 'grade', grade);
+        if ('section' in EditorState.data) setPath(EditorState.data, 'section', '');
+      }
     });
     secSel.addEventListener('change', function(){
       var sec = this.value; var grade = gradeSel.value;
-      if (!sec){ stuSel.style.display = 'none'; stuSel.innerHTML = '<option value="">— اختر الطالب —</option>'; return; }
+      if (!sec){ stuSel.style.visibility = 'hidden'; stuSel.innerHTML = '<option value="">— اختر الطالب —</option>'; return; }
       var names = (gradeMap[grade]||{})[sec] || [];
       stuSel.innerHTML = '<option value="">— اختر الطالب —</option>' +
         names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
-      stuSel.style.display = '';
-      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data)
-        setPath(EditorState.data, fieldPath, '');
+      stuSel.style.visibility = '';
+      if (typeof EditorState !== 'undefined' && EditorState && EditorState.data){
+        if (fieldPath) setPath(EditorState.data, fieldPath, '');
+        if ('section' in EditorState.data) setPath(EditorState.data, 'section', sec);
+      }
     });
     stuSel.addEventListener('change', function(){
-      if (fieldPath && typeof EditorState !== 'undefined' && EditorState && EditorState.data){
-        setPath(EditorState.data, fieldPath, this.value);
+      if (typeof EditorState !== 'undefined' && EditorState && EditorState.data){
+        if (fieldPath) setPath(EditorState.data, fieldPath, this.value);
         if ('grade' in EditorState.data) setPath(EditorState.data, 'grade', gradeSel.value);
         if ('section' in EditorState.data) setPath(EditorState.data, 'section', secSel.value);
       }
