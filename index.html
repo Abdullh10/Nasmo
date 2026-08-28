@@ -1657,14 +1657,12 @@ const DB = {
         return remoteFetch(t + '?school=eq.' + encodeURIComponent(oldName), { method:'PATCH', body:{ school:newName } });
       }));
       try {
-        const siteRows = await remoteFetch('site_settings?key=eq.schools', {});
-        if (siteRows && siteRows.length) {
-          const schools = siteRows[0].value || [];
-          const idx = schools.indexOf(oldName);
-          if (idx > -1) {
-            schools[idx] = newName;
-            await remoteFetch('site_settings?key=eq.schools', { method:'PATCH', body:{ value: schools } });
-          }
+        const schools = (SiteSettings.schools||[]).slice();
+        const idx = schools.indexOf(oldName);
+        if (idx > -1) {
+          schools[idx] = newName;
+          await DB.saveSiteSettings({ schools: schools });
+          SiteSettings.schools = schools;
         }
       } catch(e) {}
       State.user.school = newName;
@@ -4012,7 +4010,7 @@ function bindCoordinatorGoals(){
       const id = el.getAttribute('data-id');
       const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
       const goal = goals.find(function(g){ return g.id===id; });
-      GoalsUI.modalOpen = true; GoalsUI.editId = id; GoalsUI.draft = goalDraftFrom(goal||{}); GoalsUI._prevMemberIds = (goal&&goal.assigned_member_ids)||[];
+      GoalsUI.modalOpen = true; GoalsUI.editId = id; GoalsUI.draft = goalDraftFrom(goal||{}); GoalsUI._prevMemberIds = (goal&&goal.assigned_member_ids)||[]; GoalsUI._principalStatus = (goal&&goal.principal_status)||null;
       render(); bindCoordinatorGoals();
     });
   });
@@ -4079,6 +4077,9 @@ function bindCoordinatorGoals(){
       let saved;
       const wasEdit = !!GoalsUI.editId;
       if (wasEdit){
+        if (GoalsUI._principalStatus === 'returned') {
+          patch.principal_status = null; patch.principal_note = null; patch.principal_reviewed_at = null;
+        }
         saved = await DB.updateGoal(GoalsUI.editId, patch);
         toast('تم حفظ التعديلات.');
       } else {
@@ -4561,7 +4562,10 @@ function openPlanForStudent(formType, student){
     row.name = student.full_name;
     data = { school: State.user.school, grade: student.grade||'', section: student.section||'', subject:'', date:today, students:[row], teacherOpinion:'' };
   } else if (formType === 'behavioralPlan'){
-    data = Object.assign(blankData(formType), { studentName: student.full_name, grade: student.grade||'', section: student.section||'' });
+    data = blankData(formType);
+    data.grade = student.grade||'';
+    data.section = student.section||'';
+    if (data.behaviorStudents && data.behaviorStudents.length) data.behaviorStudents[0].name = student.full_name;
   } else {
     data = blankData(formType);
   }
@@ -5828,7 +5832,7 @@ function bindCounselorCases(){
       const sessions = (c.sessions||[]).slice();
       if (sessionText) sessions.push({ date: new Date().toISOString().slice(0,10), notes: sessionText });
       const patch = { status:newStatus, counselor_notes:notes, parent_phone:phone, sessions:sessions, updated_at:nowIso() };
-      if (closeSummary) patch.close_summary = closeSummary;
+      patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? '' : closeSummary;
       try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(e.message); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
@@ -6395,7 +6399,7 @@ let TaskDetailCache = null;
 async function screenTaskDetail(taskId, readonly){
   const t = await DB.getTask(taskId);
   if (!TaskDetailCache || TaskDetailCache.id !== taskId || TaskDetailCache.completed_at !== t.completed_at){
-    TaskDetailCache = { id:t.id, completed_at:t.completed_at, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice() };
+    TaskDetailCache = { id:t.id, completed_at:t.completed_at, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice(), assigned_to:t.assigned_to||null, title:t.title||'' };
   }
   const isOwner = State.user.role==='teacher' && t.assigned_to===State.user.id;
   const ro = !!readonly || !isOwner;
@@ -6528,6 +6532,7 @@ function bindTaskDetail(){
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب إرجاع المهمة.'); return; }
     try{
       const updated = await DB.updateTask(TaskDetailCache.id, { coordinator_status:'returned', coordinator_note: note, coordinator_reviewed_at: nowIso(), status:'pending' });
+      invalidatePendingCache();
       if (updated && updated.assigned_to){
         try{
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.assigned_to, type:'general', title:'تم إرجاع مهمة لتعديلها: '+updated.title, body:note });
@@ -7238,6 +7243,7 @@ function bindAdminUsers(){
     const email = document.getElementById('umEmail').value.trim();
     if (!fullName || !username || !school || (!AdminUI.editingId && !password)){ toast('يرجى تعبئة جميع الحقول المطلوبة.'); return; }
     if (password && isRemote() && password.length < 6){ toast('كلمة المرور يجب أن تكون 6 أحرف على الأقل.'); return; }
+    if (State.user.role !== 'super_admin' && role === 'super_admin'){ toast('لا يمكن تعيين دور السوبر أدمن.'); return; }
     try{
       if (AdminUI.editingId){
         const patch = { full_name:fullName, role:role, school:school, community_id: communityId||null, specialty:specialty, phone:phone, email:email };
@@ -8767,6 +8773,7 @@ let ReviewCache = {};
 async function screenReview(id){
   const s = await DB.getSubmission(id); ReviewCache = s;
   if (!s){ toast('النموذج غير موجود أو انتهت صلاحية الجلسة.'); go('dashboard'); return ''; }
+  if (State.user.role === 'principal' && s.created_by === State.user.id){ toast('لا يمكن للمدير مراجعة نماذجه الخاصة.'); go('dashboard'); return ''; }
   const def = formDef(s.form_type);
   if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
