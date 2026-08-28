@@ -3655,6 +3655,7 @@ function bindCoordinatorTasks(){
     try{
       await DB.createTask({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
       invalidatePendingCache();
+      try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:teacherId, type:'general', title:'تم تكليفك بمهمة جديدة: '+title, body:(description||title) }); }catch(e){}
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       render(); bindCoordinatorTasks();
@@ -3808,6 +3809,8 @@ function bindCoordinatorVisits(){
     }
     try{
       await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
+      const visitedIds = [...new Set(rows.map(function(r){ return r.visitingTeacherId; }).concat(rows.map(function(r){ return r.visitedTeacherId; })))];
+      visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); });
       toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
       VisitsUI.draft = null; render(); bindCoordinatorVisits();
     }catch(e){ toast(e.message); this.disabled = false; }
@@ -4006,7 +4009,7 @@ function bindCoordinatorGoals(){
       const id = el.getAttribute('data-id');
       const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
       const goal = goals.find(function(g){ return g.id===id; });
-      GoalsUI.modalOpen = true; GoalsUI.editId = id; GoalsUI.draft = goalDraftFrom(goal||{});
+      GoalsUI.modalOpen = true; GoalsUI.editId = id; GoalsUI.draft = goalDraftFrom(goal||{}); GoalsUI._prevMemberIds = (goal&&goal.assigned_member_ids)||[];
       render(); bindCoordinatorGoals();
     });
   });
@@ -4080,7 +4083,9 @@ function bindCoordinatorGoals(){
         toast('تم إضافة الهدف.');
       }
       if (saved && patch.assigned_member_ids.length){
-        patch.assigned_member_ids.forEach(function(memberId){
+        const prevIds = wasEdit ? (GoalsUI._prevMemberIds||[]) : [];
+        const newlyAdded = patch.assigned_member_ids.filter(function(id){ return prevIds.indexOf(id) === -1; });
+        newlyAdded.forEach(function(memberId){
           DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:memberId, type:'general', title:'تم توكيلك بتنفيذ خطة تحسين: '+title, body:'وكَّلك '+State.user.full_name+' بتنفيذ خطة التحسين "'+title+'"، يرجى متابعتها وتنفيذها.' }).catch(function(){});
         });
       }
@@ -4185,8 +4190,11 @@ function bindPrincipalReview(){
     const rating = +document.getElementById('glRating').value;
     const note = document.getElementById('glNote').value.trim();
     try{
-      await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      const approvedGoal = await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
       invalidatePendingCache();
+      if (approvedGoal && approvedGoal.created_by){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:approvedGoal.created_by, type:'general', title:'تم اعتماد هدفك', body:'اعتمد '+State.user.full_name+' هدف التحسين الخاص بك.' }); }catch(e){}
+      }
       toast('تم اعتماد وتقييم الهدف.');
       PrincipalReviewUI.goalReviewId = null;
       render(); bindPrincipalReview();
@@ -4198,8 +4206,11 @@ function bindPrincipalReview(){
     const note = document.getElementById('glNote').value.trim();
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
-      await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      const returnedGoal = await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
       invalidatePendingCache();
+      if (returnedGoal && returnedGoal.created_by){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:returnedGoal.created_by, type:'general', title:'تم إرجاع هدفك للتعديل', body:note }); }catch(e){}
+      }
       toast('تم إرجاع الهدف إلى المنسق للتعديل.');
       PrincipalReviewUI.goalReviewId = null;
       render(); bindPrincipalReview();
@@ -4522,6 +4533,9 @@ function openCounselorReferralModal(students){
             status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
           });
         }
+        if (counselorId){
+          try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorId, type:'general', title:'إحالة طلاب جدد إليك', body:'أحال إليك '+State.user.full_name+' ('+students.length+') طالب للمتابعة الإرشادية.' }); }catch(e){}
+        }
         toast('تمت إحالة '+students.length+' طالب للمرشد '+(counselor?counselor.full_name:'')+' بنجاح.');
         removeCounselorReferralModal();
       }catch(e){ toast('فشلت الإحالة: '+e.message); btn.disabled=false; btn.textContent='إرسال الإحالة'; }
@@ -4543,6 +4557,8 @@ function openPlanForStudent(formType, student){
     const row = blankStudentRow();
     row.name = student.full_name;
     data = { school: State.user.school, grade: student.grade||'', section: student.section||'', subject:'', date:today, students:[row], teacherOpinion:'' };
+  } else if (formType === 'behavioralPlan'){
+    data = Object.assign(blankData(formType), { studentName: student.full_name, grade: student.grade||'', section: student.section||'' });
   } else {
     data = blankData(formType);
   }
@@ -5618,11 +5634,8 @@ function counselorCaseModal(c, teachers, students){
           '</div>' +
           '<div class="field"><label>ملاحظات المرشد (سرية)</label><textarea class="input" id="caseCounselorNotes" rows="2">'+esc(c.counselor_notes||'')+'</textarea></div>' +
           '<div class="field"><label>جوال ولي الأمر</label><input class="input" id="caseParentPhoneEdit" value="'+esc(c.parent_phone||'')+'"></div>' +
-          (c.status!=='closed' ? (
-            '<div class="field"><label>إضافة جلسة إرشادية</label><textarea class="input" id="caseNewSession" rows="2" placeholder="ملاحظات الجلسة..."></textarea></div>'
-          ) : (
-            '<div class="field"><label>ملخص الإغلاق</label><textarea class="input" id="caseCloseSummary" rows="2">'+esc(c.close_summary||'')+'</textarea></div>'
-          )) +
+          '<div class="field"><label>إضافة جلسة إرشادية</label><textarea class="input" id="caseNewSession" rows="2" placeholder="ملاحظات الجلسة..."></textarea></div>' +
+          '<div class="field"><label>ملخص الإغلاق</label><textarea class="input" id="caseCloseSummary" rows="2" placeholder="يُكتب عند إغلاق الحالة...">'+esc(c.close_summary||'')+'</textarea></div>' +
           '<div class="block-title" style="margin:12px 0 6px;">الجلسات ('+sessions.length+')</div>' +
           sessionsHtml
         )) +
@@ -5802,7 +5815,7 @@ function bindCounselorCases(){
       saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
       const cases = await DB.listCounselingCases(State.user.school);
       const c = cases.find(function(x){ return x.id===CounselorUI.editingId; });
-      if (!c) return;
+      if (!c){ saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; return; }
       const newStatus = (document.getElementById('caseStatusSel')||{}).value || c.status;
       const notes = (document.getElementById('caseCounselorNotes')||{}).value || '';
       const phone = (document.getElementById('caseParentPhoneEdit')||{}).value || '';
@@ -5884,8 +5897,8 @@ async function screenDashboard(){
   ) : '';
 
   const commCount = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; }).length;
-  const pendingTasksReview = (pTasks||[]).filter(function(t){ return t.status==='pending'; }).length;
-  const pendingGoalsReview = (pGoals||[]).filter(function(g){ return g.status==='pending'; }).length;
+  const pendingTasksReview = (pTasks||[]).filter(function(t){ return t.status==='done' && !t.principal_status; }).length;
+  const pendingGoalsReview = (pGoals||[]).filter(function(g){ return !g.principal_status; }).length;
 
   const _bcastTeachers = PrincipalUI.teachers || [];
   const _teacherChecks = _bcastTeachers.map(function(t){
@@ -5943,7 +5956,7 @@ async function screenDashboard(){
 
   const rows = sorted.map(function(s){
     const def = formDef(s.form_type);
-    const canOpen = State.user.role==='principal' ? ((s.status==='pending' || s.status==='approved') && s.created_by !== State.user.id) : true;
+    const canOpen = State.user.role==='principal' ? ((s.status==='pending' || s.status==='approved' || s.status==='returned') && s.created_by !== State.user.id) : true;
     const action = State.user.role==='coordinator'
       ? (s.status==='approved'
           ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
@@ -6405,7 +6418,7 @@ async function screenTaskDetail(taskId, readonly){
     '</div>'
   ) : (t.principal_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة</h3><p style="margin:0 0 6px;">'+principalReviewBadgeHtml(t)+'</p>'+(t.principal_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.principal_note)+'</p>'):'')+'</div>') : '');
   const isCoordinatorOwner = State.user.role==='coordinator' && t.created_by===State.user.id;
-  const canCoordinatorReturn = isCoordinatorOwner && t.status==='done';
+  const canCoordinatorReturn = isCoordinatorOwner && t.status==='done' && !t.principal_status;
   const coordinatorPanel = canCoordinatorReturn ? (
     '<div class="review-panel no-print" style="margin-top:16px;">' +
       '<h3>إرجاع المهمة للمعلم</h3>' +
@@ -6466,7 +6479,7 @@ function bindTaskDetail(){
   if (completeBtn) completeBtn.addEventListener('click', async function(){
     if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); return; }
     try{
-      const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso(), principal_status: null, principal_note: null, principal_reviewed_at: null });
+      const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso(), principal_status: null, principal_note: null, principal_reviewed_at: null, coordinator_status: null, coordinator_note: null, coordinator_reviewed_at: null });
       if (updated && updated.created_by){
         try{
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'أنجز المعلم مهمة: '+updated.title, body:'قام '+State.user.full_name+' بإنجاز المهمة ورفع الشواهد، بانتظار مراجعتك.' });
@@ -6482,6 +6495,10 @@ function bindTaskDetail(){
     const note = document.getElementById('taskNote').value.trim();
     try{
       await DB.updateTask(TaskDetailCache.id, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      invalidatePendingCache();
+      if (TaskDetailCache.assigned_to){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم اعتماد مهمتك: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجازك للمهمة.' }); }catch(e){}
+      }
       toast('تم اعتماد وتقييم المهمة.');
       go('dashboard');
     }catch(e){ toast(e.message); }
@@ -6493,6 +6510,10 @@ function bindTaskDetail(){
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
       await DB.updateTask(TaskDetailCache.id, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso(), status:'pending' });
+      invalidatePendingCache();
+      if (TaskDetailCache.assigned_to){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم إرجاع مهمتك للتعديل: '+TaskDetailCache.title, body:note }); }catch(e){}
+      }
       toast('تم إرجاع المهمة إلى المعلم للتعديل.');
       go('dashboard');
     }catch(e){ toast(e.message); }
@@ -8454,10 +8475,11 @@ function bindAllStudentSearches(){
       secSel.innerHTML = '<option value="">— اختر الشعبة —</option>' +
         secs.map(function(sec){ return '<option value="'+esc(sec)+'">'+esc(sec)+'</option>'; }).join('');
       secSel.style.visibility = '';
+      var isNestedPath = fieldPath && fieldPath.indexOf('.') > -1;
       if (typeof EditorState !== 'undefined' && EditorState && EditorState.data){
         if (fieldPath) setPath(EditorState.data, fieldPath, '');
-        if ('grade' in EditorState.data) setPath(EditorState.data, 'grade', grade);
-        if ('section' in EditorState.data) setPath(EditorState.data, 'section', '');
+        if (!isNestedPath && 'grade' in EditorState.data) setPath(EditorState.data, 'grade', grade);
+        if (!isNestedPath && 'section' in EditorState.data) setPath(EditorState.data, 'section', '');
       }
     });
     secSel.addEventListener('change', function(){
@@ -8467,9 +8489,10 @@ function bindAllStudentSearches(){
       stuSel.innerHTML = '<option value="">— اختر الطالب —</option>' +
         names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join('');
       stuSel.style.visibility = '';
+      var isNestedPath = fieldPath && fieldPath.indexOf('.') > -1;
       if (typeof EditorState !== 'undefined' && EditorState && EditorState.data){
         if (fieldPath) setPath(EditorState.data, fieldPath, '');
-        if ('section' in EditorState.data) setPath(EditorState.data, 'section', sec);
+        if (!isNestedPath && 'section' in EditorState.data) setPath(EditorState.data, 'section', sec);
       }
     });
     stuSel.addEventListener('change', function(){
@@ -8791,6 +8814,9 @@ function bindReview(){
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
       invalidatePendingCache();
+      if (ReviewCache.created_by){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); }catch(e){}
+      }
       toast('تم اعتماد وتقييم النموذج بختم رسمي.');
       go('view', { id: ReviewCache.id });
     }catch(e){ toast(e.message); this.disabled = false; }
@@ -8802,6 +8828,9 @@ function bindReview(){
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment });
       invalidatePendingCache();
+      if (ReviewCache.created_by){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم إرجاع نموذجك للتعديل', body:comment }); }catch(e){}
+      }
       toast('تم إرجاع النموذج للمُعد للتعديل.');
       go('dashboard');
     }catch(e){ toast(e.message); this.disabled = false; }
