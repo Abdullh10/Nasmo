@@ -1789,6 +1789,14 @@ const DB = {
     if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(list)); return list[idx]; }
     return null;
   },
+  async deleteNotification(id){
+    if (isRemote()){
+      await remoteFetch('notifications?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return;
+    }
+    const list = JSON.parse(localStorage.getItem(LS_NOTIFICATIONS) || '[]');
+    localStorage.setItem(LS_NOTIFICATIONS, JSON.stringify(list.filter(function(n){ return n.id!==id; })));
+  },
   async listTasks(filter){
     filter = filter || {};
     if (isRemote()){
@@ -2951,13 +2959,17 @@ function topNav(){
     '<div class="notif-panel">' +
       pendingHtml +
       '<div class="notif-panel-head" '+(pendingHtml?'style="border-top:1px solid var(--border);"':'')+'><h4>التنبيهات</h4>' +
-        (canCompose ? '<button class="btn btn-ghost btn-sm" data-action="composeNotif">+ إرسال تنبيه</button>' : '') +
+        '<div style="display:flex;gap:6px;">' +
+          (visible.length && State.user.role==='admin' ? '<button class="btn btn-ghost btn-sm" data-action="deleteAllNotifs" style="color:var(--danger);">حذف الكل</button>' : '') +
+          (canCompose ? '<button class="btn btn-ghost btn-sm" data-action="composeNotif">+ إرسال تنبيه</button>' : '') +
+        '</div>' +
       '</div>' +
       '<div class="notif-list">' +
         (visible.length ? visible.map(function(n){
           const unread = isNotifUnread(n, State.user.id);
           return (
-            '<div class="notif-item '+(unread?'unread':'')+'" data-action="readNotif" data-id="'+n.id+'">' +
+            '<div class="notif-item '+(unread?'unread':'')+'" style="position:relative;" data-action="readNotif" data-id="'+n.id+'">' +
+              (State.user.role==='admin' ? '<button class="btn btn-ghost btn-sm" data-action="deleteNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;" title="حذف التنبيه للجميع">✕</button>' : '') +
               '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
               '<div class="ntitle">'+esc(n.title)+'</div>' +
               (n.body ? '<div class="nbody">'+esc(n.body)+'</div>' : '') +
@@ -3046,6 +3058,24 @@ function bindTopNav(){
 
   const bellBtn = document.querySelector('[data-action="toggleNotif"]');
   if (bellBtn) bellBtn.addEventListener('click', function(){ NotifUI.open = !NotifUI.open; if (!NotifUI.open) NotifUI.compose=false; render(); });
+
+  const deleteAllNotifBtn = document.querySelector('[data-action="deleteAllNotifs"]');
+  if (deleteAllNotifBtn) deleteAllNotifBtn.addEventListener('click', async function(){
+    const ids = (State.notifications||[]).map(function(n){ return n.id; });
+    if (!ids.length) return;
+    try{
+      await Promise.all(ids.map(function(id){ return DB.deleteNotification(id); }));
+      invalidateNotifCache(); render();
+    }catch(e){ toast('فشل الحذف: ' + e.message); }
+  });
+
+  document.querySelectorAll('[data-action="deleteNotif"]').forEach(function(el){
+    el.addEventListener('click', async function(e){
+      e.stopPropagation();
+      const id = el.getAttribute('data-id');
+      try{ await DB.deleteNotification(id); invalidateNotifCache(); render(); }catch(e2){ toast('فشل الحذف: ' + e2.message); }
+    });
+  });
 
   document.querySelectorAll('[data-action="readNotif"]').forEach(function(el){
     el.addEventListener('click', async function(){
