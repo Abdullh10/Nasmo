@@ -1812,7 +1812,9 @@ const DB = {
   },
   async getTask(id){
     if (isRemote()){
-      const rows = await remoteFetch('tasks?id=eq.' + encodeURIComponent(id));
+      let path = 'tasks?id=eq.' + encodeURIComponent(id);
+      if (State.user && State.user.role !== 'super_admin') path += '&school=eq.' + encodeURIComponent(State.user.school);
+      const rows = await remoteFetch(path);
       return (rows && rows[0]) || null;
     }
     const list = JSON.parse(localStorage.getItem(LS_TASKS) || '[]');
@@ -2084,6 +2086,7 @@ const DB = {
   },
   async clearData(types, school){
     types = types || [];
+    if (!school && State.user && State.user.role !== 'super_admin') throw new Error('لا يمكن حذف بيانات جميع المدارس إلا لحساب السوبر أدمن.');
     if (isRemote()){
       const tableMap = { submissions:'submissions', notifications:'notifications', tasks:'tasks', goals:'plc_goals', indicator_status:'indicator_status', practice:'practice_shares' };
       for (const t of types){
@@ -3110,18 +3113,19 @@ function bindTopNav(){
   if (closeComposeBg) closeComposeBg.addEventListener('click', function(){ NotifUI.compose=false; render(); });
   const sendBtn = document.querySelector('[data-action="sendNotif"]');
   if (sendBtn) sendBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     const type = document.getElementById('ncType').value;
     const title = document.getElementById('ncTitle').value.trim();
     const body = document.getElementById('ncBody').value.trim();
     const due = document.getElementById('ncDue').value;
-    if (!title){ toast('يرجى إدخال عنوان التنبيه.'); return; }
+    if (!title){ toast('يرجى إدخال عنوان التنبيه.'); this.disabled = false; return; }
     let target_type, target_id;
     if (State.user.role==='admin'){
       const targetVal = document.getElementById('ncTarget').value;
       if (targetVal==='school'){ target_type='school'; target_id=null; }
       else { target_type='community'; target_id = targetVal.split(':')[1]; }
     } else {
-      if (!State.user.community_id){ toast('لا يوجد مجتمع مهني مرتبط بحسابك لإرسال تنبيه له.'); return; }
+      if (!State.user.community_id){ toast('لا يوجد مجتمع مهني مرتبط بحسابك لإرسال تنبيه له.'); this.disabled = false; return; }
       target_type='community'; target_id = State.user.community_id;
     }
     try{
@@ -3130,7 +3134,7 @@ function bindTopNav(){
       toast('تم إرسال التنبيه.');
       NotifUI.compose=false; NotifUI.open=true;
       render();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
 }
 
@@ -3676,14 +3680,15 @@ function bindCoordinatorTasks(){
   if (closeBg) closeBg.addEventListener('click', closeModal);
   const sendBtn = document.querySelector('[data-action="sendTask"]');
   if (sendBtn) sendBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     const teacherSel = document.getElementById('tkTeacher');
     const teacherId = teacherSel.value;
-    if (!teacherId){ toast('لا يوجد معلم لإسناد المهمة له.'); return; }
+    if (!teacherId){ toast('لا يوجد معلم لإسناد المهمة له.'); this.disabled = false; return; }
     const teacherName = teacherSel.options[teacherSel.selectedIndex].textContent;
     const title = document.getElementById('tkTitle').value.trim();
     const description = document.getElementById('tkDesc').value.trim();
     const due = document.getElementById('tkDue').value;
-    if (!title){ toast('يرجى إدخال عنوان المهمة.'); return; }
+    if (!title){ toast('يرجى إدخال عنوان المهمة.'); this.disabled = false; return; }
     try{
       await DB.createTask({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
       invalidatePendingCache();
@@ -3691,7 +3696,7 @@ function bindCoordinatorTasks(){
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       render(); bindCoordinatorTasks();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id'), readonly:true }); });
@@ -4492,7 +4497,10 @@ function bindPracticeBank(){
     const rating = +document.getElementById('pkRating').value;
     const note = document.getElementById('pkNote').value.trim();
     try{
-      await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      if (updated && updated.created_by){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'تم اعتماد ممارستك', body:'اعتمد '+State.user.full_name+' ممارستك "'+esc(updated.title)+'" وعرضها في معرض المدرسة.' }); }catch(e){}
+      }
       toast('تم اعتماد الممارسة وعرضها في معرض المدرسة.');
       PracticeBankUI.reviewId = null;
       render(); bindPracticeBank();
@@ -4504,7 +4512,10 @@ function bindPracticeBank(){
     const note = document.getElementById('pkNote').value.trim();
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
-      await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      if (updated && updated.created_by){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'تم إرجاع ممارستك للتعديل', body:note }); }catch(e){}
+      }
       toast('تم إرجاع الممارسة للتعديل.');
       PracticeBankUI.reviewId = null;
       render(); bindPracticeBank();
@@ -5997,6 +6008,7 @@ async function screenDashboard(){
 
   const rows = sorted.map(function(s){
     const def = formDef(s.form_type);
+    if (!def) return '';
     const canOpen = State.user.role==='principal' ? ((s.status==='pending' || s.status==='approved' || s.status==='returned') && s.created_by !== State.user.id) : true;
     const action = State.user.role==='coordinator'
       ? (s.status==='approved'
@@ -6432,7 +6444,7 @@ let TaskDetailCache = null;
 async function screenTaskDetail(taskId, readonly){
   const t = await DB.getTask(taskId);
   if (!TaskDetailCache || TaskDetailCache.id !== taskId || TaskDetailCache.completed_at !== t.completed_at){
-    TaskDetailCache = { id:t.id, completed_at:t.completed_at, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice(), assigned_to:t.assigned_to||null, title:t.title||'' };
+    TaskDetailCache = { id:t.id, completed_at:t.completed_at, teacher_notes:t.teacher_notes||'', evidence_files:(t.evidence_files||[]).slice(), assigned_to:t.assigned_to||null, title:t.title||'', created_by:t.created_by||null };
   }
   const isOwner = State.user.role==='teacher' && t.assigned_to===State.user.id;
   const ro = !!readonly || !isOwner;
@@ -6518,7 +6530,8 @@ function bindTaskDetail(){
   });
   const completeBtn = document.querySelector('[data-action="completeTask"]');
   if (completeBtn) completeBtn.addEventListener('click', async function(){
-    if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); return; }
+    if (this.disabled) return; this.disabled = true;
+    if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); this.disabled = false; return; }
     try{
       const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso(), principal_status: null, principal_note: null, principal_reviewed_at: null, coordinator_status: null, coordinator_note: null, coordinator_reviewed_at: null });
       if (updated && updated.created_by){
@@ -6528,7 +6541,7 @@ function bindTaskDetail(){
       }
       toast('تم حفظ المهمة وتمييزها كمكتملة.');
       go('dashboard');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(e.message); this.disabled = false; }
   });
   const approveTaskBtn = document.querySelector('[data-action="approveTask"]');
   if (approveTaskBtn) approveTaskBtn.addEventListener('click', async function(){
@@ -6539,6 +6552,9 @@ function bindTaskDetail(){
       invalidatePendingCache();
       if (TaskDetailCache.assigned_to){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم اعتماد مهمتك: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجازك للمهمة.' }); }catch(e){}
+      }
+      if (TaskDetailCache.created_by && TaskDetailCache.created_by !== TaskDetailCache.assigned_to){
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.created_by, type:'general', title:'اعتمد المدير مهمة: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجاز المهمة التي كلّفتَ بها.' }); }catch(e){}
       }
       toast('تم اعتماد وتقييم المهمة.');
       go('dashboard');
@@ -8807,6 +8823,7 @@ async function screenReview(id){
   const s = await DB.getSubmission(id); ReviewCache = s;
   if (!s){ toast('النموذج غير موجود أو انتهت صلاحية الجلسة.'); go('dashboard'); return ''; }
   if (State.user.role === 'principal' && s.created_by === State.user.id){ toast('لا يمكن للمدير مراجعة نماذجه الخاصة.'); go('dashboard'); return ''; }
+  if (State.user.role !== 'super_admin' && s.school !== State.user.school){ go('dashboard'); return ''; }
   const def = formDef(s.form_type);
   if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
