@@ -1560,7 +1560,7 @@ const DB = {
           remoteFetch('students?created_by=eq.'         + uid, { method:'DELETE' }),
           remoteFetch('visit_schedules?created_by=eq.'  + uid, { method:'DELETE' }),
           remoteFetch('notifications?sender_id=eq.'     + uid, { method:'DELETE' }),
-          remoteFetch('counseling_cases?counselor_id=eq.'+ uid, { method:'DELETE' }),
+          remoteFetch('counseling_cases?counselor_id=eq.'+ uid, { method:'PATCH', body:{ counselor_id: null } }),
         ]);
       } else {
         /* حذف الحساب فقط: صفّر الروابط للحفاظ على البيانات التاريخية */
@@ -1655,6 +1655,17 @@ const DB = {
       await Promise.all(tables.map(function(t){
         return remoteFetch(t + '?school=eq.' + encodeURIComponent(oldName), { method:'PATCH', body:{ school:newName } });
       }));
+      try {
+        const siteRows = await remoteFetch('site_settings?key=eq.schools', {});
+        if (siteRows && siteRows.length) {
+          const schools = siteRows[0].value || [];
+          const idx = schools.indexOf(oldName);
+          if (idx > -1) {
+            schools[idx] = newName;
+            await remoteFetch('site_settings?key=eq.schools', { method:'PATCH', body:{ value: schools } });
+          }
+        }
+      } catch(e) {}
       State.user.school = newName;
       setUserSession(State.user);
       return;
@@ -5932,7 +5943,7 @@ async function screenDashboard(){
 
   const rows = sorted.map(function(s){
     const def = formDef(s.form_type);
-    const canOpen = State.user.role==='principal' ? (s.status==='pending' || s.status==='approved') : true;
+    const canOpen = State.user.role==='principal' ? ((s.status==='pending' || s.status==='approved') && s.created_by !== State.user.id) : true;
     const action = State.user.role==='coordinator'
       ? (s.status==='approved'
           ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
@@ -6136,7 +6147,7 @@ async function screenTeacherTasks(){
   /* — ملخص الطلاب المعيَّنين — */
   const myStudents = schoolStudents.filter(function(s){
     return Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(State.user.id) > -1;
-  }).sort(function(a,b){ return (a.student_grade||'').localeCompare(b.student_grade||'','ar') || (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+  }).sort(function(a,b){ return (a.grade||a.student_grade||'').localeCompare(b.grade||b.student_grade||'','ar') || (a.full_name||'').localeCompare(b.full_name||'','ar'); });
 
   const formsByStudent = {};
   myForms.forEach(function(s){
@@ -6161,8 +6172,8 @@ async function screenTeacherTasks(){
     return (
       '<tr>' +
         '<td><b>'+esc(s.full_name)+'</b></td>' +
-        '<td>'+esc(s.student_grade||'—')+'</td>' +
-        '<td>'+esc(s.student_section||'—')+'</td>' +
+        '<td>'+esc(s.grade||s.student_grade||'—')+'</td>' +
+        '<td>'+esc(s.section||s.student_section||'—')+'</td>' +
         '<td>'+(badges||'<span style="color:var(--muted);font-size:11.5px;">لا يوجد</span>')+'</td>' +
         '<td>'+esc(sessText)+'</td>' +
       '</tr>'
@@ -6455,7 +6466,7 @@ function bindTaskDetail(){
   if (completeBtn) completeBtn.addEventListener('click', async function(){
     if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); return; }
     try{
-      const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso() });
+      const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso(), principal_status: null, principal_note: null, principal_reviewed_at: null });
       if (updated && updated.created_by){
         try{
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'أنجز المعلم مهمة: '+updated.title, body:'قام '+State.user.full_name+' بإنجاز المهمة ورفع الشواهد، بانتظار مراجعتك.' });
@@ -7120,7 +7131,7 @@ function userModal(users, communities){
         '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
           (State.user.role==='super_admin' ? ['coordinator','principal','teacher','counselor','admin','super_admin'] : ['coordinator','principal','teacher','counselor','admin']).map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
         '</select></div>' +
-        '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'" '+(State.user.role==='super_admin'?'':'')+'></div>' +
+        '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'" '+(State.user.role==='super_admin'?'':'readonly')+'></div>' +
         '<div class="field"><label>المجتمع المهني (اختياري)</label><select class="input" id="umCommunity">' +
           '<option value="">— بدون مجتمع —</option>' +
           communities.map(function(c){ return '<option value="'+c.id+'" '+(selectedCommunity===c.id?'selected':'')+'>'+esc(c.name)+' — '+esc(c.school)+'</option>'; }).join('') +
@@ -8595,6 +8606,13 @@ async function persistEditor(targetStatus){
   } else {
     const pad = Pads['pad_preparer'];
     if (pad && !pad.isEmpty()) EditorState.prepSig = pad.toDataUrl();
+  }
+
+  if (Array.isArray(EditorState.data.sessions)){
+    EditorState.data.sessions.forEach(function(sess, i){
+      const sp = Pads['sessions.'+i];
+      if (sp && !sp.isEmpty()) sess.sig = sp.toDataUrl();
+    });
   }
 
   const payload = {
