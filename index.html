@@ -2866,8 +2866,8 @@ async function render(){
       try{
         const [freshNotif, freshComm, freshPending] = await Promise.all([
           DB.listNotifications({ school: State.user.school }),
-          (State.user.role==='admin'||State.user.role==='super_admin') ? DB.listCommunities({})
-            : (State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
+          State.user.role==='super_admin' ? DB.listCommunities({})
+            : (State.user.role==='admin'||State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
             : Promise.resolve([]),
           State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])
         ]);
@@ -2880,8 +2880,8 @@ async function render(){
       /* cache موجود لكن قديم — اعرض فوراً ثم حدّث في الخلفية */
       Promise.all([
         needNotif   ? DB.listNotifications({ school: State.user.school }) : Promise.resolve(_notifCache),
-        needComm    ? ((State.user.role==='admin'||State.user.role==='super_admin') ? DB.listCommunities({})
-                      : (State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
+        needComm    ? (State.user.role==='super_admin' ? DB.listCommunities({})
+                      : (State.user.role==='admin'||State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
                       : Promise.resolve([])) : Promise.resolve(_commCache),
         needPending ? (State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])) : Promise.resolve(_pendingCache)
       ]).then(function(results){
