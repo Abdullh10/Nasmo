@@ -1560,7 +1560,7 @@ const DB = {
           remoteFetch('students?created_by=eq.'         + uid, { method:'DELETE' }),
           remoteFetch('visit_schedules?created_by=eq.'  + uid, { method:'DELETE' }),
           remoteFetch('notifications?sender_id=eq.'     + uid, { method:'DELETE' }),
-          remoteFetch('counseling_cases?counselor_id=eq.'+ uid, { method:'PATCH', body:{ counselor_id: null } }),
+          remoteFetch('counseling_cases?counselor_id=eq.'+ uid, { method:'DELETE' }),
         ]);
       } else {
         /* حذف الحساب فقط: صفّر الروابط للحفاظ على البيانات التاريخية */
@@ -1573,6 +1573,7 @@ const DB = {
           remoteFetch('students?created_by=eq.'       + uid, { method:'PATCH', body:{ created_by: null } }),
           remoteFetch('visit_schedules?created_by=eq.'+ uid, { method:'PATCH', body:{ created_by: null } }),
           remoteFetch('notifications?sender_id=eq.'   + uid, { method:'PATCH', body:{ sender_id: null } }),
+          remoteFetch('counseling_cases?counselor_id=eq.'+ uid, { method:'PATCH', body:{ counselor_id: null } }),
         ]);
       }
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
@@ -2698,10 +2699,11 @@ function _stuCascadeHtml(fieldPath, value, students){
   var gradeMap = {};
   var grades = [];
   (students||[]).forEach(function(s){
-    var g = s.grade||s.student_grade||''; var sec = s.section||s.student_section||''; var n = s.full_name;
+    var g = s.grade||s.student_grade||''; var sec = s.section||s.student_section||'—'; var n = s.full_name;
     if (!g) return;
     if (!gradeMap[g]){ gradeMap[g] = {}; grades.push(g); }
-    if (sec){ if (!gradeMap[g][sec]) gradeMap[g][sec] = []; gradeMap[g][sec].push(n); }
+    if (!gradeMap[g][sec]) gradeMap[g][sec] = [];
+    gradeMap[g][sec].push(n);
   });
   grades.sort(function(a,b){ return a.localeCompare(b,'ar'); });
   var preGrade = '', preSec = '';
@@ -3040,7 +3042,8 @@ function bindTopNav(){
       var sw = e.target.closest('.palette-swatch');
       if (sw){ applyPalette(sw.getAttribute('data-palette')); palettePop.classList.remove('open'); }
     });
-    document.addEventListener('click', function(){ palettePop.classList.remove('open'); }, { once: true });
+    var _closePalette = function(){ palettePop.classList.remove('open'); document.removeEventListener('click', _closePalette); };
+    document.addEventListener('click', _closePalette);
   }
 
   const bellBtn = document.querySelector('[data-action="toggleNotif"]');
@@ -3208,7 +3211,7 @@ function bindLogin(){
       setUserSession(user);
       go('dashboard');
     }catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
-    finally{ btn.disabled = false; btn.textContent = 'دخول'; }
+    finally{ btn.disabled = false; btn.textContent = 'تسجيل الدخول'; }
   });
   document.getElementById('loginUser').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('loginPass').focus(); });
   document.getElementById('loginPass').addEventListener('keydown', function(e){ if(e.key==='Enter') btn.click(); });
@@ -5748,6 +5751,7 @@ function bindCounselorCases(){
     if (!c) return;
     const sessions = (c.sessions||[]);
     const win = window.open('','_blank','width=800,height=900');
+    if (!win){ toast('يرجى السماح بالنوافذ المنبثقة في المتصفح لطباعة التقرير.'); return; }
     win.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>تقرير إرشادي</title>' +
       '<style>body{font-family:Arial,sans-serif;padding:32px;direction:rtl;}h1{font-size:20px;margin-bottom:4px;}' +
       'table{width:100%;border-collapse:collapse;margin:16px 0;}td,th{border:1px solid #ccc;padding:8px;font-size:13px;}' +
@@ -8458,10 +8462,11 @@ function bindAllStudentSearches(){
     try { students = JSON.parse(wrap.getAttribute('data-stud')||'[]'); } catch(e){}
     var gradeMap = {};
     students.forEach(function(s){
-      var g = s.g||''; var sec = s.sec||''; var n = s.n;
+      var g = s.g||''; var sec = s.sec||'—'; var n = s.n;
       if (!g) return;
       if (!gradeMap[g]) gradeMap[g] = {};
-      if (sec){ if (!gradeMap[g][sec]) gradeMap[g][sec] = []; gradeMap[g][sec].push(n); }
+      if (!gradeMap[g][sec]) gradeMap[g][sec] = [];
+      gradeMap[g][sec].push(n);
     });
     var gradeSel = wrap.querySelector('[data-role="grade"]');
     var secSel   = wrap.querySelector('[data-role="section"]');
