@@ -749,6 +749,7 @@ create policy "communities_write" on communities for all using ( my_role() = 'ad
 create policy "notifications_select" on notifications for select using ( school = my_school() or my_role() = 'admin' );
 create policy "notifications_insert" on notifications for insert with check ( school = my_school() or my_role() = 'admin' );
 create policy "notifications_update" on notifications for update using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
+create policy "notifications_delete" on notifications for delete using ( school = my_school() and my_role() = 'admin' );
 
 create policy "submissions_all" on submissions for all using ( school = my_school() or my_role() = 'admin' ) with check ( school = my_school() or my_role() = 'admin' );
 
@@ -5155,9 +5156,11 @@ async function screenAdminSettings(){
     'drop policy if exists "notifications_select" on notifications;',
     'drop policy if exists "notifications_insert" on notifications;',
     'drop policy if exists "notifications_update" on notifications;',
+    'drop policy if exists "notifications_delete" on notifications;',
     "create policy \"notifications_select\" on notifications for select using ( school = my_school() or my_role() in ('admin','super_admin') );",
     "create policy \"notifications_insert\" on notifications for insert with check ( school = my_school() or my_role() in ('admin','super_admin') );",
     "create policy \"notifications_update\" on notifications for update using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    "create policy \"notifications_delete\" on notifications for delete using ( school = my_school() and my_role() in ('admin','super_admin') );",
     'drop policy if exists "submissions_all" on submissions;',
     "create policy \"submissions_all\" on submissions for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
     'drop policy if exists "app_settings_all" on app_settings;',
