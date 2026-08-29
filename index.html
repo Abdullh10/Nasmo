@@ -3008,6 +3008,7 @@ function topNav(){
         '</div>' +
         (['coordinator','counselor','teacher','principal'].indexOf(State.user.role) > -1 ?
           '<button class="icon-btn" title="ملفي الشخصي" data-action="openMyProfile">'+PERSON_SVG+'</button>' : '') +
+        '<button class="icon-btn" title="تبديل الوضع الداكن/الفاتح" data-action="toggleTheme">'+(getTheme()==='dark'?SUN_SVG:MOON_SVG)+'</button>' +
         '<button class="icon-btn" title="تسجيل الخروج" data-action="logout">'+LOGOUT_SVG+'</button>' +
       '</div>' +
     '</div>' +
