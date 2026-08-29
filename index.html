@@ -33,16 +33,21 @@
   --shadow:0 1px 2px rgba(11,42,74,.06), 0 6px 18px rgba(11,42,74,.06);
 }
 html[data-theme="dark"]{
-  --navy:#5B9BD9; --navy-2:#7FB1E0; --navy-3:#4FAAC9;
-  --teal:#2FBDB8; --teal-dark:#5BD6D1;
-  --gold:#D9A53D; --gold-light:#E9C46A;
-  --bg:#10161F; --surface:#1B2430; --surface-2:#222C39;
-  --text:#E7EBF0; --muted:#94A1B2; --border:#2D3848;
-  --success:#34C77B; --success-bg:#15301F;
-  --pending:#E3A33D; --pending-bg:#352712;
-  --danger:#F16A6C; --danger-bg:#371C1D;
-  --draft:#9AA6B5; --draft-bg:#252F3B;
-  --shadow:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.4);
+  --navy:#4E9FD8; --navy-2:#72B9EB; --navy-3:#3ABCD5;
+  --teal:#12C8C2; --teal-dark:#48D8D3;
+  --gold:#D9A53D; --gold-light:#ECC86A;
+  --bg:#0D1520; --surface:#162232; --surface-2:#1C2C40;
+  --text:#E8EEF6; --muted:#8895AE; --border:#233045;
+  --success:#1ECC6E; --success-bg:#08231A;
+  --pending:#F0A730; --pending-bg:#231904;
+  --danger:#EF5050; --danger-bg:#270A0A;
+  --draft:#8895AE; --draft-bg:#172030;
+  --shadow:0 2px 6px rgba(0,0,0,.6), 0 8px 24px rgba(0,0,0,.5);
+}
+html[data-theme="dark"] .topnav{
+  background:var(--bg);
+  border-bottom:1px solid var(--border);
+  box-shadow:0 2px 20px rgba(0,0,0,.55);
 }
 /* ===== ثيمات الألوان ===== */
 html[data-palette="forest"]{
@@ -253,7 +258,11 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
 }
 .topnav-brand{ display:flex; align-items:center; gap:10px; }
 .topnav-title{ font-family:'IBM Plex Sans Arabic'; font-weight:700; font-size:15.5px; }
-.topnav-title small{ display:block; font-family:'IBM Plex Sans Arabic'; font-weight:400; font-size:11px; color:#B9C6D6; }
+.topnav-title small{ display:block; font-family:'IBM Plex Sans Arabic'; font-weight:400; font-size:11px; color:rgba(255,255,255,.55); }
+html[data-theme="dark"] .topnav-title small{ color:var(--muted); }
+html[data-theme="dark"] .topnav-title{ color:var(--text); }
+html[data-theme="dark"] .icon-btn{ background:rgba(255,255,255,.06); color:var(--text); }
+html[data-theme="dark"] .icon-btn:hover{ background:rgba(255,255,255,.12); }
 .topnav-right{ display:flex; align-items:center; gap:10px; }
 .user-pill{ display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.08); padding:6px 12px; border-radius:30px; font-size:13px; }
 .user-pill .role-tag{ background:var(--gold); color:#1d1300; font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:20px; }
@@ -273,7 +282,7 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
 .notif-list{ max-height:380px; overflow-y:auto; }
 .notif-item{ padding:11px 14px; border-bottom:1px solid var(--border); font-size:13px; cursor:pointer; }
 .notif-item:hover{ background:var(--surface-2); }
-.notif-item.unread{ background:#EFF6FB; }
+.notif-item.unread{ background:var(--surface-2); border-right:2px solid var(--navy); }
 .notif-item .ntitle{ font-weight:800; margin-bottom:2px; color:var(--navy); }
 .notif-item .nbody{ color:var(--text); font-size:12.5px; line-height:1.5; }
 .notif-item .nmeta{ color:var(--muted); font-size:11px; margin-top:5px; }
@@ -6060,7 +6069,7 @@ async function screenDashboard(){
     return s.status==='pending' && ((now - new Date(s.updated_at)) / 86400000) > 7;
   }) : [];
   const staleWarning = staleSubs.length ? (
-    '<div style="background:#fff5f5;border-right:4px solid var(--danger);border-radius:8px;padding:12px 16px;margin-bottom:14px;">' +
+    '<div style="background:var(--danger-bg);border-right:4px solid var(--danger);border-radius:8px;padding:12px 16px;margin-bottom:14px;">' +
       '<b style="color:var(--danger);">تنبيه: نماذج معلقة تجاوزت 7 أيام</b>' +
       '<div style="margin-top:4px;font-size:13px;">'+staleSubs.length+' نموذج بانتظار اعتمادك منذ أكثر من أسبوع. يُرجى مراجعتها في أقرب وقت.</div>' +
     '</div>'
@@ -6493,7 +6502,7 @@ async function screenTeacherSession(subId, idx){
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
       '<div class="form-sheet">' +
         '<div class="sheet-header"><div class="titles"><h1>تعبئة جلسة متابعة أسبوعية</h1><div class="sub">الطالب: '+esc(s.payload.studentName)+' — '+esc(s.payload.grade)+'</div></div></div>' +
-        (sessReadonly ? '<div style="background:#f0fdf4;border:1px solid var(--success);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--success);font-size:13px;font-weight:700;">✓ تم توقيع هذه الجلسة — عرض للقراءة فقط</div>' : '') +
+        (sessReadonly ? '<div style="background:var(--success-bg);border:1px solid var(--success);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--success);font-size:13px;font-weight:700;">✓ تم توقيع هذه الجلسة — عرض للقراءة فقط</div>' : '') +
         '<div class="field-grid cols-2">' +
           inputField('المادة','subject', sess.subject, {readonly: sessReadonly}) +
           inputField('التاريخ','date', sess.date, {type:'date', readonly: sessReadonly}) +
