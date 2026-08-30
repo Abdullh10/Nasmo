@@ -1014,16 +1014,33 @@ async function refreshAuthToken(){
   }catch(e){ return false; }
 }
 
+const LS_FC = 'dtd_fc_';
+const LS_FC_TTL = 300000;
+function _fcRead(path){ try{ const r=localStorage.getItem(LS_FC+path); if(!r)return null; const e=JSON.parse(r); return {data:e.data, age:Date.now()-e.at}; }catch(e){ return null; } }
+function _fcWrite(path,data){ try{ const s=JSON.stringify({data:data,at:Date.now()}); if(s.length<800000) localStorage.setItem(LS_FC+path,s); }catch(e){} }
+function _fcInvalidate(path){ try{ const tbl=path.split('?')[0]; Object.keys(localStorage).filter(function(k){ return k.startsWith(LS_FC+tbl); }).forEach(function(k){ localStorage.removeItem(k); }); }catch(e){} }
+function _fcClear(){ try{ Object.keys(localStorage).filter(function(k){ return k.startsWith(LS_FC); }).forEach(function(k){ localStorage.removeItem(k); }); }catch(e){} }
 const _inflightGETs = new Map();
 async function remoteFetch(path, opts){
   opts = opts || {};
-  if ((opts.method || 'GET') === 'GET' && !opts.range && !opts.timeout){
+  const method = opts.method || 'GET';
+  if (method === 'GET' && !opts.range && !opts.timeout){
+    const cached = _fcRead(path);
+    if (cached !== null){
+      if (cached.age < LS_FC_TTL) return cached.data;
+      /* بيانات قديمة: أعرض فوراً وحدّث في الخلفية */
+      if (!_inflightGETs.has(path)){
+        const p = _remoteFetchExec(path, opts).then(function(f){ if(f!=null) _fcWrite(path,f); return f; }).finally(function(){ _inflightGETs.delete(path); });
+        _inflightGETs.set(path, p);
+      }
+      return cached.data;
+    }
     if (_inflightGETs.has(path)) return _inflightGETs.get(path);
-    const p = _remoteFetchExec(path, opts);
+    const p = _remoteFetchExec(path, opts).then(function(r){ if(r!=null) _fcWrite(path,r); return r; }).finally(function(){ _inflightGETs.delete(path); });
     _inflightGETs.set(path, p);
-    p.finally(function(){ _inflightGETs.delete(path); });
     return p;
   }
+  if (method !== 'GET') _fcInvalidate(path);
   return _remoteFetchExec(path, opts);
 }
 async function _remoteFetchExec(path, opts){
@@ -2498,6 +2515,7 @@ function logout(){
   sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
+  _fcClear();
   go('login');
 }
 
