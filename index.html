@@ -1016,9 +1016,11 @@ async function refreshAuthToken(){
 
 const LS_FC = 'dtd_fc_';
 const LS_FC_TTL = 300000;
-function _fcRead(path){ try{ const r=localStorage.getItem(LS_FC+path); if(!r)return null; const e=JSON.parse(r); return {data:e.data, age:Date.now()-e.at}; }catch(e){ return null; } }
-function _fcWrite(path,data){ try{ const s=JSON.stringify({data:data,at:Date.now()}); if(s.length<800000) localStorage.setItem(LS_FC+path,s); }catch(e){} }
-function _fcInvalidate(path){ try{ const tbl=path.split('?')[0]; Object.keys(localStorage).filter(function(k){ return k.startsWith(LS_FC+tbl); }).forEach(function(k){ localStorage.removeItem(k); }); }catch(e){} }
+/* بادئة الكاش مرتبطة بالمستخدم الحالي لمنع تلوث البيانات بين مدارس مختلفة */
+function _fcPfx(){ try{ return (State&&State.user) ? encodeURIComponent(State.user.school||State.user.id||'')+'|' : null; }catch(e){ return null; } }
+function _fcRead(path){ try{ const pfx=_fcPfx(); if(!pfx)return null; const r=localStorage.getItem(LS_FC+pfx+path); if(!r)return null; const e=JSON.parse(r); return {data:e.data,age:Date.now()-e.at}; }catch(e){ return null; } }
+function _fcWrite(path,data){ try{ const pfx=_fcPfx(); if(!pfx)return; const s=JSON.stringify({data:data,at:Date.now()}); if(s.length<800000) localStorage.setItem(LS_FC+pfx+path,s); }catch(e){} }
+function _fcInvalidate(path){ try{ const pfx=_fcPfx(); if(!pfx)return; const tbl=path.split('?')[0]; Object.keys(localStorage).filter(function(k){ return k.startsWith(LS_FC+pfx+tbl); }).forEach(function(k){ localStorage.removeItem(k); }); }catch(e){} }
 function _fcClear(){ try{ Object.keys(localStorage).filter(function(k){ return k.startsWith(LS_FC); }).forEach(function(k){ localStorage.removeItem(k); }); }catch(e){} }
 const _inflightGETs = new Map();
 async function remoteFetch(path, opts){
