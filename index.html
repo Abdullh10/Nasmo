@@ -1014,7 +1014,19 @@ async function refreshAuthToken(){
   }catch(e){ return false; }
 }
 
+const _inflightGETs = new Map();
 async function remoteFetch(path, opts){
+  opts = opts || {};
+  if ((opts.method || 'GET') === 'GET' && !opts.range && !opts.timeout){
+    if (_inflightGETs.has(path)) return _inflightGETs.get(path);
+    const p = _remoteFetchExec(path, opts);
+    _inflightGETs.set(path, p);
+    p.finally(function(){ _inflightGETs.delete(path); });
+    return p;
+  }
+  return _remoteFetchExec(path, opts);
+}
+async function _remoteFetchExec(path, opts){
   opts = opts || {};
   const controller = new AbortController();
   const timer = setTimeout(function(){ controller.abort(); }, opts.timeout || 15000);
@@ -2449,6 +2461,9 @@ async function loadPrincipalPendingApprovals(){
     DB.listGoals({ school: State.user.school }),
     DB.listPracticeShares({ school: State.user.school })
   ]);
+  PrincipalUI.cachedSubs = subs;
+  PrincipalUI.cachedTasks = tasks;
+  PrincipalUI.cachedGoals = goals;
   const items = [];
   subs.filter(function(s){ return s.status==='pending'; }).forEach(function(s){
     const def = formDef(s.form_type);
@@ -2482,6 +2497,7 @@ function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_s
 function logout(){
   sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
+  PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
   go('login');
 }
 
@@ -2869,9 +2885,9 @@ let _renderToken = 0;
 let _notifCache = null, _notifCacheAt = 0;
 let _commCache = null, _commCacheAt = 0;
 let _pendingCache = null, _pendingCacheAt = 0;
-const NOTIF_TTL_MS = 90000;
-const COMM_TTL_MS = 300000;
-const PENDING_TTL_MS = 120000;
+const NOTIF_TTL_MS = 150000;
+const COMM_TTL_MS = 600000;
+const PENDING_TTL_MS = 240000;
 function invalidateNotifCache(){ _notifCache = null; }
 function invalidateCommCache(){ _commCache = null; }
 function invalidatePendingCache(){ _pendingCache = null; }
@@ -6048,11 +6064,15 @@ async function screenDashboard(){
   }
   let subs, pTasks, pGoals;
   if (State.user.role === 'principal') {
-    [subs, pTasks, pGoals] = await Promise.all([
-      DB.listSubmissions({ school: State.user.school }),
-      DB.listTasks({ school: State.user.school }),
-      DB.listGoals({ school: State.user.school })
-    ]);
+    if (PrincipalUI.cachedSubs && PrincipalUI.cachedTasks && PrincipalUI.cachedGoals){
+      subs = PrincipalUI.cachedSubs; pTasks = PrincipalUI.cachedTasks; pGoals = PrincipalUI.cachedGoals;
+    } else {
+      [subs, pTasks, pGoals] = await Promise.all([
+        DB.listSubmissions({ school: State.user.school }),
+        DB.listTasks({ school: State.user.school }),
+        DB.listGoals({ school: State.user.school })
+      ]);
+    }
   } else {
     subs = await DB.listSubmissions({ school: State.user.school });
     pTasks = []; pGoals = [];
