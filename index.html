@@ -2511,7 +2511,16 @@ function visibleNotifications(all, user){
 }
 function isNotifUnread(n, userId){ return (n.read_by||[]).indexOf(userId) === -1; }
 
-function setUserSession(u){ State.user = u; sessionStorage.setItem('dtd_session', JSON.stringify(u)); persistAuth(); }
+function setUserSession(u){
+  State.user = u;
+  sessionStorage.setItem('dtd_session', JSON.stringify(u));
+  persistAuth();
+  /* مسح بطاقات دخول مدرسة أخرى إذا بقيت في الجهاز */
+  if (u && CredsPrint && CredsPrint.school && CredsPrint.school !== u.school){
+    CredsPrint = { school:'', items:[] };
+    localStorage.removeItem(LS_LAST_CREDS_BATCH);
+  }
+}
 function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
 function logout(){
   sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
@@ -9103,7 +9112,11 @@ function bindGlobalAction(el){
   } catch(e) {}
   const u = loadUserSession();
   if (u){
-    State.user = u; go('dashboard');
+    State.user = u;
+    if (CredsPrint && CredsPrint.school && CredsPrint.school !== u.school){
+      CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH);
+    }
+    go('dashboard');
     if (isRemote()){
       remoteFetch('profiles?id=eq.' + encodeURIComponent(u.id)).then(function(rows){
         if (!rows || !rows[0]){ logout(); return; }
