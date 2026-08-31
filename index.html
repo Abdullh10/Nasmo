@@ -6663,7 +6663,7 @@ async function screenTeacherTasks(){
   const generalTasks = myRawTasks.filter(function(t){ return !isDemoLesson(t); });
   const demoLessonTasks = myRawTasks.filter(function(t){ return isDemoLesson(t); });
   generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0)-(b.status==='done'?1:0)) || (new Date(a.due_date||0)-new Date(b.due_date||0)); });
-  demoLessonTasks.sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  demoLessonTasks.sort(function(a,b){ return new Date(a.due_date||a.created_at)-new Date(b.due_date||b.created_at); });
   const now = new Date();
   const overdueTasks = generalTasks.filter(function(t){ return t.status!=='done' && t.due_date && new Date(t.due_date) < now; });
 
@@ -6767,12 +6767,28 @@ async function screenTeacherTasks(){
   const demoLessonCards = demoLessonTasks.map(function(t){
     let info = {};
     try{ info = JSON.parse(t.description||'{}'); }catch(e){}
+    const isPast = info.date && new Date(info.date) < now;
     return (
-      '<div class="task-card">' +
-        '<div class="meta">' +
-          '<b>📽 '+esc(info.lessonTitle||t.title)+'</b>' +
-          '<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">المجتمع المهني: '+esc(info.communityName||'—')+' · المادة: '+esc(info.subject||'—')+'</div>' +
-          '<span>'+esc(info.day||'—')+(info.date?' — '+fmtDate(info.date):'')+' · الحصة: '+esc(info.period||'—')+' · المنسق: '+esc(t.created_by_name||'')+'</span>' +
+      '<div class="program-card" style="margin-bottom:10px;border-right:4px solid var(--primary);">' +
+        '<div style="padding:14px 18px;">' +
+          '<div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;">' +
+            '<div style="background:var(--primary);color:#fff;border-radius:10px;padding:10px 16px;text-align:center;min-width:80px;flex-shrink:0;">' +
+              '<div style="font-size:20px;font-weight:800;line-height:1;">'+(info.date?new Date(info.date).toLocaleDateString('ar-SA',{day:'numeric',month:'short'}):'—')+'</div>' +
+              '<div style="font-size:11px;margin-top:3px;opacity:.85;">'+esc(info.day||'')+'</div>' +
+            '</div>' +
+            '<div style="flex:1;min-width:0;">' +
+              '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">'+esc(info.lessonTitle||t.title)+'</div>' +
+              '<div style="font-size:13px;color:var(--muted);margin-bottom:2px;">'+
+                '<b>الحصة:</b> '+esc(info.period||'—')+' &nbsp;·&nbsp; '+
+                '<b>المادة:</b> '+esc(info.subject||'—') +
+              '</div>' +
+              '<div style="font-size:12.5px;color:var(--muted);">'+
+                '<b>المجتمع:</b> '+esc(info.communityName||'—')+' &nbsp;·&nbsp; '+
+                '<b>المنسق:</b> '+esc(t.created_by_name||'—') +
+              '</div>' +
+            '</div>' +
+            (isPast?'<span class="badge returned" style="align-self:flex-start;">منتهية</span>':'<span class="badge approved" style="align-self:flex-start;">قادمة</span>') +
+          '</div>' +
         '</div>' +
       '</div>'
     );
