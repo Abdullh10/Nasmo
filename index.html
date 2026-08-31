@@ -8695,13 +8695,21 @@ function renderModelLesson(d, ro, teachers){
       '</div>'
     );
   }).join('');
+  const dayOptions = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
+  const dayField = ro
+    ? inputField('اليوم','day',d.day,{readonly:true})
+    : '<div class="field"><label>اليوم</label><select class="input" data-field="day"><option value="">— اختر اليوم —</option>'+dayOptions.map(function(day){ return '<option value="'+day+'" '+(d.day===day?'selected':'')+'>'+day+'</option>'; }).join('')+'</select></div>';
+  const schoolCommunities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const communityField = ro
+    ? inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:true})
+    : '<div class="field"><label>مجتمع التعلم المهني</label><select class="input" data-field="plc"><option value="">— اختر المجتمع —</option>'+schoolCommunities.map(function(c){ return '<option value="'+esc(c.name)+'" '+(d.plc===c.name?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select></div>';
   return (
     '<div class="field-grid cols-4">' +
-      inputField('اليوم','day',d.day,{readonly:ro}) + inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+      dayField + inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
       inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('الحصة','period',d.period,{readonly:ro}) +
     '</div>' +
     '<div class="field-grid cols-2">' +
-      inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) + teacherSelectHtml('المعلم المنفذ','teacher',d.teacher,teachers,ro) +
+      communityField + teacherSelectHtml('المعلم المنفذ','teacher',d.teacher,teachers,ro) +
     '</div>' +
     inputField('الأهداف/الإستراتيجيات/الأساليب المستهدفة','objectives',d.objectives,{type:'textarea',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> إيجابيات الموقف التعليمي</div>' +
