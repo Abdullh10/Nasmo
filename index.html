@@ -2535,6 +2535,10 @@ function logout(){
   sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
+  AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
+  StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
+  CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
+  State.adminTab = 'users'; State.dashTab = 'forms';
   _fcClear();
   go('login');
 }
@@ -4920,7 +4924,8 @@ function practiceReviewModalHtml(s){
   );
 }
 function bindPracticeBank(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   const resetComposeFields = function(){ PracticeBankUI.editId = null; PracticeBankUI.attachments = []; PracticeBankUI.title=''; PracticeBankUI.category='teacherSupport'; PracticeBankUI.description=''; PracticeBankUI.attachment_note=''; };
   const newBtn = document.querySelector('[data-action="newPractice"]');
   if (newBtn) newBtn.addEventListener('click', function(){ PracticeBankUI.composeOpen = true; resetComposeFields(); render(); bindPracticeBank(); });
@@ -5323,7 +5328,8 @@ async function importStudentsFromRows(rows){
 }
 function bindStudentRoster(){
   const isAdmin = State.user.role === 'admin';
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
 
   /* فلتر الصف والشعبة */
   const gradeFilterEl = document.getElementById('rosterGradeFilter');
@@ -6403,7 +6409,7 @@ function bindCounselorCases(){
       const sessions = (c.sessions||[]).slice();
       if (sessionText) sessions.push({ date: new Date().toISOString().slice(0,10), notes: sessionText });
       const patch = { status:newStatus, counselor_notes:notes, parent_phone:phone, sessions:sessions, updated_at:nowIso() };
-      patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? '' : closeSummary;
+      patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? (c.close_summary||'') : closeSummary;
       try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(e.message); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
@@ -7123,7 +7129,8 @@ async function screenTeacherSession(subId, idx){
   );
 }
 function bindTeacherSession(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   document.querySelectorAll('[data-field]').forEach(function(el){
     el.addEventListener('input', function(){
       TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx][el.getAttribute('data-field')] = el.value;
@@ -7238,7 +7245,8 @@ async function screenTaskDetail(taskId, readonly){
   );
 }
 function bindTaskDetail(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   const notesField = document.querySelector('[data-field="teacher_notes"]');
   if (notesField) notesField.addEventListener('input', function(){ TaskDetailCache.teacher_notes = notesField.value; });
   const evInput = document.getElementById('taskEvidenceInput');
@@ -7545,7 +7553,8 @@ function screenCredsPrint(){
   );
 }
 function bindCredsPrint(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   const printBtn = document.querySelector('[data-action="printCreds"]');
   if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
   const csvBtn = document.querySelector('[data-action="downloadCredsCsv"]');
@@ -8511,9 +8520,22 @@ function bindAdminStudents(){
   if (importInput) importInput.addEventListener('change', function(){
     const file = importInput.files && importInput.files[0];
     if (!file) return;
+    const isXlsx = /\.(xlsx|xls)$/i.test(file.name);
     const reader = new FileReader();
-    reader.onload = async function(){ await importAdminStudentsFromCsv(String(reader.result)); };
-    reader.readAsText(file, 'UTF-8');
+    reader.onload = async function(){
+      if (isXlsx){
+        const wb = window.XLSX.read(new Uint8Array(reader.result), {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = window.XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+        let dataRows = rows;
+        if (rows.length && isAdminStudentImportHeaderRow(String(rows[0][0]||''))) dataRows = rows.slice(1);
+        if (!dataRows.length){ toast('لا توجد بيانات طلاب في الملف.'); return; }
+        await importAdminStudentRows(dataRows);
+      } else {
+        await importAdminStudentsFromCsv(String(reader.result));
+      }
+    };
+    if (isXlsx){ reader.readAsArrayBuffer(file); } else { reader.readAsText(file, 'UTF-8'); }
   });
   const openPasteBtn = document.querySelector('[data-action="openAdminStudentPasteImport"]');
   if (openPasteBtn) openPasteBtn.addEventListener('click', function(){ AdminStudentUI.pasteOpen = true; render(); bindAdminStudents(); });
@@ -8907,7 +8929,8 @@ function bindPicker(){
   document.querySelectorAll('[data-action="pickForm"]').forEach(function(el){
     el.addEventListener('click', function(){ openEditor(el.getAttribute('data-id'), null); });
   });
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
 }
 
 /* ----- شريط الحالة (Stepper) ----- */
@@ -9492,7 +9515,8 @@ function bindEditor(){
     closeStudentPick();
   });
 
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     try{ await persistEditor('draft'); } finally{ this.disabled = false; }
@@ -9603,7 +9627,8 @@ async function screenView(id){
   );
 }
 function bindView(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
   const referBtn = document.querySelector('[data-action="referToCounselor"]');
@@ -9693,7 +9718,8 @@ async function screenReview(id){
   );
 }
 function bindReview(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ go('dashboard'); });
+  var _backBtn = document.querySelector('[data-action="back"]');
+  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
   document.querySelectorAll('[data-action="clearPad"]').forEach(function(el){
     el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
