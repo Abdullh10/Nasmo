@@ -3331,6 +3331,7 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
+      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
     '</div>'
   );
@@ -4582,6 +4583,135 @@ function bindPrincipalReview(){
       PrincipalReviewUI.goalReviewId = null;
       render(); bindPrincipalReview();
     }catch(e){ toast(e.message); }
+  });
+}
+
+/* ----- لوحة مدير المدرسة: الإشعارات ----- */
+let PrincipalNotifUI = { filter: 'all', sort: 'newest', replyId: null };
+async function screenPrincipalNotifications(){
+  const all = visibleNotifications(State.notifications||[], State.user);
+  let filtered;
+  if (PrincipalNotifUI.filter === 'unread') filtered = all.filter(function(n){ return isNotifUnread(n, State.user.id); });
+  else if (PrincipalNotifUI.filter === 'all') filtered = all;
+  else filtered = all.filter(function(n){ return n.type === PrincipalNotifUI.filter; });
+  if (PrincipalNotifUI.sort === 'oldest') filtered = filtered.slice().reverse();
+  const unreadCount = all.filter(function(n){ return isNotifUnread(n, State.user.id); }).length;
+  const filterDefs = [
+    { key:'all', label:'الكل ('+all.length+')' },
+    { key:'unread', label:'غير المقروءة ('+unreadCount+')' },
+    { key:'general', label:'عام' },
+    { key:'meeting', label:'اجتماعات' },
+    { key:'submission', label:'نماذج' },
+    { key:'demo', label:'تجريبي' },
+  ];
+  const filterBtns = filterDefs.map(function(f){
+    return '<button class="btn '+(PrincipalNotifUI.filter===f.key?'btn-primary':'btn-ghost')+' btn-sm" data-action="pnotifFilter" data-val="'+f.key+'">'+f.label+'</button>';
+  }).join('');
+  const sortBtn = '<button class="btn btn-ghost btn-sm" data-action="pnotifSort">'+(PrincipalNotifUI.sort==='newest'?'الأحدث أولاً ↓':'الأقدم أولاً ↑')+'</button>';
+  const notifCards = filtered.map(function(n){
+    const unread = isNotifUnread(n, State.user.id);
+    const isReplying = PrincipalNotifUI.replyId === n.id;
+    const canReply = !!(n.sender_id && n.sender_id !== State.user.id);
+    return (
+      '<div class="program-card" style="margin-bottom:10px;'+(unread?'border-right:4px solid var(--primary);padding-right:14px;':'')+'">' +
+        '<div style="padding:14px 18px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+            '<div style="flex:1;min-width:0;">' +
+              '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
+              (unread?'<span class="badge pending" style="font-size:10px;margin-right:4px;vertical-align:middle;">جديد</span>':'') +
+              '<div style="font-weight:700;font-size:14px;margin-top:6px;">'+esc(n.title)+'</div>' +
+              (n.body?'<div style="color:var(--muted);font-size:13px;margin-top:4px;white-space:pre-wrap;">'+esc(n.body)+'</div>':'') +
+              '<div style="color:var(--muted);font-size:11.5px;margin-top:6px;">'+esc(n.sender_name||'النظام')+(n.due_date?' · الموعد: '+fmtDate(n.due_date):'')+' · '+fmtDateTime(n.created_at)+'</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">' +
+              (unread?'<button class="btn btn-ghost btn-sm" data-action="pnotifMarkRead" data-id="'+n.id+'">✓ قراءة</button>':'') +
+              (canReply?'<button class="btn btn-ghost btn-sm" data-action="pnotifReply" data-id="'+n.id+'">↩ رد</button>':'') +
+              '<button class="btn btn-ghost btn-sm" data-action="pnotifDelete" data-id="'+n.id+'" style="color:var(--danger);">حذف</button>' +
+            '</div>' +
+          '</div>' +
+          (isReplying?(
+            '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">' +
+              '<label style="font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px;">ردك على '+esc(n.sender_name||'المرسل')+':</label>' +
+              '<textarea class="input" id="pnotifReplyText" style="width:100%;min-height:75px;resize:vertical;" placeholder="اكتب ردك هنا..."></textarea>' +
+              '<div style="display:flex;gap:8px;margin-top:8px;">' +
+                '<button class="btn btn-primary btn-sm" data-action="pnotifSendReply" data-id="'+n.id+'" data-to="'+n.sender_id+'" data-title="'+esc(n.title)+'">إرسال الرد</button>' +
+                '<button class="btn btn-ghost btn-sm" data-action="pnotifCancelReply">إلغاء</button>' +
+              '</div>' +
+            '</div>'
+          ):'') +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>الإشعارات ('+all.length+')</h2>' +
+      (unreadCount?'<button class="btn btn-ghost btn-sm" data-action="pnotifMarkAllRead">✓ تحديد الكل كمقروء</button>':'') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">' +
+      filterBtns + '<span style="flex:1;"></span>' + sortBtn +
+    '</div>' +
+    (filtered.length ? notifCards : '<p style="color:var(--muted);font-size:13.5px;">لا توجد إشعارات في هذا القسم.</p>')
+  );
+}
+function bindPrincipalNotifications(){
+  document.querySelectorAll('[data-action="pnotifFilter"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalNotifUI.filter = el.getAttribute('data-val'); render(); bindPrincipalNotifications(); });
+  });
+  const sortBtn = document.querySelector('[data-action="pnotifSort"]');
+  if (sortBtn) sortBtn.addEventListener('click', function(){
+    PrincipalNotifUI.sort = PrincipalNotifUI.sort==='newest' ? 'oldest' : 'newest';
+    render(); bindPrincipalNotifications();
+  });
+  document.querySelectorAll('[data-action="pnotifMarkRead"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const id = el.getAttribute('data-id');
+      const n = (State.notifications||[]).find(function(x){ return x.id===id; });
+      if (!n) return;
+      const readBy = (n.read_by||[]).indexOf(State.user.id)===-1 ? (n.read_by||[]).concat([State.user.id]) : n.read_by;
+      try{ await DB.updateNotification(id, { read_by: readBy }); invalidateNotifCache(); render(); bindPrincipalNotifications(); }catch(e){ toast(e.message); }
+    });
+  });
+  const markAllBtn = document.querySelector('[data-action="pnotifMarkAllRead"]');
+  if (markAllBtn) markAllBtn.addEventListener('click', async function(){
+    const unread = visibleNotifications(State.notifications||[], State.user).filter(function(n){ return isNotifUnread(n, State.user.id); });
+    try{
+      await Promise.all(unread.map(function(n){
+        return DB.updateNotification(n.id, { read_by: (n.read_by||[]).concat([State.user.id]) });
+      }));
+      invalidateNotifCache(); render(); bindPrincipalNotifications();
+    }catch(e){ toast(e.message); }
+  });
+  document.querySelectorAll('[data-action="pnotifReply"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      PrincipalNotifUI.replyId = el.getAttribute('data-id');
+      render(); bindPrincipalNotifications();
+    });
+  });
+  const cancelReply = document.querySelector('[data-action="pnotifCancelReply"]');
+  if (cancelReply) cancelReply.addEventListener('click', function(){ PrincipalNotifUI.replyId = null; render(); bindPrincipalNotifications(); });
+  const sendReplyBtn = document.querySelector('[data-action="pnotifSendReply"]');
+  if (sendReplyBtn) sendReplyBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
+    const toId = this.getAttribute('data-to');
+    const origTitle = this.getAttribute('data-title');
+    const text = (document.getElementById('pnotifReplyText')||{}).value||'';
+    if (!text.trim()){ toast('يرجى كتابة نص الرد.'); this.disabled = false; return; }
+    try{
+      await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:toId, type:'general', title:'رد: '+origTitle, body:text });
+      toast('تم إرسال الرد.');
+      PrincipalNotifUI.replyId = null;
+      invalidateNotifCache(); render(); bindPrincipalNotifications();
+    }catch(e){ toast(e.message); this.disabled = false; }
+  });
+  document.querySelectorAll('[data-action="pnotifDelete"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذا الإشعار؟')) return;
+      try{ await DB.deleteNotification(el.getAttribute('data-id')); invalidateNotifCache(); render(); bindPrincipalNotifications(); }
+      catch(e){ toast(e.message); }
+    });
   });
 }
 
@@ -6246,6 +6376,9 @@ async function screenDashboard(){
   if (State.dashTab==='principalReview' && State.user.role==='principal'){
     return await screenPrincipalReview();
   }
+  if (State.dashTab==='principalNotif' && State.user.role==='principal'){
+    return await screenPrincipalNotifications();
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -6407,6 +6540,7 @@ function bindDashboard(){
   else if (State.dashTab==='demoLesson' && State.user.role==='coordinator') bindCoordinatorDemoLessons();
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') { /* no bind needed — static */ }
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
+  else if (State.dashTab==='principalNotif' && State.user.role==='principal') bindPrincipalNotifications();
   else if (State.dashTab==='indicators') bindIndicators();
   else if (State.user.role==='principal') bindPrincipalMain();
 }
