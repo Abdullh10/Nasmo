@@ -8295,6 +8295,7 @@ async function screenAdminStudents(){
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card-2,#f4f6f8);border:1px solid var(--border,#e2e6ea);border-radius:10px;padding:10px 12px;margin-bottom:12px;">' +
       '<b>المحدد: '+AdminStudentUI.selectedIds.length+'</b>' +
       '<button class="btn btn-ghost btn-sm" data-action="openAdminStudentAssign">إسناد لمعلمين</button>' +
+      '<button class="btn btn-ghost btn-sm" style="color:var(--danger);" data-action="bulkClearAdminStudentAssign">إلغاء الإسناد</button>' +
       '<button class="btn btn-danger btn-sm" data-action="bulkDeleteAdminStudents">حذف المحددين</button>' +
       '<button class="btn btn-ghost btn-sm" data-action="bulkClearAdminStudentSelection">إلغاء التحديد</button>' +
     '</div>'
@@ -8591,6 +8592,17 @@ function bindAdminStudents(){
   });
   const bulkClearBtn = document.querySelector('[data-action="bulkClearAdminStudentSelection"]');
   if (bulkClearBtn) bulkClearBtn.addEventListener('click', function(){ AdminStudentUI.selectedIds = []; render(); bindAdminStudents(); });
+  const bulkClearAssignBtn = document.querySelector('[data-action="bulkClearAdminStudentAssign"]');
+  if (bulkClearAssignBtn) bulkClearAssignBtn.addEventListener('click', async function(){
+    const ids = AdminStudentUI.selectedIds.slice();
+    if (!ids.length) return;
+    if (!confirm('إلغاء إسناد جميع المعلمين لـ '+ids.length+' طالب محدد؟')) return;
+    try{
+      await Promise.all(ids.map(function(sid){ return DB.updateStudent(sid, { assigned_teacher_ids: [] }); }));
+      toast('تم إلغاء الإسناد لـ '+ids.length+' طالب.');
+      AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
+    }catch(e){ toast(e.message); }
+  });
   const bulkDeleteBtn = document.querySelector('[data-action="bulkDeleteAdminStudents"]');
   if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
     const ids = AdminStudentUI.selectedIds.slice();
