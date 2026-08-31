@@ -8278,6 +8278,7 @@ async function screenAdminStudents(){
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="editAdminStudent" data-id="'+s.id+'" data-assigned="'+assignedAttr+'">تعديل</button>' +
           '<button class="btn btn-ghost btn-sm" data-action="openAdminStudentTransfer" data-id="'+s.id+'">نقل</button>' +
+          (tNames.length ? '<button class="btn btn-ghost btn-sm" style="color:var(--danger);" data-action="clearAdminStudentAssign" data-id="'+s.id+'" data-name="'+esc(s.full_name)+'">إلغاء الإسناد</button>' : '') +
           '<button class="btn btn-danger btn-sm" data-action="deleteAdminStudent" data-id="'+s.id+'">حذف</button>' +
         '</td>' +
       '</tr>'
@@ -8675,6 +8676,20 @@ function bindAdminStudents(){
       AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null;
       render(); bindAdminStudents();
     }catch(e){ toast(e.message); saveTransferBtn.disabled=false; saveTransferBtn.textContent='تأكيد النقل'; }
+  });
+
+  /* — إلغاء الإسناد — */
+  document.querySelectorAll('[data-action="clearAdminStudentAssign"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const sid = el.getAttribute('data-id');
+      const name = el.getAttribute('data-name');
+      if (!confirm('إلغاء جميع الإسنادات للطالب '+name+'؟')) return;
+      try{
+        await DB.updateStudent(sid, { assigned_teacher_ids: [] });
+        toast('تم إلغاء إسناد الطالب '+name+'.');
+        render(); bindAdminStudents();
+      }catch(e){ toast(e.message); }
+    });
   });
 }
 
