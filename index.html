@@ -2105,8 +2105,8 @@ const DB = {
   async createCounselingCase(obj){
     obj.created_at = nowIso(); obj.updated_at = nowIso();
     if (isRemote()){
-      const rows = await remoteFetch('counseling_cases', { method:'POST', body:obj, prefer:'return=representation' });
-      return rows && rows[0];
+      await remoteFetch('counseling_cases', { method:'POST', body:obj, prefer:'return=minimal' });
+      return obj;
     }
     obj.id = uid(); obj.sessions = obj.sessions||[];
     const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
