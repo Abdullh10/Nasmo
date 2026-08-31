@@ -8549,7 +8549,14 @@ function bindAdminStudents(){
   });
 
   const nameFilterEl = document.getElementById('astNameFilter');
-  if (nameFilterEl) nameFilterEl.addEventListener('input', function(){ AdminStudentUI.nameFilter = nameFilterEl.value; render(); bindAdminStudents(); });
+  if (nameFilterEl) nameFilterEl.addEventListener('input', async function(){
+    AdminStudentUI.nameFilter = this.value;
+    var pos = this.selectionStart;
+    await render();
+    bindAdminStudents();
+    var el = document.getElementById('astNameFilter');
+    if (el){ el.focus(); el.setSelectionRange(pos, pos); }
+  });
   const gradeFilterEl = document.getElementById('astGradeFilter');
   if (gradeFilterEl) gradeFilterEl.addEventListener('change', function(){ AdminStudentUI.gradeFilter = gradeFilterEl.value; render(); bindAdminStudents(); });
   const sectionFilterEl = document.getElementById('astSectionFilter');
