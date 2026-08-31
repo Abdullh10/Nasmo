@@ -8223,7 +8223,7 @@ function teacherChecklistHtml(teachers, communities, selectedIds, mode, chkClass
     return (
       '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13.5px;">' +
         '<input type="checkbox" class="'+chkClass+'" data-teacher-id="'+t.id+'" '+(checked?'checked':'')+'>' +
-        '<span>'+esc(t.full_name)+(t.specialty?' <span style="color:var(--muted);font-size:12px;">— '+esc(t.specialty)+'</span>':'')+'</span>' +
+        '<span>'+esc(t.full_name)+(t.role==='coordinator'?' <span style="background:var(--primary);color:#fff;border-radius:4px;padding:0 5px;font-size:10.5px;font-weight:600;">منسق</span>':t.specialty?' <span style="color:var(--muted);font-size:12px;">— '+esc(t.specialty)+'</span>':'')+'</span>' +
       '</label>'
     );
   }
@@ -8253,7 +8253,7 @@ function teacherSortToggleHtml(){
 async function screenAdminStudents(){
   const students = await DB.listStudents({ school: State.user.school });
   AdminStudentUI._rows = students;
-  const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher'; });
+  const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher' || u.role==='coordinator'; });
   const communities = await DB.listCommunities({ school: State.user.school });
 
   AdminStudentUI.selectedIds = AdminStudentUI.selectedIds.filter(function(id){ return students.some(function(s){ return s.id===id; }); });
