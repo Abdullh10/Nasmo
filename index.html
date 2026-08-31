@@ -3333,7 +3333,6 @@ function dashTabsHtml(){
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='coordNotif'?'active':'')+'" data-action="dashTab" data-tab="coordNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
   );
 }
@@ -6384,9 +6383,6 @@ async function screenDashboard(){
   if (State.dashTab==='principalNotif' && State.user.role==='principal'){
     return await screenNotificationsPanel();
   }
-  if (State.dashTab==='coordNotif' && State.user.role==='coordinator'){
-    return await screenNotificationsPanel();
-  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
@@ -6549,7 +6545,6 @@ function bindDashboard(){
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') { /* no bind needed — static */ }
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
   else if (State.dashTab==='principalNotif' && State.user.role==='principal') bindNotificationsPanel();
-  else if (State.dashTab==='coordNotif' && State.user.role==='coordinator') bindNotificationsPanel();
   else if (State.dashTab==='indicators') bindIndicators();
   else if (State.user.role==='principal') bindPrincipalMain();
 }
