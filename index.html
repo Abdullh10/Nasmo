@@ -8198,7 +8198,7 @@ function bindAdminUsers(){
 }
 
 /* ----- لوحة مدير النظام: بيانات الطلاب (رفع ملفات + إسناد لعدة معلمين) ----- */
-let AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', teacherSort:'alpha', pendingTeacherIds:[] };
+let AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
 function distinctSorted(arr, field){
   const set = new Set();
   arr.forEach(function(x){ const v=(x[field]||'').trim(); if (v) set.add(v); });
@@ -8282,6 +8282,7 @@ async function screenAdminStudents(){
         '<td>'+(tNames.length?esc(tNames.join('، ')):'<span style="color:var(--muted);">— لم يُسنَد —</span>')+'</td>' +
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="editAdminStudent" data-id="'+s.id+'" data-assigned="'+assignedAttr+'">تعديل</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="openAdminStudentTransfer" data-id="'+s.id+'">نقل</button>' +
           '<button class="btn btn-danger btn-sm" data-action="deleteAdminStudent" data-id="'+s.id+'">حذف</button>' +
         '</td>' +
       '</tr>'
@@ -8291,6 +8292,8 @@ async function screenAdminStudents(){
   const modal = AdminStudentUI.modalOpen ? adminStudentModal(students, teachers, communities) : '';
   const pasteModal = AdminStudentUI.pasteOpen ? adminStudentPasteImportModal() : '';
   const assignModal = AdminStudentUI.assignOpen ? adminStudentAssignModal(teachers, communities) : '';
+  const transferStudent = AdminStudentUI.transferOpen && AdminStudentUI.transferStudentId ? students.find(function(s){ return s.id===AdminStudentUI.transferStudentId; }) : null;
+  const transferModal = transferStudent ? adminStudentTransferModal(transferStudent, grades, sections) : '';
 
   const bulkBar = AdminStudentUI.selectedIds.length>0 ? (
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card-2,#f4f6f8);border:1px solid var(--border,#e2e6ea);border-radius:10px;padding:10px 12px;margin-bottom:12px;">' +
@@ -8330,7 +8333,34 @@ async function screenAdminStudents(){
       '<thead><tr><th><input type="checkbox" id="adminStudentSelectAllChk" '+(allSelected?'checked':'')+'></th><th>السجل المدني</th><th>الاسم</th><th>المرحلة</th><th>الشعبة</th><th>المعلمون المسندون</th><th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
-    modal + pasteModal + assignModal
+    modal + pasteModal + assignModal + transferModal
+  );
+}
+function adminStudentTransferModal(student, grades, sections){
+  const gradeOpts = grades.map(function(g){ return '<option value="'+esc(g)+'"'+(student.grade===g?' selected':'')+'>'+esc(g)+'</option>'; }).join('');
+  const sectionOpts = sections.map(function(s){ return '<option value="'+esc(s)+'"'+(student.section===s?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
+  return (
+    '<div class="modal-bg" data-action="closeAdminStudentTransfer">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<h3>نقل الطالب إلى شعبة أخرى</h3>' +
+        '<p style="color:var(--muted);font-size:13px;margin-bottom:16px;">الطالب: <b>'+esc(student.full_name)+'</b> — الحالي: '+esc(student.grade||'—')+' / '+esc(student.section||'—')+'</p>' +
+        '<div class="field-grid cols-2">' +
+          '<div class="field"><label>المرحلة الجديدة</label>' +
+            '<input class="input" id="astTransferGrade" list="astTransferGradeList" value="'+esc(student.grade||'')+'" placeholder="اكتب أو اختر">' +
+            '<datalist id="astTransferGradeList">'+gradeOpts+'</datalist>' +
+          '</div>' +
+          '<div class="field"><label>الشعبة الجديدة</label>' +
+            '<input class="input" id="astTransferSection" list="astTransferSectionList" value="'+esc(student.section||'')+'" placeholder="اكتب أو اختر">' +
+            '<datalist id="astTransferSectionList">'+sectionOpts+'</datalist>' +
+          '</div>' +
+        '</div>' +
+        '<div class="field"><label><input type="checkbox" id="astTransferNotify" checked> إرسال إشعار لجميع المعلمين المسنَدين للطالب</label></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="saveAdminStudentTransfer">تأكيد النقل</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeAdminStudentTransfer">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
   );
 }
 function adminStudentModal(students, teachers, communities){
@@ -8579,6 +8609,54 @@ function bindAdminStudents(){
       AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
       render(); bindAdminStudents();
     }catch(e){ toast(e.message); }
+  });
+
+  /* — نقل الطالب — */
+  document.querySelectorAll('[data-action="openAdminStudentTransfer"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      AdminStudentUI.transferStudentId = el.getAttribute('data-id');
+      AdminStudentUI.transferOpen = true;
+      render(); bindAdminStudents();
+    });
+  });
+  const closeTransfer = function(){ AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null; render(); bindAdminStudents(); };
+  const closeTransferBg = document.querySelector('[data-action="closeAdminStudentTransfer"]');
+  if (closeTransferBg) closeTransferBg.addEventListener('click', closeTransfer);
+  const saveTransferBtn = document.querySelector('[data-action="saveAdminStudentTransfer"]');
+  if (saveTransferBtn) saveTransferBtn.addEventListener('click', async function(){
+    const newGrade = (document.getElementById('astTransferGrade')||{}).value||'';
+    const newSection = (document.getElementById('astTransferSection')||{}).value||'';
+    if (!newGrade.trim() || !newSection.trim()){ toast('يرجى تحديد المرحلة والشعبة الجديدة.'); return; }
+    const sid = AdminStudentUI.transferStudentId;
+    const allStudents = AdminStudentUI._rows || [];
+    const student = allStudents.find(function(s){ return s.id===sid; });
+    if (!student){ toast('لم يُعثر على الطالب.'); return; }
+    const oldGrade = student.grade||''; const oldSection = student.section||'';
+    if (newGrade===oldGrade && newSection===oldSection){ toast('المرحلة والشعبة الجديدة هي نفس الحالية.'); return; }
+    const doNotify = !!(document.getElementById('astTransferNotify')||{}).checked;
+    saveTransferBtn.disabled = true; saveTransferBtn.textContent = 'جارٍ النقل…';
+    try{
+      await DB.updateStudent(sid, { grade: newGrade, section: newSection });
+      if (doNotify){
+        const assignedIds = Array.isArray(student.assigned_teacher_ids) ? student.assigned_teacher_ids : [];
+        await Promise.all(assignedIds.map(function(tid){
+          return DB.createNotification({
+            school: State.user.school,
+            sender_id: State.user.id,
+            sender_name: State.user.full_name,
+            target_type: 'user',
+            target_id: tid,
+            type: 'general',
+            title: 'نقل طالب: '+student.full_name,
+            body: 'تم نقل الطالب '+student.full_name+' من '+oldGrade+'/'+oldSection+' إلى '+newGrade+'/'+newSection+'.'
+          });
+        }));
+        invalidateNotifCache();
+      }
+      toast('تم نقل الطالب إلى '+newGrade+' / '+newSection+(doNotify && (Array.isArray(student.assigned_teacher_ids)&&student.assigned_teacher_ids.length) ? ' وتم إشعار المعلمين المسنَدين.' : '.'));
+      AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null;
+      render(); bindAdminStudents();
+    }catch(e){ toast(e.message); saveTransferBtn.disabled=false; saveTransferBtn.textContent='تأكيد النقل'; }
   });
 }
 
