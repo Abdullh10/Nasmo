@@ -6732,7 +6732,7 @@ async function screenCoordinatorMyStudents(){
         '<td>'+(badges||'<span style="color:var(--muted);font-size:11.5px;">لا يوجد</span>')+'</td>' +
         '<td>' +
           '<button class="btn btn-ghost btn-sm" data-action="referStudentCounselor" data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||s.student_grade||'')+'" data-section="'+esc(s.section||s.student_section||'')+'">إحالة للمرشد</button>' +
-          ' <button class="btn btn-ghost btn-sm" data-action="referStudentPrincipal" data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||s.student_grade||'')+'" data-section="'+esc(s.section||s.student_section||'')+'">إبلاغ المدير</button>' +
+          ' <button class="btn btn-ghost btn-sm" data-action="coordIndividualPlan" data-id="'+esc(s.id)+'" data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||s.student_grade||'')+'" data-section="'+esc(s.section||s.student_section||'')+'">خطة علاجية فردية</button>' +
         '</td>' +
       '</tr>'
     );
@@ -6788,25 +6788,10 @@ function bindCoordinatorMyStudents(){
       }]);
     });
   });
-  document.querySelectorAll('[data-action="referStudentPrincipal"]').forEach(function(el){
-    el.addEventListener('click', async function(){
-      const name = el.getAttribute('data-name');
-      const grade = el.getAttribute('data-grade')||'';
-      const section = el.getAttribute('data-section')||'';
-      if (!confirm('إرسال بلاغ لمدير المدرسة عن الطالب '+name+'؟')) return;
-      try{
-        await DB.createNotification({
-          school: State.user.school,
-          sender_id: State.user.id,
-          sender_name: State.user.full_name,
-          target_type: 'school',
-          type: 'general',
-          title: 'بلاغ عن طالب: '+name,
-          body: 'أحال '+State.user.full_name+' الطالب '+name+(grade||section?' ('+[grade,section].filter(Boolean).join(' - ')+')':'')+' إلى اهتمام مدير المدرسة.'
-        });
-        invalidateNotifCache();
-        toast('تم إرسال البلاغ لمدير المدرسة.');
-      }catch(e){ toast(e.message); }
+  document.querySelectorAll('[data-action="coordIndividualPlan"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const student = { id: el.getAttribute('data-id'), full_name: el.getAttribute('data-name'), grade: el.getAttribute('data-grade')||'', section: el.getAttribute('data-section')||'' };
+      openPlanForStudent('individualAgreement', student);
     });
   });
   const groupPlanBtn = document.querySelector('[data-action="coordGoGroupPlan"]');
