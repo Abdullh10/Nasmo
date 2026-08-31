@@ -8198,7 +8198,7 @@ function bindAdminUsers(){
 }
 
 /* ----- لوحة مدير النظام: بيانات الطلاب (رفع ملفات + إسناد لعدة معلمين) ----- */
-let AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
+let AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
 function distinctSorted(arr, field){
   const set = new Set();
   arr.forEach(function(x){ const v=(x[field]||'').trim(); if (v) set.add(v); });
@@ -8264,6 +8264,7 @@ async function screenAdminStudents(){
   let filtered = students.slice();
   if (AdminStudentUI.gradeFilter) filtered = filtered.filter(function(s){ return (s.grade||'')===AdminStudentUI.gradeFilter; });
   if (AdminStudentUI.sectionFilter) filtered = filtered.filter(function(s){ return (s.section||'')===AdminStudentUI.sectionFilter; });
+  if (AdminStudentUI.nameFilter.trim()) { var nf = AdminStudentUI.nameFilter.trim(); filtered = filtered.filter(function(s){ return (s.full_name||'').indexOf(nf)>-1 || (s.national_id||'').indexOf(nf)>-1; }); }
   filtered.sort(compareGradeSection);
 
   const allSelected = filtered.length>0 && filtered.every(function(s){ return AdminStudentUI.selectedIds.indexOf(s.id)>-1; });
@@ -8306,11 +8307,12 @@ async function screenAdminStudents(){
 
   const filterBar = (
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
-      '<select class="input" id="astGradeFilter" style="max-width:220px;">' +
+      '<input class="input" id="astNameFilter" type="search" placeholder="🔍 ابحث بالاسم أو رقم الهوية…" value="'+esc(AdminStudentUI.nameFilter)+'" style="flex:1;min-width:180px;max-width:320px;">' +
+      '<select class="input" id="astGradeFilter" style="max-width:180px;">' +
         '<option value="">كل المراحل</option>' +
         grades.map(function(g){ return '<option value="'+esc(g)+'" '+(AdminStudentUI.gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
       '</select>' +
-      '<select class="input" id="astSectionFilter" style="max-width:220px;">' +
+      '<select class="input" id="astSectionFilter" style="max-width:180px;">' +
         '<option value="">كل الشعب</option>' +
         sections.map(function(s){ return '<option value="'+esc(s)+'" '+(AdminStudentUI.sectionFilter===s?'selected':'')+'>'+esc(s)+'</option>'; }).join('') +
       '</select>' +
@@ -8546,6 +8548,8 @@ function bindAdminStudents(){
     await importAdminStudentRows(dataRows);
   });
 
+  const nameFilterEl = document.getElementById('astNameFilter');
+  if (nameFilterEl) nameFilterEl.addEventListener('input', function(){ AdminStudentUI.nameFilter = nameFilterEl.value; render(); bindAdminStudents(); });
   const gradeFilterEl = document.getElementById('astGradeFilter');
   if (gradeFilterEl) gradeFilterEl.addEventListener('change', function(){ AdminStudentUI.gradeFilter = gradeFilterEl.value; render(); bindAdminStudents(); });
   const sectionFilterEl = document.getElementById('astSectionFilter');
