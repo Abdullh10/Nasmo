@@ -2948,7 +2948,7 @@ function blankData(formType){
   const today = new Date().toISOString().slice(0,10);
   switch(formType){
     case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'' };
-    case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], description:'', recommendations:'', parentNote:'' };
+    case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], descriptionItems:[], descriptionOther:'', recommendationItems:[], recommendationOther:'', parentNote:'' };
     case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'' };
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
     case 'plcMeetingMinutes': return { school:State.user.school, plc:'', date:today, time:'', meetingType:'اجتماع دوري', attendees:[ {name:'', spec:'', present:true} ], agenda:[''], summary:'', decisions:[ {decision:'', responsible:'', deadline:''} ] };
@@ -9323,7 +9323,69 @@ function renderGroupPlan(d, ro, students){
   );
 }
 
+const INDICATOR_DESCRIPTION_OPTIONS = [
+  'مناقشة موضوع تربوي مرتبط بالممارسات التعليمية',
+  'تبادل الخبرات والتجارب التعليمية بين المعلمين',
+  'مناقشة استراتيجيات التدريس وسبل تطبيقها',
+  'استعراض ومناقشة نتائج تعلم الطلاب',
+  'تحليل مستوى التحصيل الدراسي وتحديد جوانب التحسين',
+  'مناقشة التحديات والصعوبات التي تواجه المعلمين',
+  'عرض تجربة تعليمية ناجحة ومناقشة إمكانية تطبيقها',
+  'تبادل أفضل الممارسات في إدارة الصف',
+  'مناقشة أساليب التقويم وأدوات قياس تعلم الطلاب',
+  'مناقشة توظيف التقنية والوسائل التعليمية في التدريس',
+  'التخطيط لأنشطة وممارسات تعليمية مشتركة',
+  'مناقشة احتياجات الطلاب التعليمية والفروق الفردية',
+  'دراسة أساليب رفع دافعية الطلاب وتحسين مشاركتهم',
+  'مناقشة سبل معالجة جوانب الضعف لدى الطلاب',
+  'مناقشة سبل تنمية مهارات الطلاب وتعزيز نقاط القوة',
+  'متابعة ما تم تنفيذه من توصيات الاجتماعات السابقة',
+  'تحديد الاحتياجات المهنية والتدريبية للمعلمين',
+  'التخطيط لمبادرات ومشروعات تعليمية مشتركة',
+  'مناقشة موضوع تربوي وفق احتياج المدرسة والمعلمين',
+];
+const INDICATOR_RECOMMENDATION_OPTIONS = [
+  'تطبيق الاستراتيجيات التي تمت مناقشتها ومتابعة أثرها',
+  'تبادل الخبرات والممارسات التعليمية الناجحة بين المعلمين',
+  'إعداد خطة علاجية للطلاب منخفضي التحصيل',
+  'إعداد أنشطة إثرائية للطلاب المتفوقين',
+  'تنويع استراتيجيات التدريس بما يتناسب مع احتياجات الطلاب',
+  'تطوير أدوات وأساليب تقويم تعلم الطلاب',
+  'تحليل نتائج الطلاب بشكل دوري وتحديد جوانب التحسين',
+  'متابعة مستوى الطلاب وتوثيق تطور أدائهم',
+  'تبادل مصادر التعلم والمواد التعليمية بين أعضاء المجتمع المهني',
+  'توظيف التقنيات التعليمية المناسبة في العملية التعليمية',
+  'تنفيذ درس تطبيقي أو مشاهدة صفية وتبادل التغذية الراجعة',
+  'إعداد نشاط أو مبادرة تعليمية مشتركة',
+  'تحديد احتياج تدريبي والعمل على تلبيته',
+  'متابعة تنفيذ التوصيات في الاجتماع القادم',
+  'قياس أثر التوصيات والإجراءات المتخذة على تعلم الطلاب',
+  'تحديد مسؤول عن تنفيذ التوصية ومتابعة إنجازها',
+  'تحديد موعد لمراجعة النتائج ومناقشة مستوى التنفيذ',
+  'مشاركة النتائج والتجارب الناجحة مع بقية المعلمين',
+  'استمرار مناقشة الموضوع في الاجتماع القادم',
+];
+function checkboxGroupWithOther(name, options, selected, otherVal, ro){
+  selected = selected || [];
+  const isOtherSelected = selected.indexOf('أخرى') > -1;
+  const items = options.map(function(opt){
+    const checked = selected.indexOf(opt) > -1;
+    return '<label class="chk '+(checked?'checked':'')+(ro?' disabled':'')+'">' +
+      '<input type="checkbox" data-action="toggleChk" data-group="'+name+'" data-val="'+esc(opt)+'" '+(checked?'checked':'')+(ro?' disabled':'')+'>'+esc(opt)+'</label>';
+  }).join('');
+  const otherItem = '<label class="chk '+(isOtherSelected?'checked':'')+(ro?' disabled':'')+'">' +
+    '<input type="checkbox" data-action="toggleChk" data-group="'+name+'" data-val="أخرى" '+(isOtherSelected?'checked':'')+(ro?' disabled':'')+'>أخرى</label>';
+  const otherInput = '<div id="'+name+'_other_wrap" style="'+(isOtherSelected?'':'display:none;')+'margin-top:8px;">' +
+    '<input class="input" id="'+name+'_other" data-field="'+name.replace('Items','Other')+'" value="'+esc(otherVal||'')+'" placeholder="اذكر وصفاً إضافياً…"'+(ro?' disabled':'')+' style="width:100%;"></div>';
+  return '<div class="checkbox-group">'+items+otherItem+'</div>'+otherInput;
+}
+
 function renderIndicatorReport(d, ro, teachers){
+  /* backward-compat: migrate old string fields to new arrays */
+  if (!d.descriptionItems) d.descriptionItems = [];
+  if (d.description && !d.descriptionOther) d.descriptionOther = d.description;
+  if (!d.recommendationItems) d.recommendationItems = [];
+  if (d.recommendations && !d.recommendationOther) d.recommendationOther = d.recommendations;
   const rows = d.participants.map(function(p,i){
     return (
       '<tr><td style="width:36px;">'+(i+1)+'</td>' +
@@ -9345,8 +9407,10 @@ function renderIndicatorReport(d, ro, teachers){
     '<div class="block-title"><span class="dot"></span> المشاركون</div>' +
     '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:60px;">العدد</th><th style="width:40%;">الاسم</th><th>التخصص</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="participants">+ إضافة مشارك</button>') +
-    '<div class="block-title"><span class="dot"></span> الوصف</div>' + inputField('','description', d.description, {type:'textarea', readonly:ro}) +
-    '<div class="block-title"><span class="dot"></span> التوصيات</div>' + inputField('','recommendations', d.recommendations, {type:'textarea', readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> الوصف</div>' +
+    '<div class="field">'+checkboxGroupWithOther('descriptionItems', INDICATOR_DESCRIPTION_OPTIONS, d.descriptionItems, d.descriptionOther, ro)+'</div>' +
+    '<div class="block-title"><span class="dot"></span> التوصيات</div>' +
+    '<div class="field">'+checkboxGroupWithOther('recommendationItems', INDICATOR_RECOMMENDATION_OPTIONS, d.recommendationItems, d.recommendationOther, ro)+'</div>' +
     parentSection
   );
 }
