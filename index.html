@@ -1148,6 +1148,61 @@ function fmtDateTime(iso){
   return hijriDateFmt(d) + ' - ' + d.toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
 }
 
+/* ---------- عداد تنازلي للحصص التوضيحية ---------- */
+function demoLessonCountdownHtml(demoLessonTasks){
+  const now = new Date();
+  const upcoming = (demoLessonTasks||[]).filter(function(t){ return t.due_date && new Date(t.due_date) >= now; });
+  if (!upcoming.length) return '';
+  upcoming.sort(function(a,b){ return new Date(a.due_date)-new Date(b.due_date); });
+  const next = upcoming[0];
+  let info = {};
+  try{ info = JSON.parse(next.description||'{}'); }catch(e){}
+  const lessonDate = new Date(next.due_date);
+  const diffMs = lessonDate - now;
+  const diffDays = Math.floor(diffMs / 86400000);
+  const diffHrs = Math.floor((diffMs % 86400000) / 3600000);
+  const diffMin = Math.floor((diffMs % 3600000) / 60000);
+  const countdownStr = diffDays > 0
+    ? diffDays + ' يوم ' + diffHrs + ' ساعة ' + diffMin + ' دقيقة'
+    : diffHrs > 0
+      ? diffHrs + ' ساعة ' + diffMin + ' دقيقة'
+      : diffMin + ' دقيقة';
+  return (
+    '<div id="demoCountdownBanner" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark,#003a8c));color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;">' +
+      '<div style="font-size:32px;line-height:1;">⏳</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:13px;opacity:.85;margin-bottom:2px;">الحصة التوضيحية القادمة</div>' +
+        '<div style="font-weight:700;font-size:16px;margin-bottom:4px;">'+esc(info.lessonTitle||next.title||'حصة توضيحية')+'</div>' +
+        '<div style="font-size:12.5px;opacity:.85;">'+esc(info.subject||'—')+' · '+esc(info.day||'—')+' '+fmtDate(next.due_date)+' · الحصة '+esc(info.period||'—')+'</div>' +
+      '</div>' +
+      '<div style="text-align:center;background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;min-width:120px;" id="demoCountdownTimer">' +
+        '<div style="font-size:11px;opacity:.85;margin-bottom:4px;">الوقت المتبقي</div>' +
+        '<div style="font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;" id="demoCountdownValue">'+countdownStr+'</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+let _demoCountdownInterval = null;
+function startDemoCountdown(demoLessonTasks){
+  if (_demoCountdownInterval) { clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; }
+  const now0 = new Date();
+  const upcoming = (demoLessonTasks||[]).filter(function(t){ return t.due_date && new Date(t.due_date) >= now0; });
+  if (!upcoming.length) return;
+  upcoming.sort(function(a,b){ return new Date(a.due_date)-new Date(b.due_date); });
+  const next = upcoming[0];
+  _demoCountdownInterval = setInterval(function(){
+    const el = document.getElementById('demoCountdownValue');
+    if (!el){ clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; return; }
+    const now2 = new Date();
+    const diffMs = new Date(next.due_date) - now2;
+    if (diffMs <= 0){ el.textContent = 'الآن!'; clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; return; }
+    const d = Math.floor(diffMs/86400000);
+    const h = Math.floor((diffMs%86400000)/3600000);
+    const m = Math.floor((diffMs%3600000)/60000);
+    el.textContent = d>0 ? (d+' يوم '+h+' ساعة '+m+' دقيقة') : (h>0 ? (h+' ساعة '+m+' دقيقة') : (m+' دقيقة'));
+  }, 60000);
+}
+
 /* ---------- منتقي التاريخ الهجري: تحويل ميلادي <-> هجري ---------- */
 const HIJRI_MONTH_NAMES = ['محرم','صفر','ربيع الأول','ربيع الآخر','جمادى الأولى','جمادى الآخرة','رجب','شعبان','رمضان','شوال','ذو القعدة','ذو الحجة'];
 const hijriNumFmt = new Intl.DateTimeFormat('en-US', {calendar:'islamic-umalqura', year:'numeric', month:'numeric', day:'numeric'});
@@ -3336,6 +3391,7 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
+      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
@@ -4088,6 +4144,7 @@ function bindCoordinatorVisits(){
 
 /* ----- الحصة التوضيحية (منسق المجتمع المهني) ----- */
 let DemoLessonUI = { modalOpen: false };
+let _coordDemoLessonsCache = [];
 function blankDemoLesson(){
   return { communityId: (State.user&&State.user.community_id)||'', communityName:'', teacherId:'', teacherName:'', day:'', date:'', period:'', subject:'', lessonTitle:'' };
 }
@@ -4103,6 +4160,7 @@ async function screenCoordinatorDemoLessons(){
   const demoTasks = allTasks.filter(function(t){
     try{ const d=JSON.parse(t.description||'{}'); return d._type==='demoLesson' && t.created_by===State.user.id; }catch(e){ return false; }
   }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  _coordDemoLessonsCache = demoTasks;
 
   const dl = DemoLessonUI.draft;
   const modal = DemoLessonUI.modalOpen ? (
@@ -4167,12 +4225,14 @@ async function screenCoordinatorDemoLessons(){
     '<div class="section-head"><h2>الحصص التوضيحية</h2>' +
       (myCommunity ? '<button class="btn btn-primary" data-action="openDemoModal">+ تسجيل حصة توضيحية</button>' : '') +
     '</div>' +
+    demoLessonCountdownHtml(demoTasks) +
     (myCommunity ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
     (demoRows || '<p style="color:var(--muted);font-size:13.5px;">لم يتم تسجيل أي حصة توضيحية بعد.</p>') +
     modal
   );
 }
 function bindCoordinatorDemoLessons(){
+  startDemoCountdown(_coordDemoLessonsCache);
   const openBtn = document.querySelector('[data-action="openDemoModal"]');
   if (openBtn) openBtn.addEventListener('click', function(){
     DemoLessonUI.modalOpen = true;
@@ -4723,6 +4783,68 @@ async function screenNotificationsPanel(){
   );
 }
 function screenPrincipalNotifications(){ return screenNotificationsPanel(); }
+
+let PrincipalDemoLessonsUI = { coordFilter:'', statusFilter:'' };
+async function screenPrincipalDemoLessons(){
+  const allTasks = await DB.listTasks({ school: State.user.school });
+  const demoTasks = allTasks.filter(function(t){
+    try{ return JSON.parse(t.description||'{}')._type==='demoLesson'; }catch(e){ return false; }
+  });
+  demoTasks.sort(function(a,b){ return new Date(b.due_date||b.created_at)-new Date(a.due_date||a.created_at); });
+  const now = new Date();
+
+  const coordinators = Array.from(new Set(demoTasks.map(function(t){ return t.created_by_name||''; }))).filter(Boolean).sort();
+
+  let filtered = demoTasks;
+  if (PrincipalDemoLessonsUI.coordFilter) filtered = filtered.filter(function(t){ return (t.created_by_name||'')=== PrincipalDemoLessonsUI.coordFilter; });
+  if (PrincipalDemoLessonsUI.statusFilter === 'upcoming') filtered = filtered.filter(function(t){ return t.due_date && new Date(t.due_date) >= now; });
+  if (PrincipalDemoLessonsUI.statusFilter === 'past') filtered = filtered.filter(function(t){ return !t.due_date || new Date(t.due_date) < now; });
+
+  const coordOptions = '<option value="">جميع المنسقين</option>' + coordinators.map(function(n){ return '<option value="'+esc(n)+'" '+(PrincipalDemoLessonsUI.coordFilter===n?'selected':'')+'>'+esc(n)+'</option>'; }).join('');
+  const statusOptions = '<option value="">الحالة: الكل</option><option value="upcoming" '+(PrincipalDemoLessonsUI.statusFilter==='upcoming'?'selected':'')+'>قادمة</option><option value="past" '+(PrincipalDemoLessonsUI.statusFilter==='past'?'selected':'')+'>منتهية</option>';
+
+  const rows = filtered.map(function(t){
+    let info = {};
+    try{ info = JSON.parse(t.description||'{}'); }catch(e){}
+    const isPast = t.due_date && new Date(t.due_date) < now;
+    const badge = isPast
+      ? '<span style="background:var(--muted);color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">منتهية</span>'
+      : '<span style="background:var(--success);color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">قادمة</span>';
+    return (
+      '<tr>' +
+        '<td>'+esc(t.assigned_to_name||'—')+'</td>' +
+        '<td>'+esc(info.subject||'—')+'</td>' +
+        '<td>'+esc(info.lessonTitle||t.title||'—')+'</td>' +
+        '<td>'+(t.due_date?fmtDate(t.due_date):'—')+'</td>' +
+        '<td>'+esc(info.period||'—')+'</td>' +
+        '<td>'+esc(info.communityName||'—')+'</td>' +
+        '<td>'+esc(t.created_by_name||'—')+'</td>' +
+        '<td>'+badge+'</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>جدول الحصص التوضيحية</h2></div>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<select class="input" id="pdlCoordFilter" style="min-width:180px;">'+coordOptions+'</select>' +
+      '<select class="input" id="pdlStatusFilter" style="min-width:160px;">'+statusOptions+'</select>' +
+    '</div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+      '<thead><tr><th>المعلم المنفِّذ</th><th>المادة</th><th>عنوان الدرس</th><th>التاريخ</th><th>الحصة</th><th>المجتمع المهني</th><th>المنسق</th><th>الحالة</th></tr></thead>' +
+      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="8">لا توجد حصص توضيحية مسجَّلة بعد.</td></tr>')+'</tbody>' +
+    '</table></div></div>'
+  );
+}
+function bindPrincipalDemoLessons(){
+  const coordSel = document.getElementById('pdlCoordFilter');
+  if (coordSel) coordSel.addEventListener('change', function(){ PrincipalDemoLessonsUI.coordFilter = this.value; render(); bindPrincipalDemoLessons(); });
+  const statusSel = document.getElementById('pdlStatusFilter');
+  if (statusSel) statusSel.addEventListener('change', function(){ PrincipalDemoLessonsUI.statusFilter = this.value; render(); bindPrincipalDemoLessons(); });
+}
 function bindNotificationsPanel(){
   document.querySelectorAll('[data-action="pnotifFilter"]').forEach(function(el){
     el.addEventListener('click', function(){ NotifPanelUI.filter = el.getAttribute('data-val'); render(); bindNotificationsPanel(); });
@@ -6455,6 +6577,9 @@ async function screenDashboard(){
   if (State.dashTab==='principalReview' && State.user.role==='principal'){
     return await screenPrincipalReview();
   }
+  if (State.dashTab==='principalDemoLessons' && State.user.role==='principal'){
+    return await screenPrincipalDemoLessons();
+  }
   if (State.dashTab==='principalNotif' && State.user.role==='principal'){
     return await screenNotificationsPanel();
   }
@@ -6620,6 +6745,7 @@ function bindDashboard(){
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') { /* no bind needed — static */ }
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
+  else if (State.dashTab==='principalDemoLessons' && State.user.role==='principal') bindPrincipalDemoLessons();
   else if (State.dashTab==='principalNotif' && State.user.role==='principal') bindNotificationsPanel();
   else if (State.dashTab==='indicators') bindIndicators();
   else if (State.user.role==='principal') bindPrincipalMain();
@@ -6806,6 +6932,7 @@ function bindCoordinatorMyStudents(){
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 let TeacherFormsUI = { tab: 'active' }; /* 'active' | 'done' */
+let _teacherDemoLessonsCache = [];
 async function screenTeacherTasks(){
   const [subs, rawTasks, rawGoals, rawVisits, schoolStudents] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
@@ -6848,6 +6975,7 @@ async function screenTeacherTasks(){
   const demoLessonTasks = myRawTasks.filter(function(t){ return isDemoLesson(t); });
   generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0)-(b.status==='done'?1:0)) || (new Date(a.due_date||0)-new Date(b.due_date||0)); });
   demoLessonTasks.sort(function(a,b){ return new Date(a.due_date||a.created_at)-new Date(b.due_date||b.created_at); });
+  _teacherDemoLessonsCache = demoLessonTasks;
   const now = new Date();
   const overdueTasks = generalTasks.filter(function(t){ return t.status!=='done' && t.due_date && new Date(t.due_date) < now; });
 
@@ -7058,6 +7186,7 @@ async function screenTeacherTasks(){
     '</table></div></div>' +
     studentSummaryHtml +
     (visitScheduleCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> جدول الزيارات التبادلية المعتمد من منسق مجتمعك</div>' + visitScheduleCards) : '') +
+    (demoLessonTasks.length ? demoLessonCountdownHtml(demoLessonTasks) : '') +
     (demoLessonCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> حصص توضيحية مجدوَلة بواسطة منسق المجتمع المهني</div>' + demoLessonCards) : '') +
     (taskCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
     (goalCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> خطط تحسين موكَّل إليك تنفيذها</div>' + goalCards) : '') +
@@ -7065,6 +7194,7 @@ async function screenTeacherTasks(){
   );
 }
 function bindTeacherTasks(){
+  startDemoCountdown(_teacherDemoLessonsCache);
   document.querySelectorAll('[data-action="teacherFormsTab"]').forEach(function(el){
     el.addEventListener('click', function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); render(); bindTeacherTasks(); });
   });
