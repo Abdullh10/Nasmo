@@ -1149,15 +1149,21 @@ function fmtDateTime(iso){
 }
 
 /* ---------- عداد تنازلي للحصص التوضيحية ---------- */
+function demoLessonTarget(t){
+  let info = {};
+  try{ info = JSON.parse(t.description||'{}'); }catch(e){}
+  if (info.date && info.startTime) return new Date(info.date + 'T' + info.startTime + ':00');
+  return t.due_date ? new Date(t.due_date) : null;
+}
 function demoLessonCountdownHtml(demoLessonTasks){
   const now = new Date();
-  const upcoming = (demoLessonTasks||[]).filter(function(t){ return t.due_date && new Date(t.due_date) >= now; });
+  const upcoming = (demoLessonTasks||[]).filter(function(t){ const tgt=demoLessonTarget(t); return tgt && tgt >= now; });
   if (!upcoming.length) return '';
-  upcoming.sort(function(a,b){ return new Date(a.due_date)-new Date(b.due_date); });
+  upcoming.sort(function(a,b){ return demoLessonTarget(a)-demoLessonTarget(b); });
   const next = upcoming[0];
   let info = {};
   try{ info = JSON.parse(next.description||'{}'); }catch(e){}
-  const lessonDate = new Date(next.due_date);
+  const lessonDate = demoLessonTarget(next);
   const diffMs = lessonDate - now;
   const diffDays = Math.floor(diffMs / 86400000);
   const diffHrs = Math.floor((diffMs % 86400000) / 3600000);
@@ -1173,7 +1179,7 @@ function demoLessonCountdownHtml(demoLessonTasks){
       '<div style="flex:1;min-width:0;">' +
         '<div style="font-size:13px;opacity:.85;margin-bottom:2px;">الحصة التوضيحية القادمة</div>' +
         '<div style="font-weight:700;font-size:16px;margin-bottom:4px;">'+esc(info.lessonTitle||next.title||'حصة توضيحية')+'</div>' +
-        '<div style="font-size:12.5px;opacity:.85;">'+esc(info.subject||'—')+' · '+esc(info.day||'—')+' '+fmtDate(next.due_date)+' · الحصة '+esc(info.period||'—')+'</div>' +
+        '<div style="font-size:12.5px;opacity:.85;">'+esc(info.subject||'—')+' · '+esc(info.day||'—')+' '+fmtDate(info.date||next.due_date)+' · الحصة '+esc(info.period||'—')+(info.startTime?' · '+esc(info.startTime)+(info.endTime?' - '+esc(info.endTime):''):'')+'</div>' +
       '</div>' +
       '<div style="text-align:center;background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;min-width:120px;" id="demoCountdownTimer">' +
         '<div style="font-size:11px;opacity:.85;margin-bottom:4px;">الوقت المتبقي</div>' +
@@ -1186,15 +1192,16 @@ let _demoCountdownInterval = null;
 function startDemoCountdown(demoLessonTasks){
   if (_demoCountdownInterval) { clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; }
   const now0 = new Date();
-  const upcoming = (demoLessonTasks||[]).filter(function(t){ return t.due_date && new Date(t.due_date) >= now0; });
+  const upcoming = (demoLessonTasks||[]).filter(function(t){ const tgt=demoLessonTarget(t); return tgt && tgt >= now0; });
   if (!upcoming.length) return;
-  upcoming.sort(function(a,b){ return new Date(a.due_date)-new Date(b.due_date); });
+  upcoming.sort(function(a,b){ return demoLessonTarget(a)-demoLessonTarget(b); });
   const next = upcoming[0];
+  const target = demoLessonTarget(next);
   _demoCountdownInterval = setInterval(function(){
     const el = document.getElementById('demoCountdownValue');
     if (!el){ clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; return; }
     const now2 = new Date();
-    const diffMs = new Date(next.due_date) - now2;
+    const diffMs = target - now2;
     if (diffMs <= 0){ el.textContent = 'الآن!'; clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; return; }
     const d = Math.floor(diffMs/86400000);
     const h = Math.floor((diffMs%86400000)/3600000);
@@ -4187,6 +4194,10 @@ async function screenCoordinatorDemoLessons(){
             '<div class="field"><label>التاريخ</label>'+hijriDateInputHtml('id="dlDate"', (dl&&dl.date)||'', false)+'</div>' +
           '</div>' +
           '<div class="field"><label>الحصة</label><input class="input" id="dlPeriod" value="'+esc((dl&&dl.period)||'')+'" placeholder="مثال: الحصة الثالثة"></div>' +
+          '<div class="field-grid cols-2">' +
+            '<div class="field"><label>وقت البداية</label><input class="input" id="dlStartTime" type="time" value="'+esc((dl&&dl.startTime)||'')+'"></div>' +
+            '<div class="field"><label>وقت النهاية</label><input class="input" id="dlEndTime" type="time" value="'+esc((dl&&dl.endTime)||'')+'"></div>' +
+          '</div>' +
           '<div class="field"><label>المادة</label><input class="input" id="dlSubject" value="'+esc((dl&&dl.subject)||'')+'" placeholder="مثال: الرياضيات"></div>' +
           '<div class="field"><label>عنوان الدرس</label><input class="input" id="dlLessonTitle" value="'+esc((dl&&dl.lessonTitle)||'')+'" placeholder="عنوان الدرس التوضيحي"></div>' +
         '</div>' +
@@ -4210,6 +4221,7 @@ async function screenCoordinatorDemoLessons(){
             '<div><span style="color:var(--muted);">اليوم: </span><b>'+esc(info.day||'—')+'</b></div>' +
             '<div><span style="color:var(--muted);">التاريخ: </span><b>'+(info.date?fmtDate(info.date):'—')+'</b></div>' +
             '<div><span style="color:var(--muted);">الحصة: </span><b>'+esc(info.period||'—')+'</b></div>' +
+            (info.startTime ? '<div><span style="color:var(--muted);">الوقت: </span><b>'+esc(info.startTime)+(info.endTime?' - '+esc(info.endTime):'')+'</b></div>' : '') +
             '<div><span style="color:var(--muted);">المادة: </span><b>'+esc(info.subject||'—')+'</b></div>' +
           '</div>' +
           '<button class="btn btn-ghost btn-sm" data-action="deleteDemoLesson" data-id="'+t.id+'">حذف</button>' +
@@ -4266,16 +4278,19 @@ function bindCoordinatorDemoLessons(){
     const dateEl = document.querySelector('#dlDate, [id="dlDate"]');
     const date = dateEl ? dateEl.value : '';
     const period = (document.getElementById('dlPeriod')||{}).value || '';
+    const startTime = (document.getElementById('dlStartTime')||{}).value || '';
+    const endTime = (document.getElementById('dlEndTime')||{}).value || '';
     const subject = (document.getElementById('dlSubject')||{}).value || '';
     const lessonTitle = (document.getElementById('dlLessonTitle')||{}).value || '';
-    if (!communityId || !teacherId || !day || !date || !period || !subject || !lessonTitle){
-      toast('يرجى تعبئة جميع الحقول المطلوبة.'); this.disabled = false; return;
+    if (!communityId || !teacherId || !day || !date || !period || !startTime || !subject || !lessonTitle){
+      toast('يرجى تعبئة جميع الحقول المطلوبة (بما فيها وقت البداية).'); this.disabled = false; return;
     }
-    const descJson = JSON.stringify({ _type:'demoLesson', communityId:communityId, communityName:communityName, day:day, date:date, period:period, subject:subject, lessonTitle:lessonTitle });
+    const dueDatetime = date + 'T' + startTime + ':00';
+    const descJson = JSON.stringify({ _type:'demoLesson', communityId:communityId, communityName:communityName, day:day, date:date, startTime:startTime, endTime:endTime, period:period, subject:subject, lessonTitle:lessonTitle });
     try{
-      await DB.createTask({ school:State.user.school, community_id:communityId||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:'حصة توضيحية: '+lessonTitle, description:descJson, status:'pending', due_date: date||null });
+      await DB.createTask({ school:State.user.school, community_id:communityId||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:'حصة توضيحية: '+lessonTitle, description:descJson, status:'pending', due_date: dueDatetime });
       /* إشعارات: المعلم المنفِّذ وأعضاء المجتمع والمدير */
-      const notifBody = State.user.full_name+' سجَّل حصة توضيحية بعنوان "'+lessonTitle+'" يوم '+day+' '+fmtDate(date)+' الحصة '+period+' مادة '+subject+'.';
+      const notifBody = State.user.full_name+' سجَّل حصة توضيحية بعنوان "'+lessonTitle+'" يوم '+day+' '+fmtDate(date)+' الحصة '+period+' ('+startTime+(endTime?' - '+endTime:'')+') مادة '+subject+'.';
       const allUsers = await DB.listUsers({ school: State.user.school });
       const communityTeachers = allUsers.filter(function(u){ return u.role==='teacher' && u.community_id===communityId; });
       const principals = allUsers.filter(function(u){ return u.role==='principal'; });
@@ -4790,15 +4805,15 @@ async function screenPrincipalDemoLessons(){
   const demoTasks = allTasks.filter(function(t){
     try{ return JSON.parse(t.description||'{}')._type==='demoLesson'; }catch(e){ return false; }
   });
-  demoTasks.sort(function(a,b){ return new Date(b.due_date||b.created_at)-new Date(a.due_date||a.created_at); });
   const now = new Date();
+  demoTasks.sort(function(a,b){ return (demoLessonTarget(b)||new Date(b.created_at))-(demoLessonTarget(a)||new Date(a.created_at)); });
 
   const coordinators = Array.from(new Set(demoTasks.map(function(t){ return t.created_by_name||''; }))).filter(Boolean).sort();
 
   let filtered = demoTasks;
   if (PrincipalDemoLessonsUI.coordFilter) filtered = filtered.filter(function(t){ return (t.created_by_name||'')=== PrincipalDemoLessonsUI.coordFilter; });
-  if (PrincipalDemoLessonsUI.statusFilter === 'upcoming') filtered = filtered.filter(function(t){ return t.due_date && new Date(t.due_date) >= now; });
-  if (PrincipalDemoLessonsUI.statusFilter === 'past') filtered = filtered.filter(function(t){ return !t.due_date || new Date(t.due_date) < now; });
+  if (PrincipalDemoLessonsUI.statusFilter === 'upcoming') filtered = filtered.filter(function(t){ const tgt=demoLessonTarget(t); return tgt && tgt >= now; });
+  if (PrincipalDemoLessonsUI.statusFilter === 'past') filtered = filtered.filter(function(t){ const tgt=demoLessonTarget(t); return !tgt || tgt < now; });
 
   const coordOptions = '<option value="">جميع المنسقين</option>' + coordinators.map(function(n){ return '<option value="'+esc(n)+'" '+(PrincipalDemoLessonsUI.coordFilter===n?'selected':'')+'>'+esc(n)+'</option>'; }).join('');
   const statusOptions = '<option value="">الحالة: الكل</option><option value="upcoming" '+(PrincipalDemoLessonsUI.statusFilter==='upcoming'?'selected':'')+'>قادمة</option><option value="past" '+(PrincipalDemoLessonsUI.statusFilter==='past'?'selected':'')+'>منتهية</option>';
@@ -4806,16 +4821,18 @@ async function screenPrincipalDemoLessons(){
   const rows = filtered.map(function(t){
     let info = {};
     try{ info = JSON.parse(t.description||'{}'); }catch(e){}
-    const isPast = t.due_date && new Date(t.due_date) < now;
+    const tgt = demoLessonTarget(t);
+    const isPast = tgt && tgt < now;
     const badge = isPast
-      ? '<span style="background:var(--muted);color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">منتهية</span>'
-      : '<span style="background:var(--success);color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">قادمة</span>';
+      ? '<span style="background:#6b7280;color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">منتهية</span>'
+      : '<span style="background:#16a34a;color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">قادمة</span>';
     return (
       '<tr>' +
         '<td>'+esc(t.assigned_to_name||'—')+'</td>' +
         '<td>'+esc(info.subject||'—')+'</td>' +
         '<td>'+esc(info.lessonTitle||t.title||'—')+'</td>' +
-        '<td>'+(t.due_date?fmtDate(t.due_date):'—')+'</td>' +
+        '<td>'+(info.date?fmtDate(info.date):(t.due_date?fmtDate(t.due_date):'—'))+'</td>' +
+        '<td>'+(info.startTime?esc(info.startTime)+(info.endTime?' - '+esc(info.endTime):''):'—')+'</td>' +
         '<td>'+esc(info.period||'—')+'</td>' +
         '<td>'+esc(info.communityName||'—')+'</td>' +
         '<td>'+esc(t.created_by_name||'—')+'</td>' +
@@ -4834,8 +4851,8 @@ async function screenPrincipalDemoLessons(){
       '<select class="input" id="pdlStatusFilter" style="min-width:160px;">'+statusOptions+'</select>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>المعلم المنفِّذ</th><th>المادة</th><th>عنوان الدرس</th><th>التاريخ</th><th>الحصة</th><th>المجتمع المهني</th><th>المنسق</th><th>الحالة</th></tr></thead>' +
-      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="8">لا توجد حصص توضيحية مسجَّلة بعد.</td></tr>')+'</tbody>' +
+      '<thead><tr><th>المعلم المنفِّذ</th><th>المادة</th><th>عنوان الدرس</th><th>التاريخ</th><th>الوقت</th><th>الحصة</th><th>المجتمع المهني</th><th>المنسق</th><th>الحالة</th></tr></thead>' +
+      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="9">لا توجد حصص توضيحية مسجَّلة بعد.</td></tr>')+'</tbody>' +
     '</table></div></div>'
   );
 }
@@ -7090,20 +7107,23 @@ async function screenTeacherTasks(){
   const demoLessonCards = demoLessonTasks.map(function(t){
     let info = {};
     try{ info = JSON.parse(t.description||'{}'); }catch(e){}
-    const isPast = info.date && new Date(info.date) < now;
+    const tgt = demoLessonTarget(t);
+    const isPast = tgt && tgt < now;
     return (
-      '<div class="program-card" style="margin-bottom:10px;border-right:4px solid var(--primary);">' +
+      '<div class="program-card" style="margin-bottom:10px;border-right:4px solid #1a56db;">' +
         '<div style="padding:14px 18px;">' +
           '<div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;">' +
-            '<div style="background:var(--primary);color:#fff;border-radius:10px;padding:10px 16px;text-align:center;min-width:80px;flex-shrink:0;">' +
+            '<div style="background:#1a56db;color:#fff;border-radius:10px;padding:10px 16px;text-align:center;min-width:80px;flex-shrink:0;">' +
               '<div style="font-size:20px;font-weight:800;line-height:1;">'+(info.date?new Date(info.date).toLocaleDateString('ar-SA',{day:'numeric',month:'short'}):'—')+'</div>' +
               '<div style="font-size:11px;margin-top:3px;opacity:.85;">'+esc(info.day||'')+'</div>' +
+              (info.startTime?'<div style="font-size:11px;margin-top:2px;opacity:.9;">'+esc(info.startTime)+'</div>':'') +
             '</div>' +
             '<div style="flex:1;min-width:0;">' +
               '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">'+esc(info.lessonTitle||t.title)+'</div>' +
               '<div style="font-size:13px;color:var(--muted);margin-bottom:2px;">'+
                 '<b>الحصة:</b> '+esc(info.period||'—')+' &nbsp;·&nbsp; '+
-                '<b>المادة:</b> '+esc(info.subject||'—') +
+                '<b>المادة:</b> '+esc(info.subject||'—')+
+                (info.startTime?' &nbsp;·&nbsp; <b>الوقت:</b> '+esc(info.startTime)+(info.endTime?' - '+esc(info.endTime):''):'') +
               '</div>' +
               '<div style="font-size:12.5px;color:var(--muted);">'+
                 '<b>المجتمع:</b> '+esc(info.communityName||'—')+' &nbsp;·&nbsp; '+
