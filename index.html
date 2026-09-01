@@ -3391,6 +3391,7 @@ function bindLogin(){
       }
       setUserSession(user);
       go('dashboard');
+      initPWA();
     }catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
     finally{ btn.disabled = false; btn.textContent = 'تسجيل الدخول'; }
   });
@@ -3989,6 +3990,7 @@ function bindCoordinatorTasks(){
       await DB.createTask({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
       invalidatePendingCache();
       try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:teacherId, type:'general', title:'تم تكليفك بمهمة جديدة: '+title, body:(description||title) }); }catch(e){}
+      pushNotify(teacherId, 'مهمة جديدة', title);
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       render(); bindCoordinatorTasks();
@@ -5337,6 +5339,7 @@ function openCounselorReferralModal(students){
         if (counselorId){
           const notifBody = 'أحال إليك '+State.user.full_name+' ('+students.length+') طالب للمتابعة الإرشادية.\nسبب الإحالة: '+(selectedReason==='أخرى'?otherText.trim():selectedReason);
           try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorId, type:'general', title:'إحالة طلاب جدد إليك', body:notifBody }); }catch(e){}
+          pushNotify(counselorId, 'إحالة طلاب جدد', State.user.full_name + ' أحال إليك ' + students.length + ' طالب');
         }
         toast('تمت إحالة '+students.length+' طالب للمرشد '+(counselor?counselor.full_name:'')+' بنجاح.');
         removeCounselorReferralModal();
@@ -9952,7 +9955,11 @@ async function persistEditor(targetStatus){
   try{
     if (EditorState.id){ await DB.updateSubmission(EditorState.id, payload); }
     else { const created = await DB.createSubmission(payload); EditorState.id = created.id; }
-    if (targetStatus === 'pending') invalidatePendingCache();
+    if (targetStatus === 'pending'){
+      invalidatePendingCache();
+      const fTitle = (formDef(EditorState.formType)||{}).title || 'نموذج';
+      pushNotifyPrincipal(EditorState.school, 'نموذج بانتظار اعتمادك', fTitle + ' — أرسله ' + EditorState.createdByName);
+    }
     toast(targetStatus==='pending' ? 'تم إرسال النموذج إلى مدير المدرسة للاعتماد.' : 'تم حفظ المسودة بنجاح.');
     go('dashboard');
   }catch(e){ toast(e.message); }
@@ -10183,6 +10190,7 @@ function bindGlobalAction(el){
       CredsPrint = { school:'', items:[] }; localStorage.removeItem(LS_LAST_CREDS_BATCH);
     }
     go('dashboard');
+    initPWA();
     if (isRemote()){
       remoteFetch('profiles?id=eq.' + encodeURIComponent(u.id)).then(function(rows){
         if (!rows || !rows[0]){ logout(); return; }
@@ -10194,6 +10202,71 @@ function bindGlobalAction(el){
   } else { go('login'); }
   setInterval(function(){ if (State.user && State.user.role==='admin') checkConnectivity(); }, 20000);
 })();
+
+/* ====== PWA — إشعارات الدفع ====== */
+const VAPID_PUBLIC_KEY = 'BNWJmbeYVjujRo0a_Ky1tKp6MtSK8h6YxvygkBXJIYIy_n9FUVTti1b6P-qbnhLTQ_TMLWl9Ap_oPWgBUIvw1lI';
+
+function _vapidToUint8(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(function(c){ return c.charCodeAt(0); }));
+}
+
+let _swReg = null;
+
+async function initPWA(){
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    _swReg = await navigator.serviceWorker.register('./sw.js');
+    await _swReg.update();
+    if (!State.user || !isRemote()) return;
+    let perm = Notification.permission;
+    if (perm === 'default') perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    await _subscribePush(_swReg);
+  } catch(e){ console.warn('[PWA]', e); }
+}
+
+async function _subscribePush(reg){
+  try {
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: _vapidToUint8(VAPID_PUBLIC_KEY)
+      });
+    }
+    const subStr = JSON.stringify(sub);
+    if (localStorage.getItem('_pwa_sub') === subStr) return;
+    await remoteFetch('push_subscriptions?user_id=eq.' + encodeURIComponent(State.user.id), { method:'DELETE' });
+    await remoteFetch('push_subscriptions', {
+      method:'POST',
+      body:{ user_id:State.user.id, school:State.user.school, subscription:sub },
+      prefer:'return=minimal'
+    });
+    localStorage.setItem('_pwa_sub', subStr);
+  } catch(e){ console.warn('[PWA sub]', e); }
+}
+
+async function pushNotify(userId, title, body){
+  if (!userId || !isRemote()) return;
+  try {
+    await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-push', {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer '+AUTH.accessToken, 'Content-Type':'application/json' },
+      body: JSON.stringify({ userId:userId, title:title, body:body||'' })
+    });
+  } catch(e){ /* push is optional */ }
+}
+
+async function pushNotifyPrincipal(school, title, body){
+  if (!isRemote()) return;
+  try {
+    const principals = await remoteFetch('profiles?role=eq.principal&school=eq.' + encodeURIComponent(school));
+    (principals||[]).forEach(function(p){ pushNotify(p.id, title, body); });
+  } catch(e){}
+}
 </script>
 </body>
 </html>
