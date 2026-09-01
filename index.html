@@ -1010,9 +1010,9 @@ function applyConnDot(){
    بينما تُصدر Supabase جلسة JWT فعلية يميّز بها auth.uid() داخل سياسات RLS. */
 let AUTH = { accessToken: null, refreshToken: null };
 function authEmailFor(username){ return username.trim().toLowerCase() + '@nasmo.app'; }
-function persistAuth(){ sessionStorage.setItem('dtd_auth', JSON.stringify(AUTH)); }
-function loadAuth(){ try{ const a = JSON.parse(sessionStorage.getItem('dtd_auth')); if (a) AUTH = a; }catch(e){} }
-function clearAuth(){ AUTH = { accessToken:null, refreshToken:null }; sessionStorage.removeItem('dtd_auth'); }
+function persistAuth(){ try{ localStorage.setItem('dtd_auth', JSON.stringify(AUTH)); }catch(e){} }
+function loadAuth(){ try{ const a = JSON.parse(localStorage.getItem('dtd_auth')); if (a) AUTH = a; }catch(e){} }
+function clearAuth(){ AUTH = { accessToken:null, refreshToken:null }; try{ localStorage.removeItem('dtd_auth'); }catch(e){} }
 async function refreshAuthToken(){
   if (!AUTH.refreshToken) return false;
   try{
@@ -2599,7 +2599,7 @@ function isNotifUnread(n, userId){ return (n.read_by||[]).indexOf(userId) === -1
 
 function setUserSession(u){
   State.user = u;
-  sessionStorage.setItem('dtd_session', JSON.stringify(u));
+  try{ localStorage.setItem('dtd_session', JSON.stringify(u)); }catch(e){}
   persistAuth();
   /* مسح بطاقات دخول مدرسة أخرى إذا بقيت في الجهاز */
   if (u && CredsPrint && CredsPrint.school && CredsPrint.school !== u.school){
@@ -2607,9 +2607,9 @@ function setUserSession(u){
     localStorage.removeItem(LS_LAST_CREDS_BATCH);
   }
 }
-function loadUserSession(){ try{ return JSON.parse(sessionStorage.getItem('dtd_session')); }catch(e){ return null; } }
+function loadUserSession(){ try{ return JSON.parse(localStorage.getItem('dtd_session')); }catch(e){ return null; } }
 function logout(){
-  sessionStorage.removeItem('dtd_session'); clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
+  try{ localStorage.removeItem('dtd_session'); }catch(e){} clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
