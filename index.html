@@ -371,6 +371,21 @@ table.list tr:hover td{ background:var(--surface-2); }
 .chk input{ accent-color:var(--teal); }
 .chk.checked{ background:#EAF6F5; border-color:var(--teal); color:var(--teal-dark); font-weight:700; }
 
+/* ---------- dropdown picker ---------- */
+.dropdown-picker{ display:flex; flex-direction:column; gap:0; }
+.picker-row{ display:flex; gap:8px; align-items:center; }
+.picker-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.picker-chip{ display:inline-flex; align-items:center; gap:5px; background:#EAF6F5; border:1.3px solid var(--teal); color:var(--teal-dark); font-size:12.5px; font-weight:600; border-radius:20px; padding:5px 10px 5px 7px; max-width:100%; }
+.picker-chip span{ flex:1; overflow-wrap:break-word; }
+.picker-chip-rmv{ background:none; border:none; color:var(--teal-dark); font-size:15px; line-height:1; padding:0 2px; cursor:pointer; opacity:.7; flex-shrink:0; }
+.picker-chip-rmv:hover{ opacity:1; color:var(--danger); }
+.picker-chip-other{ background:#FDF1E0; border-color:var(--pending); color:var(--pending); }
+.picker-chip-other .picker-chip-rmv{ color:var(--pending); }
+.picker-ro-list{ display:flex; flex-direction:column; gap:0; }
+.picker-ro-item{ font-size:13px; display:flex; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); align-items:baseline; }
+.picker-ro-item:last-child{ border-bottom:none; }
+.picker-ro-num{ color:var(--muted); font-family:'JetBrains Mono'; font-size:11px; min-width:20px; flex-shrink:0; }
+
 .dyn-table{ width:100%; min-width:840px; table-layout:fixed; border-collapse:collapse; margin-bottom:10px; }
 .dyn-table th{ font-size:11.5px; color:var(--muted); text-align:right; padding:7px 8px; border-bottom:1.5px solid var(--border); overflow-wrap:break-word; }
 .dyn-table td{ padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; overflow-wrap:break-word; }
@@ -9380,6 +9395,44 @@ function checkboxGroupWithOther(name, options, selected, otherVal, ro){
   return '<div class="checkbox-group">'+items+otherItem+'</div>'+otherInput;
 }
 
+function dropdownPicker(name, options, selected, otherVal, ro){
+  selected = selected || [];
+  const isOtherSelected = selected.indexOf('أخرى') > -1;
+  const mainSelected = selected.filter(function(v){ return v !== 'أخرى'; });
+  if (ro){
+    const items = mainSelected.map(function(v, i){
+      return '<div class="picker-ro-item"><span class="picker-ro-num">'+(i+1)+'.</span><span>'+esc(v)+'</span></div>';
+    });
+    if (isOtherSelected && otherVal){
+      items.push('<div class="picker-ro-item"><span class="picker-ro-num">'+(items.length+1)+'.</span><span>'+esc(otherVal)+'</span></div>');
+    }
+    return '<div class="picker-ro-list">'+(items.length ? items.join('') : '<span style="color:var(--muted)">—</span>')+'</div>';
+  }
+  const available = options.filter(function(opt){ return selected.indexOf(opt) === -1; });
+  const chips = mainSelected.map(function(val){
+    return '<span class="picker-chip"><span>'+esc(val)+'</span><button type="button" class="picker-chip-rmv" data-action="removeDropdownItem" data-group="'+name+'" data-val="'+esc(val)+'">×</button></span>';
+  });
+  if (isOtherSelected){
+    chips.push('<span class="picker-chip picker-chip-other"><span>أخرى</span><button type="button" class="picker-chip-rmv" data-action="removeDropdownItem" data-group="'+name+'" data-val="أخرى">×</button></span>');
+  }
+  return (
+    '<div class="dropdown-picker">' +
+      '<div class="picker-row">' +
+        '<select id="'+name+'_sel" class="input" style="flex:1;min-width:0;">' +
+          '<option value="">— اختر بنداً —</option>' +
+          available.map(function(opt){ return '<option value="'+esc(opt)+'">'+esc(opt)+'</option>'; }).join('') +
+          (isOtherSelected ? '' : '<option value="أخرى">أخرى…</option>') +
+        '</select>' +
+        '<button type="button" class="btn btn-sm" data-action="addDropdownItem" data-group="'+name+'" data-select="'+name+'_sel">+ إضافة</button>' +
+      '</div>' +
+      (chips.length ? '<div class="picker-chips">'+chips.join('')+'</div>' : '') +
+      (isOtherSelected ?
+        '<div style="margin-top:8px;"><input class="input" id="'+name+'_other" data-field="'+name.replace('Items','Other')+'" value="'+esc(otherVal||'')+'" placeholder="اكتب وصفاً مخصصاً…" style="width:100%;"></div>'
+      : '') +
+    '</div>'
+  );
+}
+
 function renderIndicatorReport(d, ro, teachers){
   /* backward-compat: migrate old string fields to new arrays */
   if (!d.descriptionItems) d.descriptionItems = [];
@@ -9408,9 +9461,9 @@ function renderIndicatorReport(d, ro, teachers){
     '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:60px;">العدد</th><th style="width:40%;">الاسم</th><th>التخصص</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+rows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="participants">+ إضافة مشارك</button>') +
     '<div class="block-title"><span class="dot"></span> الوصف</div>' +
-    '<div class="field">'+checkboxGroupWithOther('descriptionItems', INDICATOR_DESCRIPTION_OPTIONS, d.descriptionItems, d.descriptionOther, ro)+'</div>' +
+    '<div class="field">'+dropdownPicker('descriptionItems', INDICATOR_DESCRIPTION_OPTIONS, d.descriptionItems, d.descriptionOther, ro)+'</div>' +
     '<div class="block-title"><span class="dot"></span> التوصيات</div>' +
-    '<div class="field">'+checkboxGroupWithOther('recommendationItems', INDICATOR_RECOMMENDATION_OPTIONS, d.recommendationItems, d.recommendationOther, ro)+'</div>' +
+    '<div class="field">'+dropdownPicker('recommendationItems', INDICATOR_RECOMMENDATION_OPTIONS, d.recommendationItems, d.recommendationOther, ro)+'</div>' +
     parentSection
   );
 }
@@ -9788,6 +9841,27 @@ function bindEditor(){
       const arr = getPath(EditorState.data, list) || [];
       arr.splice(idx,1);
       setPath(EditorState.data, list, arr);
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="addDropdownItem"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const group = el.getAttribute('data-group');
+      const sel = document.getElementById(el.getAttribute('data-select'));
+      if (!sel || !sel.value) return;
+      const val = sel.value;
+      let arr = getPath(EditorState.data, group) || [];
+      if (arr.indexOf(val) === -1){ arr = arr.concat([val]); setPath(EditorState.data, group, arr); }
+      render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="removeDropdownItem"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const group = el.getAttribute('data-group');
+      const val = el.getAttribute('data-val');
+      let arr = (getPath(EditorState.data, group) || []).filter(function(v){ return v !== val; });
+      setPath(EditorState.data, group, arr);
+      if (val === 'أخرى') setPath(EditorState.data, group.replace('Items','Other'), '');
       render(); bindEditor();
     });
   });
