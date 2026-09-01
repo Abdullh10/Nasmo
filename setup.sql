@@ -5,6 +5,7 @@
 -- ============================================================
 
 -- ── 1. حذف الجداول القديمة (إن وُجدت) ──────────────────────
+drop table if exists push_subscriptions cascade;
 drop table if exists visit_schedules  cascade;
 drop table if exists students         cascade;
 drop table if exists practice_shares  cascade;
@@ -208,6 +209,17 @@ create table visit_schedules (
   rows            jsonb default '[]'::jsonb,
   created_at      timestamptz default now()
 );
+
+create table push_subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid references profiles(id) on delete cascade not null,
+  school       text,
+  subscription jsonb not null,
+  created_at   timestamptz default now()
+);
+alter table push_subscriptions enable row level security;
+create policy "own_push" on push_subscriptions
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ── 4. الدوال المساعدة (تقرأ دور/مدرسة المستخدم الحالي) ──────
 create or replace function my_role()
