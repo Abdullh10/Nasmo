@@ -5189,47 +5189,122 @@ function bindPracticeBank(){
 }
 
 /* ---------------------- نموذج إحالة للمرشد الطلابي ---------------------- */
+const REFERRAL_REASONS = [
+  'النوم داخل الحصة',
+  'التأخر المتكرر',
+  'عرقلة سير الحصة',
+  'الإخلال بالنظام والضوضاء',
+  'مشاجرة مع زميل',
+  'إهمال الواجبات المدرسية',
+  'الغياب المتكرر',
+  'العقوق والعناد مع المعلم',
+  'استخدام الجوال داخل الفصل',
+  'الغش في الاختبارات',
+  'التنمر على الزملاء',
+  'الانسحاب الاجتماعي والانعزال',
+  'التدخين',
+  'أخرى'
+];
 function openCounselorReferralModal(students){
   // students = [{name, grade, section}]
   DB.listUsers({ school: State.user.school }).then(function(users){
     const counselors = (users||[]).filter(function(u){ return u.role==='counselor'; });
     if (!counselors.length){ toast('لا يوجد مرشد طلابي مسجّل في هذه المدرسة.'); return; }
     removeCounselorReferralModal();
-    const names = students.map(function(s){ return s.name; }).join('، ');
+    const now = new Date();
+    const dayNames = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+    const todayDay = dayNames[now.getDay()];
+    const todayDate = now.toISOString().slice(0,10);
+    const studentRows = students.map(function(s){
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e0f2fe;border-radius:7px;margin-bottom:4px;">' +
+        '<span style="font-size:13.5px;font-weight:700;flex:1;">'+esc(s.name)+'</span>' +
+        (s.grade||s.section ? '<span style="font-size:12px;color:#555;">'+esc((s.grade||'')+' / '+(s.section||''))+'</span>' : '') +
+      '</div>';
+    }).join('');
     const opts = counselors.map(function(c){
       return '<option value="'+esc(c.id)+'">'+esc(c.full_name)+'</option>';
     }).join('');
+    const reasonOpts = REFERRAL_REASONS.map(function(r){
+      return '<option value="'+esc(r)+'">'+esc(r)+'</option>';
+    }).join('');
     const div = document.createElement('div');
     div.id = 'crm-overlay';
-    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;';
+    div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;display:flex;align-items:center;justify-content:center;';
     div.innerHTML =
-      '<div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:440px;max-width:95vw;max-height:92vh;overflow-y:auto;direction:rtl;">' +
-        '<h3 style="margin:0 0 18px;font-size:17px;">إحالة للمرشد الطلابي</h3>' +
-        '<div class="field"><label>الطالب / الطلاب</label>' +
-          '<div style="background:var(--surface-2,#f4f6f8);border-radius:8px;padding:9px 12px;font-size:13.5px;color:var(--text);">'+esc(names)+'</div>' +
+      '<div style="background:#fff;border-radius:16px;width:480px;max-width:96vw;max-height:93vh;overflow-y:auto;direction:rtl;box-shadow:0 8px 40px rgba(0,0,0,.22);">' +
+        /* header */
+        '<div style="background:linear-gradient(135deg,#e0f2fe,#bae6fd);border-radius:16px 16px 0 0;padding:18px 22px;color:#0c4a6e;border-bottom:1px solid #7dd3fc;">' +
+          '<div style="font-size:11px;opacity:.75;margin-bottom:2px;letter-spacing:.5px;font-weight:600;">نموذج رسمي</div>' +
+          '<div style="font-size:18px;font-weight:800;">إحالة للمرشد الطلابي</div>' +
+          '<div style="font-size:12px;opacity:.8;margin-top:4px;">'+esc(todayDay)+' · '+fmtDate(todayDate)+'</div>' +
         '</div>' +
-        '<div class="field"><label>اختر المرشد الطلابي <span style="color:var(--danger)">*</span></label>' +
-          '<select class="input" id="crmCounselorSel">'+opts+'</select>' +
-        '</div>' +
-        '<div class="field"><label>سبب الإحالة <span style="color:var(--danger)">*</span></label>' +
-          '<textarea class="input" id="crmReason" rows="4" placeholder="اذكر سبب الإحالة بوضوح…" style="resize:vertical;"></textarea>' +
-        '</div>' +
-        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">' +
-          '<button class="btn btn-ghost" id="crmCancel">إلغاء</button>' +
-          '<button class="btn btn-gold" id="crmSubmit">إرسال الإحالة</button>' +
+        '<div style="padding:22px 24px;">' +
+          /* المُحيل */
+          '<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid #e5e9f2;padding-bottom:12px;margin-bottom:14px;">' +
+            '<div style="width:38px;height:38px;border-radius:50%;background:#bae6fd;color:#0369a1;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">👤</div>' +
+            '<div>' +
+              '<div style="font-size:11px;color:#888;margin-bottom:1px;">المُحيل</div>' +
+              '<div style="font-weight:700;font-size:14.5px;">'+esc(State.user.full_name||'')+'</div>' +
+            '</div>' +
+          '</div>' +
+          /* الطالب / الطلاب */
+          '<div style="margin-bottom:14px;">' +
+            '<div style="font-size:11px;color:#888;margin-bottom:6px;font-weight:600;">الطالب / الطلاب</div>' +
+            studentRows +
+          '</div>' +
+          /* المرشد */
+          '<div class="field" style="margin-bottom:14px;">' +
+            '<label style="font-size:12px;color:#555;font-weight:600;">المرشد الطلابي المحال إليه <span style="color:#e53e3e">*</span></label>' +
+            '<select class="input" id="crmCounselorSel" style="margin-top:4px;">'+opts+'</select>' +
+          '</div>' +
+          /* سبب الإحالة */
+          '<div class="field" style="margin-bottom:10px;">' +
+            '<label style="font-size:12px;color:#555;font-weight:600;">سبب الإحالة <span style="color:#e53e3e">*</span></label>' +
+            '<select class="input" id="crmReasonSel" style="margin-top:4px;">' +
+              '<option value="">— اختر السبب —</option>' +
+              reasonOpts +
+            '</select>' +
+          '</div>' +
+          '<div id="crmOtherWrap" style="display:none;margin-bottom:14px;">' +
+            '<label style="font-size:12px;color:#555;font-weight:600;">اذكر السبب</label>' +
+            '<textarea class="input" id="crmOtherText" rows="3" placeholder="اكتب سبب الإحالة…" style="resize:vertical;margin-top:4px;"></textarea>' +
+          '</div>' +
+          /* أزرار */
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">' +
+            '<button class="btn btn-ghost" id="crmCancel">إلغاء</button>' +
+            '<button class="btn btn-gold" id="crmSubmit" style="min-width:120px;">إرسال الإحالة</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(div);
+    /* إظهار/إخفاء حقل أخرى */
+    document.getElementById('crmReasonSel').addEventListener('change', function(){
+      document.getElementById('crmOtherWrap').style.display = this.value === 'أخرى' ? '' : 'none';
+    });
     document.getElementById('crmCancel').addEventListener('click', removeCounselorReferralModal);
     div.addEventListener('click', function(e){ if(e.target===div) removeCounselorReferralModal(); });
     document.getElementById('crmSubmit').addEventListener('click', async function(){
-      const reason = document.getElementById('crmReason').value.trim();
-      if (!reason){ toast('يرجى كتابة سبب الإحالة.'); return; }
+      const selectedReason = document.getElementById('crmReasonSel').value;
+      const otherText = (document.getElementById('crmOtherText')||{}).value||'';
+      const reason = selectedReason === 'أخرى' ? otherText.trim() : selectedReason;
+      if (!reason){ toast('يرجى اختيار سبب الإحالة.'); return; }
       const counselorId = document.getElementById('crmCounselorSel').value;
       const counselor = counselors.find(function(c){ return c.id===counselorId; });
-      const fullReason = 'المرشد المحال إليه: '+(counselor?counselor.full_name:'')+'\n'+reason;
       const btn = document.getElementById('crmSubmit');
       btn.disabled = true; btn.textContent = 'جاري الإرسال…';
+      /* بناء نص الإحالة الرسمي */
+      function buildReferralText(student){
+        return [
+          'نموذج إحالة للمرشد الطلابي',
+          '─────────────────────────',
+          'اليوم والتاريخ : '+todayDay+' — '+fmtDate(todayDate),
+          'المُحيل        : '+esc(State.user.full_name||''),
+          'الطالب         : '+esc(student.name)+' | الصف: '+esc(student.grade||'—')+' / الشعبة: '+esc(student.section||'—'),
+          'سبب الإحالة   : '+(selectedReason==='أخرى'?otherText.trim():selectedReason),
+          '─────────────────────────',
+          'المرشد المحال إليه: '+(counselor?counselor.full_name:''),
+        ].join('\n');
+      }
       try{
         for(var i=0;i<students.length;i++){
           await DB.createCounselingCase({
@@ -5238,14 +5313,15 @@ function openCounselorReferralModal(students){
             student_grade: students[i].grade||'',
             student_section: students[i].section||'',
             referred_by_name: State.user.full_name,
-            referral_reason: fullReason,
+            referral_reason: buildReferralText(students[i]),
             counselor_id: counselorId,
             counselor_name: counselor ? counselor.full_name : '',
             status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
           });
         }
         if (counselorId){
-          try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorId, type:'general', title:'إحالة طلاب جدد إليك', body:'أحال إليك '+State.user.full_name+' ('+students.length+') طالب للمتابعة الإرشادية.' }); }catch(e){}
+          const notifBody = 'أحال إليك '+State.user.full_name+' ('+students.length+') طالب للمتابعة الإرشادية.\nسبب الإحالة: '+(selectedReason==='أخرى'?otherText.trim():selectedReason);
+          try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorId, type:'general', title:'إحالة طلاب جدد إليك', body:notifBody }); }catch(e){}
         }
         toast('تمت إحالة '+students.length+' طالب للمرشد '+(counselor?counselor.full_name:'')+' بنجاح.');
         removeCounselorReferralModal();
@@ -6349,7 +6425,7 @@ function counselorCaseModal(c, teachers, students){
             '<span><b>أحاله:</b> '+esc(c.referred_by_name||'—')+'</span>' +
             '<span><b>تاريخ الإحالة:</b> '+fmtDate(c.created_at)+'</span>' +
           '</div>' +
-          '<div class="field"><label>سبب الإحالة</label><div style="background:var(--card-2,#f4f6f8);border-radius:8px;padding:8px 12px;font-size:13.5px;">'+esc(c.referral_reason||'—')+'</div></div>' +
+          '<div class="field"><label>سبب الإحالة</label><div style="background:var(--card-2,#f4f6f8);border-radius:8px;padding:10px 14px;font-size:13px;white-space:pre-wrap;font-family:inherit;line-height:1.7;">'+esc(c.referral_reason||'—')+'</div></div>' +
           '<div class="field"><label>الحالة</label>' +
             '<select class="input" id="caseStatusSel">' +
               Object.entries(CASE_STATUS_LABEL).map(function(e){ return '<option value="'+e[0]+'" '+(c.status===e[0]?'selected':'')+'>'+e[1]+'</option>'; }).join('') +
@@ -6482,7 +6558,7 @@ function bindCounselorCases(){
       '<div class="section"><div class="section-title">بيانات الطالب</div>' +
       '<table><tr><th>الاسم</th><td>'+esc(c.student_name)+'</td><th>الصف</th><td>'+esc(c.student_grade||'—')+'</td><th>الشعبة</th><td>'+esc(c.student_section||'—')+'</td></tr>' +
       '<tr><th>المُحيل</th><td>'+esc(c.referred_by_name||'—')+'</td><th>تاريخ الإحالة</th><td>'+fmtDate(c.created_at)+'</td><th>الحالة</th><td>'+esc(CASE_STATUS_LABEL[c.status]||c.status)+'</td></tr></table>' +
-      '<p><b>سبب الإحالة:</b> '+esc(c.referral_reason||'—')+'</p></div>' +
+      '<pre style="background:var(--card-2,#f4f6f8);border-radius:8px;padding:10px 14px;font-size:13px;white-space:pre-wrap;font-family:inherit;line-height:1.7;margin:0 0 8px;">'+esc(c.referral_reason||'—')+'</pre></div>' +
       (sessions.length ? '<div class="section"><div class="section-title">الجلسات الإرشادية ('+sessions.length+')</div>' +
       '<table><thead><tr><th>#</th><th>التاريخ</th><th>ملاحظات الجلسة</th></tr></thead><tbody>' +
       sessions.map(function(s,i){ return '<tr><td>'+(i+1)+'</td><td>'+esc(s.date)+'</td><td>'+esc(s.notes)+'</td></tr>'; }).join('') +
