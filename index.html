@@ -5411,7 +5411,7 @@ async function screenStudentRoster(){
     return (a.full_name||'').localeCompare(b.full_name||'','ar');
   });
 
-  const cols = isAdmin ? 7 : 5;
+  const cols = isAdmin ? 6 : 5;
   const rows = sorted.map(function(s){
     const isMine = Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(myId)>-1;
     const dName = 'data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||'')+'" data-section="'+esc(s.section||'')+'"';
@@ -5420,7 +5420,6 @@ async function screenStudentRoster(){
         '<td><b>'+esc(s.full_name)+'</b></td>' +
         '<td>'+esc(s.grade||'—')+'</td>' +
         '<td>'+esc(s.section||'—')+'</td>' +
-        (isAdmin ? '<td>'+esc(s.national_id||'—')+'</td>' : '') +
         '<td>'+(isMine?'<span class="badge approved">مُسند لي</span>':'<span style="color:var(--muted);">—</span>')+'</td>' +
         (isAdmin ? '<td>'+esc(s.created_by_name||'')+'</td>' : '') +
         '<td class="row-actions">' +
@@ -5468,7 +5467,7 @@ async function screenStudentRoster(){
       '<span style="color:var(--muted);font-size:12.5px;">'+sorted.length+' طالب</span>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th>'+(isAdmin?'<th>الهوية/السجل</th>':'')+'<th>الإسناد</th>'+(isAdmin?'<th>أضافه</th>':'')+'<th></th></tr></thead>' +
+      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>الإسناد</th>'+(isAdmin?'<th>أضافه</th>':'')+'<th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="'+cols+'">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal + pasteModal
@@ -5483,7 +5482,6 @@ function studentModal(students){
         '<div class="field"><label>اسم الطالب</label><input class="input" id="stFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
         '<div class="field"><label>الصف</label><input class="input" id="stGrade" value="'+esc(editing?editing.grade||'':'')+'"></div>' +
         '<div class="field"><label>الشعبة</label><input class="input" id="stSection" value="'+esc(editing?editing.section||'':'')+'"></div>' +
-        '<div class="field"><label>رقم الهوية/السجل المدني (اختياري)</label><input class="input" id="stNationalId" value="'+esc(editing?editing.national_id||'':'')+'"></div>' +
         '<div class="field"><label>ملاحظات (اختياري)</label><textarea class="input" id="stNotes">'+esc(editing?editing.notes||'':'')+'</textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="saveStudent">'+(editing?'حفظ التعديل':'إضافة الطالب')+'</button>' +
@@ -5636,14 +5634,13 @@ function bindStudentRoster(){
     if (!full_name){ toast('يرجى إدخال اسم الطالب.'); return; }
     const grade = document.getElementById('stGrade').value.trim();
     const section = document.getElementById('stSection').value.trim();
-    const national_id = document.getElementById('stNationalId').value.trim();
     const notes = document.getElementById('stNotes').value.trim();
     try{
       if (StudentRosterUI.editingId){
-        await DB.updateStudent(StudentRosterUI.editingId, { full_name, grade, section, national_id, notes });
+        await DB.updateStudent(StudentRosterUI.editingId, { full_name, grade, section, notes });
         toast('تم حفظ تعديل بيانات الطالب.');
       } else {
-        await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, national_id, notes });
+        await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, notes });
         toast('تم إضافة الطالب بنجاح.');
       }
       StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null;
@@ -5700,17 +5697,16 @@ const EXAM_PASS_SCORE = 20; /* نصف الدرجة العظمى (40) */
 let ExamAnalysisUI = { rows: null, resultModal: null };
 function isExamImportHeaderRow(first){
   first = (first||'').trim();
-  return first === 'السجل المدني' || first.toLowerCase() === 'national id' || first.toLowerCase() === 'id';
+  return first === 'الاسم' || first === 'اسم الطالب' || first === 'السجل المدني' || first.toLowerCase() === 'name';
 }
 function parseExamRows(rows){
   return rows.map(function(r){
-    const nationalId = (r[0]||'').trim();
-    const name = (r[1]||'').trim();
-    const grade = (r[2]||'').trim();
-    const section = (r[3]||'').trim();
-    const scoreRaw = (r[4]||'').trim();
+    const name = (r[0]||'').trim();
+    const grade = (r[1]||'').trim();
+    const section = (r[2]||'').trim();
+    const scoreRaw = (r[3]||'').trim();
     const score = scoreRaw==='' ? null : Number(scoreRaw);
-    return { nationalId, name, grade, section, score: (score!=null && !isNaN(score)) ? score : null };
+    return { name, grade, section, score: (score!=null && !isNaN(score)) ? score : null };
   }).filter(function(r){ return r.name; });
 }
 async function screenExamAnalysis(){
@@ -5720,7 +5716,6 @@ async function screenExamAnalysis(){
     const fail = !invalid && r.score < EXAM_PASS_SCORE;
     return (
       '<tr>' +
-        '<td>'+esc(r.nationalId||'—')+'</td>' +
         '<td><b>'+esc(r.name)+'</b></td>' +
         '<td>'+esc(r.grade||'—')+'</td>' +
         '<td>'+esc(r.section||'—')+'</td>' +
@@ -5740,10 +5735,10 @@ async function screenExamAnalysis(){
         '<input type="file" id="examImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ بيانات طلابك (السجل المدني، الاسم، الصف، الشعبة، درجة الاختبار من 40)، ثم ارفعه هنا. كل طالب تقل درجته عن النصف (20 من 40) يتم رصده تلقائيًا (فرز آلي) ضمن الخطة العلاجية الجماعية الخاصة بصفه وشعبته، وتظهر بعد ذلك متابعة أسبوعية لتقدّمه ضمن الخطة.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ بيانات طلابك (الاسم، الصف، الشعبة، درجة الاختبار من 40)، ثم ارفعه هنا. كل طالب تقل درجته عن النصف (20 من 40) يتم رصده تلقائيًا (فرز آلي) ضمن الخطة العلاجية الجماعية الخاصة بصفه وشعبته، وتظهر بعد ذلك متابعة أسبوعية لتقدّمه ضمن الخطة.</p>' +
     (rows.length ? (
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-        '<thead><tr><th>السجل المدني</th><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الحالة</th></tr></thead>' +
+        '<thead><tr><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الحالة</th></tr></thead>' +
         '<tbody>' + resultRows + '</tbody>' +
       '</table></div></div>' +
       '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
@@ -5828,7 +5823,7 @@ function bindExamAnalysis(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null }; go('dashboard'); });
   const templateBtn = document.querySelector('[data-action="downloadExamTemplate"]');
   if (templateBtn) templateBtn.addEventListener('click', function(){
-    const rows = [['السجل المدني','الاسم','الصف','الشعبة','درجة الاختبار (40)'], ['1234567890','خالد العتيبي','الرابع','أ','15']];
+    const rows = [['الاسم','الصف','الشعبة','درجة الاختبار (40)'], ['خالد العتيبي','الرابع','أ','15']];
     downloadTextFile('نموذج_درجات_الاختبار.csv', toCsv(rows));
   });
   const importBtn = document.querySelector('[data-action="triggerExamImport"]');
@@ -8502,7 +8497,7 @@ async function screenAdminStudents(){
   let filtered = students.slice();
   if (AdminStudentUI.gradeFilter) filtered = filtered.filter(function(s){ return (s.grade||'')===AdminStudentUI.gradeFilter; });
   if (AdminStudentUI.sectionFilter) filtered = filtered.filter(function(s){ return (s.section||'')===AdminStudentUI.sectionFilter; });
-  if (AdminStudentUI.nameFilter.trim()) { var nf = AdminStudentUI.nameFilter.trim(); filtered = filtered.filter(function(s){ return (s.full_name||'').indexOf(nf)>-1 || (s.national_id||'').indexOf(nf)>-1; }); }
+  if (AdminStudentUI.nameFilter.trim()) { var nf = AdminStudentUI.nameFilter.trim(); filtered = filtered.filter(function(s){ return (s.full_name||'').indexOf(nf)>-1; }); }
   filtered.sort(compareGradeSection);
 
   const allSelected = filtered.length>0 && filtered.every(function(s){ return AdminStudentUI.selectedIds.indexOf(s.id)>-1; });
@@ -8514,7 +8509,6 @@ async function screenAdminStudents(){
     return (
       '<tr>' +
         '<td><input type="checkbox" class="adminStudentChk" data-id="'+s.id+'" '+(checked?'checked':'')+'></td>' +
-        '<td class="mono">'+esc(s.national_id||'—')+'</td>' +
         '<td><b>'+esc(s.full_name)+'</b></td>' +
         '<td>'+esc(s.grade||'—')+'</td>' +
         '<td>'+esc(s.section||'—')+'</td>' +
@@ -8569,10 +8563,10 @@ async function screenAdminStudents(){
         '<button class="btn btn-primary" data-action="newAdminStudent">+ إضافة طالب</button>' +
       '</div>' +
     '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ السجل المدني والاسم والمرحلة والشعبة لكل طالب، ثم ارفعه لاستيراد بيانات الطلاب دفعة واحدة بدلًا من إدخالها يدويًا. تُستخدم هذه البيانات لإسناد الطلاب للمعلمين مستقبلًا عند إعداد الخطط العلاجية، ويمكن إسناد الطالب الواحد لأكثر من معلم في نفس الوقت. استخدم الفلاتر أدناه لترتيب القائمة بالمرحلة ثم الشعبة وتسهيل الوصول للطالب المطلوب.</p>' +
+    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ اسم الطالب والمرحلة والشعبة، ثم ارفعه لاستيراد بيانات الطلاب دفعة واحدة بدلًا من إدخالها يدويًا. تُستخدم هذه البيانات لإسناد الطلاب للمعلمين مستقبلًا عند إعداد الخطط العلاجية، ويمكن إسناد الطالب الواحد لأكثر من معلم في نفس الوقت. استخدم الفلاتر أدناه لترتيب القائمة بالمرحلة ثم الشعبة وتسهيل الوصول للطالب المطلوب.</p>' +
     filterBar + bulkBar +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th><input type="checkbox" id="adminStudentSelectAllChk" '+(allSelected?'checked':'')+'></th><th>السجل المدني</th><th>الاسم</th><th>المرحلة</th><th>الشعبة</th><th>المعلمون المسندون</th><th></th></tr></thead>' +
+      '<thead><tr><th><input type="checkbox" id="adminStudentSelectAllChk" '+(allSelected?'checked':'')+'></th><th>الاسم</th><th>المرحلة</th><th>الشعبة</th><th>المعلمون المسندون</th><th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="7">لا يوجد طلاب مسجَّلون بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal + pasteModal + assignModal + transferModal
@@ -8611,7 +8605,6 @@ function adminStudentModal(students, teachers, communities){
     '<div class="modal-bg" data-action="closeAdminStudentModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>'+(editing?'تعديل بيانات طالب':'إضافة طالب جديد')+'</h3>' +
-        '<div class="field"><label>السجل المدني (اختياري)</label><input class="input" id="astNationalId" value="'+esc(editing?editing.national_id||'':'')+'"></div>' +
         '<div class="field"><label>اسم الطالب</label><input class="input" id="astFullName" value="'+esc(editing?editing.full_name:'')+'"></div>' +
         '<div class="field"><label>المرحلة</label><input class="input" id="astGrade" value="'+esc(editing?editing.grade||'':'')+'"></div>' +
         '<div class="field"><label>الشعبة</label><input class="input" id="astSection" value="'+esc(editing?editing.section||'':'')+'"></div>' +
@@ -8654,8 +8647,8 @@ function adminStudentPasteImportModal(){
     '<div class="modal-bg" data-action="closeAdminStudentPasteModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>لصق بيانات الطلاب</h3>' +
-        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات هنا مباشرة من Excel (سطر لكل طالب، الأعمدة بالترتيب: السجل المدني، ثم الاسم، ثم المرحلة، ثم الشعبة). يمكن أن يكون السطر الأول عناوين الأعمدة، وسيتم تجاهله تلقائيًا.</p>' +
-        '<div class="field"><textarea class="input" id="adminStudentPasteText" rows="10" placeholder="مثال:&#10;1012345678	خالد العتيبي	الرابع الابتدائي	أ&#10;1023456789	سارة الغامدي	الرابع الابتدائي	ب" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;">الصق البيانات هنا مباشرة من Excel (سطر لكل طالب، الأعمدة بالترتيب: الاسم، ثم المرحلة، ثم الشعبة). يمكن أن يكون السطر الأول عناوين الأعمدة، وسيتم تجاهله تلقائيًا.</p>' +
+        '<div class="field"><textarea class="input" id="adminStudentPasteText" rows="10" placeholder="مثال:&#10;خالد العتيبي	الرابع الابتدائي	أ&#10;سارة الغامدي	الرابع الابتدائي	ب" style="font-family:monospace;direction:ltr;text-align:right;"></textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="confirmAdminStudentPasteImport">استيراد</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeAdminStudentPasteModal">إلغاء</button>' +
@@ -8666,17 +8659,16 @@ function adminStudentPasteImportModal(){
 }
 function isAdminStudentImportHeaderRow(first){
   first = (first||'').trim();
-  return first === 'السجل المدني' || first === 'رقم الهوية' || first === 'الهوية' || first.toLowerCase() === 'id' || first.toLowerCase() === 'national_id';
+  return first === 'الاسم' || first === 'اسم الطالب' || first === 'السجل المدني' || first === 'رقم الهوية' || first.toLowerCase() === 'name';
 }
 async function importAdminStudentRows(dataRows){
   const objs = [];
   let skipped = 0;
   for (let i=0;i<dataRows.length;i++){
     const r = dataRows[i];
-    const national_id = (r[0]||'').trim();
-    const fullName = (r[1]||'').trim();
+    const fullName = (r[0]||'').trim();
     if (!fullName){ skipped++; continue; }
-    objs.push({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name:fullName, grade:(r[2]||'').trim(), section:(r[3]||'').trim(), national_id:national_id, notes:'', assigned_teacher_ids:[], created_at:nowIso() });
+    objs.push({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name:fullName, grade:(r[1]||'').trim(), section:(r[2]||'').trim(), notes:'', assigned_teacher_ids:[], created_at:nowIso() });
   }
   if (!objs.length){ toast('لم يتم العثور على بيانات طلاب صالحة، يرجى مراجعة تنسيق الملف أو النص.'); return; }
   try{
@@ -8737,17 +8729,16 @@ function bindAdminStudents(){
   if (saveBtn) saveBtn.addEventListener('click', async function(){
     const full_name = document.getElementById('astFullName').value.trim();
     if (!full_name){ toast('يرجى إدخال اسم الطالب.'); return; }
-    const national_id = document.getElementById('astNationalId').value.trim();
     const grade = document.getElementById('astGrade').value.trim();
     const section = document.getElementById('astSection').value.trim();
     const notes = document.getElementById('astNotes').value.trim();
     const assigned_teacher_ids = AdminStudentUI.pendingTeacherIds.slice();
     try{
       if (AdminStudentUI.editingId){
-        await DB.updateStudent(AdminStudentUI.editingId, { full_name, grade, section, national_id, notes, assigned_teacher_ids });
+        await DB.updateStudent(AdminStudentUI.editingId, { full_name, grade, section, notes, assigned_teacher_ids });
         toast('تم حفظ تعديل بيانات الطالب.');
       } else {
-        await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, national_id, notes, assigned_teacher_ids });
+        await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, notes, assigned_teacher_ids });
         toast('تم إضافة الطالب بنجاح.');
       }
       AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[];
@@ -8757,7 +8748,7 @@ function bindAdminStudents(){
 
   const templateBtn = document.querySelector('[data-action="downloadAdminStudentTemplate"]');
   if (templateBtn) templateBtn.addEventListener('click', function(){
-    const rows = [['السجل المدني','الاسم','المرحلة','الشعبة'], ['1012345678','خالد العتيبي','الرابع الابتدائي','أ']];
+    const rows = [['الاسم','المرحلة','الشعبة'], ['خالد العتيبي','الرابع الابتدائي','أ']];
     downloadTextFile('نموذج_رفع_بيانات_الطلاب.csv', toCsv(rows));
   });
   const importBtn = document.querySelector('[data-action="triggerAdminStudentImport"]');
