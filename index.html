@@ -10238,14 +10238,15 @@ async function _subscribePush(reg){
       });
     }
     const subStr = JSON.stringify(sub);
-    if (localStorage.getItem('_pwa_sub') === subStr) return;
+    const subKey = '_pwa_sub_' + State.user.id;
+    if (localStorage.getItem(subKey) === subStr) return;
     await remoteFetch('push_subscriptions?user_id=eq.' + encodeURIComponent(State.user.id), { method:'DELETE' });
     await remoteFetch('push_subscriptions', {
       method:'POST',
       body:{ user_id:State.user.id, school:State.user.school, subscription:sub },
       prefer:'return=minimal'
     });
-    localStorage.setItem('_pwa_sub', subStr);
+    localStorage.setItem(subKey, subStr);
   } catch(e){ console.warn('[PWA sub]', e); }
 }
 
