@@ -3655,7 +3655,7 @@ function bindPrincipalCommunities(){
       const msg = prompt('رسالة إلى المنسق '+leaderName+':');
       if (!msg || !msg.trim()) return;
       try{
-        await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'user', target_id:leaderId, message:msg.trim(), notif_type:'general', type:'general', title:'رسالة من مدير المدرسة', body:msg.trim() });
+        await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'user', target_id:leaderId, type:'general', title:'رسالة من مدير المدرسة', body:msg.trim() });
         invalidateNotifCache();
         toast('تم إرسال الرسالة إلى المنسق.');
       }catch(e){ toast(e.message); }
@@ -7327,7 +7327,7 @@ function bindTeacherTasks(){
     const msg = prompt('رسالة إلى منسق مجتمعك:');
     if (!msg || !msg.trim()) return;
     try{
-      await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'community', target_id:State.user.community_id, message:msg.trim(), notif_type:'general', type:'general', title:'رسالة من معلم', body:msg.trim() });
+      await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'community', target_id:State.user.community_id, type:'general', title:'رسالة من معلم', body:msg.trim() });
       invalidateNotifCache();
       toast('تم إرسال رسالتك إلى المنسق.');
     }catch(e){ toast(e.message); }
