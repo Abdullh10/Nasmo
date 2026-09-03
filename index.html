@@ -5693,8 +5693,87 @@ function bindStudentRoster(){
 }
 
 /* ----- شاشة المعلم: تحليل درجات اختبار نهاية الفصل والفرز الآلي للخطة العلاجية الجماعية ----- */
-const EXAM_PASS_SCORE = 20; /* نصف الدرجة العظمى (40) */
-let ExamAnalysisUI = { rows: null, resultModal: null };
+let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' };
+function examPassScore(){ return Math.round(ExamAnalysisUI.maxScore / 2); }
+function examTier(score, maxScore){
+  if (score==null) return null;
+  const p = score / maxScore;
+  if (p < 0.50) return { label:'تدخل عاجل', icon:'🔴', color:'#dc2626' };
+  if (p < 0.75) return { label:'بحاجة دعم', icon:'🟡', color:'#d97706' };
+  if (p < 0.90) return { label:'جيد',        icon:'🔵', color:'#2563eb' };
+  return                { label:'متميز',      icon:'🟢', color:'#16a34a' };
+}
+function examKpiCard(label, value, color){
+  return '<div style="background:var(--surface-2);border-radius:8px;padding:10px 14px;">' +
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:3px;">'+label+'</div>' +
+    '<div style="font-size:20px;font-weight:700;color:'+color+';font-variant-numeric:tabular-nums;">'+value+'</div>' +
+    '</div>';
+}
+function examStatsHtml(rows, maxScore){
+  const valid = rows.filter(function(r){ return r.score!=null; });
+  if (!valid.length) return '';
+  const passScore = Math.round(maxScore/2);
+  const passing = valid.filter(function(r){ return r.score >= passScore; }).length;
+  const failing = valid.length - passing;
+  const avg = valid.reduce(function(s,r){ return s+r.score; },0) / valid.length;
+  const maxS = Math.max.apply(null, valid.map(function(r){ return r.score; }));
+  const minS = Math.min.apply(null, valid.map(function(r){ return r.score; }));
+  const passRate = Math.round(passing / valid.length * 100);
+  const tiers = [
+    { label:'متميز',      color:'#16a34a', minP:0.90, maxP:2 },
+    { label:'جيد',        color:'#2563eb', minP:0.75, maxP:0.90 },
+    { label:'بحاجة دعم', color:'#d97706', minP:0.50, maxP:0.75 },
+    { label:'تدخل عاجل', color:'#dc2626', minP:0,    maxP:0.50 },
+  ];
+  const tierCounts = tiers.map(function(t){
+    return Object.assign({},t,{ count: valid.filter(function(r){ const p=r.score/maxScore; return p>=t.minP && p<t.maxP; }).length });
+  });
+  const circ = 2*Math.PI*45;
+  const failArc = (failing/valid.length*circ).toFixed(2);
+  const passArc = (circ - failArc).toFixed(2);
+  const donut = '<svg width="110" height="110" viewBox="0 0 120 120">' +
+    '<circle cx="60" cy="60" r="45" fill="none" stroke="var(--border)" stroke-width="15"/>' +
+    (passing>0?'<circle cx="60" cy="60" r="45" fill="none" stroke="#16a34a" stroke-width="15" stroke-dasharray="'+passArc+' '+failArc+'" stroke-dashoffset="'+(-failArc)+'" transform="rotate(-90 60 60)"/>':'') +
+    (failing>0?'<circle cx="60" cy="60" r="45" fill="none" stroke="#dc2626" stroke-width="15" stroke-dasharray="'+failArc+' '+passArc+'" transform="rotate(-90 60 60)"/>':'') +
+    '<text x="60" y="55" text-anchor="middle" font-size="18" font-weight="bold" fill="var(--text)">'+passRate+'%</text>' +
+    '<text x="60" y="72" text-anchor="middle" font-size="11" fill="var(--muted)">نجاح</text>' +
+    '</svg>';
+  const tierBars = tierCounts.map(function(t){
+    const pct = valid.length ? Math.round(t.count/valid.length*100) : 0;
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">' +
+      '<span style="width:88px;font-size:12px;color:'+t.color+';font-weight:600;text-align:right;">'+t.label+'</span>' +
+      '<div style="flex:1;background:var(--border);border-radius:4px;height:16px;overflow:hidden;">' +
+        '<div style="height:100%;width:'+pct+'%;background:'+t.color+';opacity:.85;border-radius:4px;"></div>' +
+      '</div>' +
+      '<span style="width:52px;font-size:12px;color:var(--muted);">'+t.count+' ('+pct+'%)</span>' +
+    '</div>';
+  }).join('');
+  return '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:18px;padding:16px;background:var(--surface);border-radius:12px;border:1px solid var(--border);">' +
+    '<div style="flex-shrink:0;">'+donut+'</div>' +
+    '<div style="flex:1;min-width:220px;">' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:12px;">' +
+        examKpiCard('إجمالي الطلاب', valid.length, '#6366f1') +
+        examKpiCard('ناجحون', passing, '#16a34a') +
+        examKpiCard('دون المستوى', failing, '#dc2626') +
+        examKpiCard('المتوسط', avg.toFixed(1)+' / '+maxScore, '#2563eb') +
+        examKpiCard('أعلى درجة', maxS+' / '+maxScore, '#0891b2') +
+        examKpiCard('أدنى درجة', minS+' / '+maxScore, '#d97706') +
+      '</div>' +
+      tierBars +
+    '</div>' +
+  '</div>';
+}
+function examFiltersHtml(rows){
+  const grades = Array.from(new Set(rows.map(function(r){ return r.grade; }).filter(Boolean))).sort();
+  const sections = Array.from(new Set(rows.map(function(r){ return r.section; }).filter(Boolean))).sort();
+  const sortLabel = ExamAnalysisUI.sortDir==='asc'?'↑ ترتيب تصاعدي':ExamAnalysisUI.sortDir==='desc'?'↓ ترتيب تنازلي':'ترتيب حسب الدرجة';
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">' +
+    (grades.length>1?'<select class="input" id="examFilterGrade" style="width:auto;min-width:120px;"><option value="">كل الصفوف</option>'+grades.map(function(g){ return '<option value="'+esc(g)+'"'+(ExamAnalysisUI.filterGrade===g?' selected':'')+'>'+esc(g)+'</option>'; }).join('')+'</select>':'') +
+    (sections.length>1?'<select class="input" id="examFilterSection" style="width:auto;min-width:90px;"><option value="">كل الشعب</option>'+sections.map(function(s){ return '<option value="'+esc(s)+'"'+(ExamAnalysisUI.filterSection===s?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select>':'') +
+    '<button class="btn btn-sm '+(ExamAnalysisUI.failOnly?'btn-primary':'btn-ghost')+'" data-action="examToggleFailOnly">الراسبون فقط</button>' +
+    '<button class="btn btn-sm btn-ghost" data-action="examCycleSort">'+sortLabel+'</button>' +
+  '</div>';
+}
 function isExamImportHeaderRow(first){
   first = (first||'').trim();
   return first === 'الاسم' || first === 'اسم الطالب' || first === 'السجل المدني' || first.toLowerCase() === 'name';
@@ -5704,47 +5783,62 @@ function parseExamRows(rows){
     const name = (r[0]||'').trim();
     const grade = (r[1]||'').trim();
     const section = (r[2]||'').trim();
-    const scoreRaw = (r[3]||'').trim();
+    const scoreRaw = (r[3]||'').toString().trim();
     const score = scoreRaw==='' ? null : Number(scoreRaw);
     return { name, grade, section, score: (score!=null && !isNaN(score)) ? score : null };
   }).filter(function(r){ return r.name; });
 }
 async function screenExamAnalysis(){
   const rows = ExamAnalysisUI.rows || [];
-  const resultRows = rows.map(function(r, i){
-    const invalid = r.score==null;
-    const fail = !invalid && r.score < EXAM_PASS_SCORE;
-    return (
-      '<tr>' +
-        '<td><b>'+esc(r.name)+'</b></td>' +
-        '<td>'+esc(r.grade||'—')+'</td>' +
-        '<td>'+esc(r.section||'—')+'</td>' +
-        '<td>'+(invalid?'<span style="color:var(--muted);">—</span>':esc(r.score)+' / 40')+'</td>' +
-        '<td>'+(invalid?'<span style="color:var(--muted);">لم تُحدَّد الدرجة</span>':(fail?'<span class="badge returned">أقل من النصف — يدخل الخطة العلاجية</span>':'<span class="badge approved">ناجح</span>'))+'</td>' +
-      '</tr>'
-    );
+  const maxScore = ExamAnalysisUI.maxScore;
+  const passScore = examPassScore();
+  let filtered = rows.filter(function(r){
+    if (ExamAnalysisUI.failOnly && (r.score==null || r.score >= passScore)) return false;
+    if (ExamAnalysisUI.filterGrade && r.grade !== ExamAnalysisUI.filterGrade) return false;
+    if (ExamAnalysisUI.filterSection && r.section !== ExamAnalysisUI.filterSection) return false;
+    return true;
+  });
+  if (ExamAnalysisUI.sortDir==='asc') filtered = filtered.slice().sort(function(a,b){ return (a.score!=null?a.score:Infinity)-(b.score!=null?b.score:Infinity); });
+  else if (ExamAnalysisUI.sortDir==='desc') filtered = filtered.slice().sort(function(a,b){ return (b.score!=null?b.score:-Infinity)-(a.score!=null?a.score:-Infinity); });
+  const resultRows = filtered.map(function(r){
+    const tier = examTier(r.score, maxScore);
+    const tierBadge = r.score==null
+      ? '<span style="color:var(--muted);">لم تُحدَّد</span>'
+      : '<span style="color:'+tier.color+';font-weight:600;">'+tier.icon+' '+tier.label+'</span>';
+    return '<tr>'+
+      '<td><b>'+esc(r.name)+'</b></td>'+
+      '<td>'+esc(r.grade||'—')+'</td>'+
+      '<td>'+esc(r.section||'—')+'</td>'+
+      '<td style="font-variant-numeric:tabular-nums;">'+(r.score==null?'<span style="color:var(--muted);">—</span>':r.score+' / '+maxScore)+'</td>'+
+      '<td>'+tierBadge+'</td>'+
+    '</tr>';
   }).join('');
-  const failCount = rows.filter(function(r){ return r.score!=null && r.score < EXAM_PASS_SCORE; }).length;
+  const failCount = rows.filter(function(r){ return r.score!=null && r.score < passScore; }).length;
   const resultModal = ExamAnalysisUI.resultModal ? examAnalysisResultModal() : '';
+  const maxScoreOpts = [20,25,30,40,50,60,80,100].map(function(n){ return '<option value="'+n+'"'+(maxScore===n?' selected':'')+'>'+n+'</option>'; }).join('');
   return (
-    '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
-    '<div class="section-head"><h2>تحليل درجات اختبار نهاية الفصل</h2>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="downloadExamTemplate">تنزيل نموذج Excel لدرجات الاختبار</button>' +
-        '<button class="btn btn-ghost btn-sm" data-action="triggerExamImport">رفع ملف الدرجات</button>' +
-        '<input type="file" id="examImportInput" accept=".csv,.xlsx,.xls" style="display:none;">' +
-      '</div>' +
-    '</div>' +
-    '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">نزّل نموذج Excel وعبّئ بيانات طلابك (الاسم، الصف، الشعبة، درجة الاختبار من 40)، ثم ارفعه هنا. كل طالب تقل درجته عن النصف (20 من 40) يتم رصده تلقائيًا (فرز آلي) ضمن الخطة العلاجية الجماعية الخاصة بصفه وشعبته، وتظهر بعد ذلك متابعة أسبوعية لتقدّمه ضمن الخطة.</p>' +
-    (rows.length ? (
-      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-        '<thead><tr><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الحالة</th></tr></thead>' +
-        '<tbody>' + resultRows + '</tbody>' +
-      '</table></div></div>' +
-      '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-        '<button class="btn btn-primary" data-action="runExamAutoSort"'+(failCount?'':' disabled')+'>تنفيذ الفرز الآلي ('+failCount+' طالب)</button>' +
+    '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>'+
+    '<div class="section-head"><h2>تحليل درجات اختبار نهاية الفصل</h2>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
+        '<label style="font-size:13px;color:var(--muted);">الدرجة الكلية:</label>'+
+        '<select class="input" id="examMaxScore" style="width:auto;min-width:80px;">'+maxScoreOpts+'</select>'+
+        '<span style="font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;">درجة النجاح: '+passScore+' من '+maxScore+'</span>'+
+        '<button class="btn btn-ghost btn-sm" data-action="downloadExamTemplate">تنزيل نموذج Excel</button>'+
+        '<button class="btn btn-ghost btn-sm" data-action="triggerExamImport">رفع ملف الدرجات</button>'+
+        '<input type="file" id="examImportInput" accept=".csv,.xlsx,.xls" style="display:none;">'+
+      '</div>'+
+    '</div>'+
+    (rows.length?(
+      examStatsHtml(rows, maxScore)+
+      examFiltersHtml(rows)+
+      '<div class="table-wrap"><div class="table-scroll"><table class="list">'+
+        '<thead><tr><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الشريحة</th></tr></thead>'+
+        '<tbody>'+(resultRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">لا توجد نتائج مطابقة لهذا الفلتر</td></tr>')+'</tbody>'+
+      '</table></div></div>'+
+      '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
+        '<button class="btn btn-primary" data-action="runExamAutoSort"'+(failCount?'':' disabled')+'>تنفيذ الفرز الآلي ('+failCount+' طالب دون المستوى)</button>'+
       '</div>'
-    ) : '<p style="color:var(--muted);font-size:13px;">لم يتم رفع ملف درجات بعد.</p>') +
+    ):'<p style="color:var(--muted);font-size:13px;margin-top:12px;">لم يتم رفع ملف درجات بعد — اختر الدرجة الكلية ثم نزّل النموذج وارفعه.</p>')+
     resultModal
   );
 }
@@ -5752,28 +5846,26 @@ function examAnalysisResultModal(){
   const r = ExamAnalysisUI.resultModal;
   const plansHtml = r.plans.map(function(p){
     return (
-      '<div class="task-card" style="margin-bottom:8px;">' +
-        '<div class="meta"><b>الصف '+esc(p.grade||'—')+' — الشعبة '+esc(p.section||'—')+'</b>' +
-          '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب '+(p.created?'(خطة جديدة)':'(تمت إضافتهم إلى خطة قائمة)')+'</span></div>' +
-        '<button class="btn btn-ghost btn-sm" data-action="openExamSortedPlan" data-id="'+p.id+'">متابعة الخطة العلاجية والمتابعة الأسبوعية</button>' +
+      '<div class="task-card" style="margin-bottom:8px;">'+
+        '<div class="meta"><b>الصف '+esc(p.grade||'—')+' — الشعبة '+esc(p.section||'—')+'</b>'+
+          '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب '+(p.created?'(خطة جديدة)':'(تمت إضافتهم إلى خطة قائمة)')+'</span></div>'+
+        '<button class="btn btn-ghost btn-sm" data-action="openExamSortedPlan" data-id="'+p.id+'">متابعة الخطة العلاجية والمتابعة الأسبوعية</button>'+
       '</div>'
     );
   }).join('');
   return (
-    '<div class="modal-bg" data-action="closeExamResultModalBg">' +
-      '<div class="modal-box" onclick="event.stopPropagation()">' +
-        '<h3>تم الفرز الآلي بنجاح</h3>' +
-        '<p style="color:var(--muted);font-size:13px;margin:-6px 0 14px;">تم رصد '+r.totalAdded+' طالبًا ممن حصلوا على أقل من نصف الدرجة ضمن الخطط العلاجية الجماعية أدناه. افتح أي خطة لبدء تسجيل المتابعة الأسبوعية لتقدّم كل طالب.</p>' +
-        plansHtml +
-        '<div class="modal-actions">' +
-          '<button class="btn btn-ghost btn-block" data-action="closeExamResultModal">إغلاق</button>' +
-        '</div>' +
-      '</div>' +
+    '<div class="modal-bg" data-action="closeExamResultModalBg">'+
+      '<div class="modal-box" onclick="event.stopPropagation()">'+
+        '<h3>تم الفرز الآلي بنجاح</h3>'+
+        '<p style="color:var(--muted);font-size:13px;margin:-6px 0 14px;">تم رصد '+r.totalAdded+' طالبًا ممن حصلوا على أقل من نصف الدرجة ضمن الخطط العلاجية الجماعية أدناه.</p>'+
+        plansHtml+
+        '<div class="modal-actions"><button class="btn btn-ghost btn-block" data-action="closeExamResultModal">إغلاق</button></div>'+
+      '</div>'+
     '</div>'
   );
 }
 async function runExamAutoSort(){
-  const rows = (ExamAnalysisUI.rows||[]).filter(function(r){ return r.score!=null && r.score < EXAM_PASS_SCORE; });
+  const rows = (ExamAnalysisUI.rows||[]).filter(function(r){ return r.score!=null && r.score < examPassScore(); });
   if (!rows.length){ toast('لا يوجد طلاب أقل من النصف لرصدهم.'); return; }
   const groups = {};
   rows.forEach(function(r){
@@ -5820,10 +5912,24 @@ async function runExamAutoSort(){
   render(); bindExamAnalysis();
 }
 function bindExamAnalysis(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null }; go('dashboard'); });
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' }; go('dashboard'); });
+  const maxScoreSel = document.getElementById('examMaxScore');
+  if (maxScoreSel) maxScoreSel.addEventListener('change', function(){ ExamAnalysisUI.maxScore = Number(this.value)||40; render(); bindExamAnalysis(); });
+  const filterGradeSel = document.getElementById('examFilterGrade');
+  if (filterGradeSel) filterGradeSel.addEventListener('change', function(){ ExamAnalysisUI.filterGrade = this.value; render(); bindExamAnalysis(); });
+  const filterSectionSel = document.getElementById('examFilterSection');
+  if (filterSectionSel) filterSectionSel.addEventListener('change', function(){ ExamAnalysisUI.filterSection = this.value; render(); bindExamAnalysis(); });
+  const failOnlyBtn = document.querySelector('[data-action="examToggleFailOnly"]');
+  if (failOnlyBtn) failOnlyBtn.addEventListener('click', function(){ ExamAnalysisUI.failOnly = !ExamAnalysisUI.failOnly; render(); bindExamAnalysis(); });
+  const sortBtn = document.querySelector('[data-action="examCycleSort"]');
+  if (sortBtn) sortBtn.addEventListener('click', function(){
+    ExamAnalysisUI.sortDir = ExamAnalysisUI.sortDir===''?'asc':ExamAnalysisUI.sortDir==='asc'?'desc':'';
+    render(); bindExamAnalysis();
+  });
   const templateBtn = document.querySelector('[data-action="downloadExamTemplate"]');
   if (templateBtn) templateBtn.addEventListener('click', function(){
-    const rows = [['الاسم','الصف','الشعبة','درجة الاختبار (40)'], ['خالد العتيبي','الرابع','أ','15']];
+    const ms = ExamAnalysisUI.maxScore;
+    const rows = [['الاسم','الصف','الشعبة','درجة الاختبار ('+ms+')'], ['خالد العتيبي','الرابع','أ',Math.round(ms*0.4)]];
     downloadTextFile('نموذج_درجات_الاختبار.csv', toCsv(rows));
   });
   const importBtn = document.querySelector('[data-action="triggerExamImport"]');
