@@ -515,6 +515,7 @@ textarea.input{ resize:vertical; min-height:64px; }
   .shell{ padding:0; max-width:none; }
   .form-sheet{ box-shadow:none; border:none; padding:0; }
   .sheet-wrap{ max-width:none; }
+  .exam-print-header{ display:block !important; }
 }
 .footer-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; }
 .creds-print-page{ background:#fff; padding:8px; }
@@ -5693,7 +5694,56 @@ function bindStudentRoster(){
 }
 
 /* ----- شاشة المعلم: تحليل درجات اختبار نهاية الفصل والفرز الآلي للخطة العلاجية الجماعية ----- */
-let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' };
+let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'' };
+function examSavedKey(){ return 'exam_analyses_'+(State.user?State.user.id:'anon'); }
+function loadExamSaved(){ try{ return JSON.parse(localStorage.getItem(examSavedKey())||'[]'); }catch(e){ return []; } }
+function saveExamAnalysis(){
+  if (!ExamAnalysisUI.rows||!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات لحفظها.'); return; }
+  const list = loadExamSaved();
+  list.unshift({ id:Date.now().toString(), savedAt:new Date().toISOString(), subject:ExamAnalysisUI.subject, term:ExamAnalysisUI.term, maxScore:ExamAnalysisUI.maxScore, rows:ExamAnalysisUI.rows });
+  if (list.length>5) list.length=5;
+  try{ localStorage.setItem(examSavedKey(), JSON.stringify(list)); }catch(e){}
+  toast('تم حفظ التحليل.');
+  render(); bindExamAnalysis();
+}
+function examSavedHtml(){
+  const list = loadExamSaved();
+  if (!list.length) return '';
+  const items = list.map(function(e){
+    const d = new Date(e.savedAt);
+    const dateStr = d.toLocaleDateString('ar-SA',{year:'numeric',month:'short',day:'numeric'});
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);border-radius:8px;margin-bottom:6px;">'+
+      '<div style="flex:1;">'+
+        '<span style="font-weight:600;font-size:13.5px;">'+esc(e.subject||'—')+' — '+esc(e.term||'—')+'</span>'+
+        '<span style="color:var(--muted);font-size:12px;margin-right:10px;">'+dateStr+' · '+e.rows.length+' طالب · من '+e.maxScore+'</span>'+
+      '</div>'+
+      '<button class="btn btn-ghost btn-sm" data-action="restoreExamAnalysis" data-id="'+e.id+'">استعادة</button>'+
+      '<button class="btn btn-ghost btn-sm" style="color:#dc2626;" data-action="deleteExamAnalysis" data-id="'+e.id+'">حذف</button>'+
+    '</div>';
+  }).join('');
+  return '<div style="margin-top:24px;">'+
+    '<div style="font-weight:600;font-size:13px;color:var(--muted);margin-bottom:8px;border-top:1px solid var(--border);padding-top:16px;">التحليلات المحفوظة</div>'+
+    items+'</div>';
+}
+async function runExamIndividualSort(){
+  const passScore = examPassScore();
+  const redRows = (ExamAnalysisUI.rows||[]).filter(function(r){ return r.score!=null && r.score < passScore; });
+  if (!redRows.length){ toast('لا يوجد طلاب دون المستوى لإنشاء خطط فردية لهم.'); return; }
+  toast('جارٍ إنشاء الخطط الفردية…');
+  const allExisting = (await DB.listSubmissions({ school:State.user.school })).filter(function(s){ return s.form_type==='individualAgreement' && s.created_by===State.user.id && s.status==='draft'; });
+  let added=0, existing=0;
+  for (let i=0;i<redRows.length;i++){
+    const r = redRows[i];
+    const found = allExisting.find(function(s){ return (s.payload.studentName||'').trim()===r.name.trim(); });
+    if (found){ existing++; } else {
+      const payload = blankData('individualAgreement');
+      payload.studentName = r.name; payload.grade = r.grade||''; payload.section = r.section||'';
+      await DB.createSubmission({ form_type:'individualAgreement', school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, payload:payload, status:'draft' });
+      added++;
+    }
+  }
+  toast('تم إنشاء '+added+' خطة فردية جديدة'+(existing?' ('+existing+' موجودة مسبقاً)':'')+'.');
+}
 function examPassScore(){ return Math.round(ExamAnalysisUI.maxScore / 2); }
 function examTier(score, maxScore){
   if (score==null) return null;
@@ -5816,10 +5866,25 @@ async function screenExamAnalysis(){
   const failCount = rows.filter(function(r){ return r.score!=null && r.score < passScore; }).length;
   const resultModal = ExamAnalysisUI.resultModal ? examAnalysisResultModal() : '';
   const maxScoreOpts = [20,25,30,40,50,60,80,100].map(function(n){ return '<option value="'+n+'"'+(maxScore===n?' selected':'')+'>'+n+'</option>'; }).join('');
+  const printHeader = rows.length?(
+    '<div class="exam-print-header" style="display:none;">'+
+      '<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:18px;">'+
+        '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">تقرير تحليل درجات اختبار نهاية الفصل</div>'+
+        '<div style="font-size:13px;">المعلم: '+esc(State.user.full_name||'')+'</div>'+
+        '<div style="font-size:13px;margin-top:3px;">'+
+          (ExamAnalysisUI.subject?'المادة: '+esc(ExamAnalysisUI.subject)+' &nbsp;|&nbsp; ':'')+
+          (ExamAnalysisUI.term?'الفصل الدراسي: '+esc(ExamAnalysisUI.term)+' &nbsp;|&nbsp; ':'')+
+          'الدرجة الكلية: '+maxScore+' &nbsp;|&nbsp; درجة النجاح: '+passScore+
+        '</div>'+
+        '<div style="font-size:12px;color:#555;margin-top:3px;">'+new Date().toLocaleDateString('ar-SA',{year:'numeric',month:'long',day:'numeric'})+'</div>'+
+      '</div>'+
+    '</div>'
+  ):'';
   return (
     '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>'+
+    printHeader+
     '<div class="section-head"><h2>تحليل درجات اختبار نهاية الفصل</h2>'+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="no-print">'+
         '<label style="font-size:13px;color:var(--muted);">الدرجة الكلية:</label>'+
         '<select class="input" id="examMaxScore" style="width:auto;min-width:80px;">'+maxScoreOpts+'</select>'+
         '<span style="font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;">درجة النجاح: '+passScore+' من '+maxScore+'</span>'+
@@ -5829,16 +5894,24 @@ async function screenExamAnalysis(){
       '</div>'+
     '</div>'+
     (rows.length?(
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;" class="no-print">'+
+        '<input class="input" id="examSubjectInput" placeholder="اسم المادة" value="'+esc(ExamAnalysisUI.subject)+'" style="max-width:160px;">'+
+        '<input class="input" id="examTermInput" placeholder="الفصل الدراسي" value="'+esc(ExamAnalysisUI.term)+'" style="max-width:160px;">'+
+        '<button class="btn btn-ghost btn-sm" data-action="saveExamAnalysis">💾 حفظ التحليل</button>'+
+        '<button class="btn btn-ghost btn-sm" data-action="printExamReport">🖨 طباعة التقرير</button>'+
+      '</div>'+
       examStatsHtml(rows, maxScore)+
       examFiltersHtml(rows)+
       '<div class="table-wrap"><div class="table-scroll"><table class="list">'+
         '<thead><tr><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الشريحة</th></tr></thead>'+
         '<tbody>'+(resultRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">لا توجد نتائج مطابقة لهذا الفلتر</td></tr>')+'</tbody>'+
       '</table></div></div>'+
-      '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
-        '<button class="btn btn-primary" data-action="runExamAutoSort"'+(failCount?'':' disabled')+'>تنفيذ الفرز الآلي ('+failCount+' طالب دون المستوى)</button>'+
+      '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="no-print">'+
+        '<button class="btn btn-primary" data-action="runExamAutoSort"'+(failCount?'':' disabled')+'>تنفيذ الفرز الآلي للخطط الجماعية ('+failCount+')</button>'+
+        '<button class="btn btn-ghost btn-sm" data-action="runExamIndividualSort"'+(failCount?'':' disabled')+' title="إنشاء خطة علاجية فردية لكل طالب دون المستوى">إضافة للخطط الفردية ('+failCount+')</button>'+
       '</div>'
     ):'<p style="color:var(--muted);font-size:13px;margin-top:12px;">لم يتم رفع ملف درجات بعد — اختر الدرجة الكلية ثم نزّل النموذج وارفعه.</p>')+
+    examSavedHtml()+
     resultModal
   );
 }
@@ -5959,8 +6032,35 @@ function bindExamAnalysis(){
     };
     if (isXlsx){ reader.readAsArrayBuffer(file); } else { reader.readAsText(file, 'UTF-8'); }
   });
-  const sortBtn = document.querySelector('[data-action="runExamAutoSort"]');
-  if (sortBtn) sortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(e.message); }); });
+  const subjectInput = document.getElementById('examSubjectInput');
+  if (subjectInput){ subjectInput.value = ExamAnalysisUI.subject; subjectInput.addEventListener('input', function(){ ExamAnalysisUI.subject = this.value; }); }
+  const termInput = document.getElementById('examTermInput');
+  if (termInput){ termInput.value = ExamAnalysisUI.term; termInput.addEventListener('input', function(){ ExamAnalysisUI.term = this.value; }); }
+  const saveBtn = document.querySelector('[data-action="saveExamAnalysis"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveExamAnalysis);
+  const printBtn = document.querySelector('[data-action="printExamReport"]');
+  if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
+  const autoSortBtn = document.querySelector('[data-action="runExamAutoSort"]');
+  if (autoSortBtn) autoSortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(e.message); }); });
+  const indivSortBtn = document.querySelector('[data-action="runExamIndividualSort"]');
+  if (indivSortBtn) indivSortBtn.addEventListener('click', function(){ runExamIndividualSort().catch(function(e){ toast(e.message); }); });
+  document.querySelectorAll('[data-action="restoreExamAnalysis"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const entry = loadExamSaved().find(function(e){ return e.id===el.getAttribute('data-id'); });
+      if (!entry){ toast('التحليل غير موجود.'); return; }
+      ExamAnalysisUI.rows=entry.rows; ExamAnalysisUI.maxScore=entry.maxScore||40;
+      ExamAnalysisUI.subject=entry.subject||''; ExamAnalysisUI.term=entry.term||'';
+      ExamAnalysisUI.filterGrade=''; ExamAnalysisUI.filterSection=''; ExamAnalysisUI.failOnly=false; ExamAnalysisUI.sortDir=''; ExamAnalysisUI.resultModal=null;
+      render(); bindExamAnalysis();
+    });
+  });
+  document.querySelectorAll('[data-action="deleteExamAnalysis"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const list = loadExamSaved().filter(function(e){ return e.id!==el.getAttribute('data-id'); });
+      try{ localStorage.setItem(examSavedKey(), JSON.stringify(list)); }catch(e){}
+      render(); bindExamAnalysis();
+    });
+  });
   const closeResult = function(){ ExamAnalysisUI.resultModal = null; render(); bindExamAnalysis(); };
   const closeResultBg = document.querySelector('[data-action="closeExamResultModalBg"]');
   if (closeResultBg) closeResultBg.addEventListener('click', closeResult);
