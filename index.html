@@ -2979,7 +2979,7 @@ function blankSelfEvalCriteria(){
   return obj;
 }
 function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[] }; }
-function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
+function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', notesItems:[], notesOther:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
 function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
 function openEditor(formType, submission){
@@ -9220,9 +9220,9 @@ async function screenEditor(){
   const teacherForms = ['individualAgreement','modelLesson','plcMeetingMinutes','indicatorReport','peerObservation'];
   if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
     EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){
-      if (u.role !== 'teacher') return false;
+      if (u.role !== 'teacher' && u.role !== 'coordinator') return false;
       if (State.user.role === 'coordinator' && State.user.community_id){
-        return u.community_id === State.user.community_id;
+        return u.community_id === State.user.community_id || u.id === State.user.id;
       }
       return true;
     });
@@ -9374,6 +9374,18 @@ const INDICATOR_RECOMMENDATION_OPTIONS = [
   'مشاركة النتائج والتجارب الناجحة مع بقية المعلمين',
   'استمرار مناقشة الموضوع في الاجتماع القادم',
 ];
+const INDIVIDUAL_NOTES_OPTIONS = [
+  'التعليم التبادلي والشرح المتبادل بين الطلاب',
+  'التعلم التعاوني وتقسيم الطلاب لمجموعات صغيرة',
+  'استخدام الخرائط الذهنية والمنظمات البيانية',
+  'التعزيز الإيجابي والمكافأة الفورية',
+  'التقويم التشخيصي وتحليل الأخطاء الشائعة',
+  'التدريس المباشر مع التغذية الراجعة الفورية',
+  'الأسئلة المتدرجة من البسيط إلى المركب',
+  'استخدام الوسائل التعليمية والتقنية المساعدة',
+  'التمارين المتكررة والبطاقات التدريبية',
+  'التقييم الختامي الأسبوعي وتوثيق مستوى التحسن',
+];
 function checkboxGroupWithOther(name, options, selected, otherVal, ro){
   selected = selected || [];
   const isOtherSelected = selected.indexOf('أخرى') > -1;
@@ -9472,7 +9484,8 @@ function renderIndividualAgreement(d, ro, teachers, students){
           inputField('المادة','sessions.'+i+'.subject',s.subject,{readonly:ro}) +
         '</div>' +
         inputField('التاريخ','sessions.'+i+'.date',s.date,{type:'date',readonly:ro}) +
-        inputField('الإجراءات/الأدوات المطبقة ونتيجة تقويم الأسبوع','sessions.'+i+'.notes',s.notes,{type:'textarea',readonly:ro,placeholder:'مثال: تطبيق استراتيجية ... وتقويم الطالب بنهاية الأسبوع أظهر ...'}) +
+        '<div class="field"><label>الإجراءات/الأدوات المطبقة</label>' + dropdownPicker('sessions.'+i+'.notesItems', INDIVIDUAL_NOTES_OPTIONS, s.notesItems, s.notesOther, ro) + '</div>' +
+        inputField('نتيجة تقويم الأسبوع','sessions.'+i+'.notes',s.notes,{type:'textarea',readonly:ro,placeholder:'مثال: وتقويم الطالب بنهاية الأسبوع أظهر ...'}) +
         ((s.evidenceFiles && s.evidenceFiles.length) ? ('<div class="field"><label>شواهد المعلم</label><div class="evidence-grid">' + s.evidenceFiles.map(function(f){ return '<div class="evidence-thumb"><img src="'+esc(safeDataUrl(f))+'"></div>'; }).join('') + '</div></div>') : '') +
         '<div class="field"><label>توقيع المعلم</label>' + buildSignaturePad('sessions.'+i, s.sig, ro) + '</div>' +
       '</div>'
