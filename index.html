@@ -7757,12 +7757,19 @@ async function screenTeacherTasks(){
       '</div>' +
     '</div>'
   );
+  /* طلاب أكملوا الخطة الفردية كاملاً (كل الجلسات موقَّعة) */
+  const completedPlanStudents = (function(){
+    const byStudent = {};
+    sessTasks.forEach(function(t){ var n=t.sub.payload.studentName||''; if(!byStudent[n]) byStudent[n]={all:0,done:0}; byStudent[n].all++; if(t.sess.sig) byStudent[n].done++; });
+    return Object.keys(byStudent).filter(function(n){ var b=byStudent[n]; return b.all>0&&b.done===b.all; }).length;
+  })();
   const kpiHtml =
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:18px;">' +
       formStatusCard +
       tKpi(trackedNames.size, 'طلاب تحت المتابعة', 'var(--primary)') +
       tKpi(overdueTasks.length>0?overdueTasks.length:'✓', overdueTasks.length>0?'مهام متأخرة':'لا تأخير', overdueTasks.length>0?'var(--danger)':'var(--success)') +
       tKpi(sessTasks.length?completedSessions+'/'+sessTasks.length:'—', 'جلسات أُكملت', 'var(--primary)') +
+      tKpi(completedPlanStudents||'—', 'طلاب أنهوا الخطة', 'var(--success)') +
     '</div>';
 
   /* — تنبيه النماذج المُرجَعة — */
@@ -7791,9 +7798,20 @@ async function screenTeacherTasks(){
     return last && (now - new Date(last).getTime()) > 14*24*60*60*1000;
   });
   const expiredAlert = expiredPlans.length ? (
-    '<div style="background:var(--warn-bg,#fff8e1);border:1.5px solid var(--warn-border,#f9a825);border-radius:10px;padding:10px 16px;margin-bottom:12px;font-size:13px;">' +
-      '<b>⚠ '+expiredPlans.length+' خطة فردية تجاوزت آخر جلسة منذ أكثر من أسبوعين:</b> ' +
-      expiredPlans.map(function(s){ return '<span style="margin-left:8px;">'+esc(s.payload.studentName||'—')+'</span>'; }).join('') +
+    '<div style="background:var(--warn-bg,#fff8e1);border:1.5px solid var(--warn-border,#f9a825);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;">' +
+      '<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">⚠ '+expiredPlans.length+' خطة فردية متوقفة تحتاج متابعة</div>' +
+      expiredPlans.map(function(s){
+        var sessions = s.payload.sessions||[];
+        var lastDate = sessions[sessions.length-1].date;
+        var daysSince = Math.floor((now - new Date(lastDate)) / (24*60*60*1000));
+        var remaining = sessions.filter(function(ss){ return !ss.sig; }).length;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid color-mix(in srgb,var(--warn-border,#f9a825) 30%,transparent);">' +
+          '<b style="flex:1;">'+esc(s.payload.studentName||'—')+'</b>' +
+          '<span style="color:var(--danger);font-size:12px;">'+daysSince+' يوم بلا جلسة</span>' +
+          '<span style="color:var(--muted);font-size:12px;">'+remaining+' جلسة متبقية</span>' +
+          '<button class="btn btn-ghost btn-sm" data-action="openStudentProfile" data-name="'+esc(s.payload.studentName||'')+'">فتح الملف</button>' +
+        '</div>';
+      }).join('') +
     '</div>'
   ) : '';
 
@@ -7965,7 +7983,9 @@ async function screenTeacherTasks(){
   }).join('');
 
   /* — جدول الزيارات — */
-  const visitSchedules = rawVisits.filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  const visitSchedules = State.user.community_id
+    ? rawVisits.filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); })
+    : [];
   const visitScheduleCards = visitSchedules.map(function(s){ return visitScheduleTableHtml(s, {}); }).join('');
 
   /* — جدول نماذجي (مع فلتر المكتملة / النشطة) — */
@@ -8000,7 +8020,7 @@ async function screenTeacherTasks(){
 
   /* — ملف الطالب — */
   const profileHtml = (_teacherStudentProfile)
-    ? teacherStudentProfileHtml(_teacherStudentProfile, myForms, sessTasks, sortedStudents)
+    ? teacherStudentProfileHtml(_teacherStudentProfile, myForms, sessTasks, myStudents)
     : '';
 
   const mainContent = (
@@ -8050,10 +8070,10 @@ function bindTeacherTasks(){
 
   /* تبويبات لوحة المعلم */
   document.querySelectorAll('[data-action="teacherDashTab"]').forEach(function(el){
-    el.addEventListener('click', function(){ TeacherFormsUI.dashTab = el.getAttribute('data-tab'); render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.dashTab = el.getAttribute('data-tab'); await render(); bindTeacherTasks(); });
   });
   document.querySelectorAll('[data-action="teacherFormsTab"]').forEach(function(el){
-    el.addEventListener('click', function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); await render(); bindTeacherTasks(); });
   });
   document.querySelectorAll('[data-action="openTeacherSession"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -8068,24 +8088,25 @@ function bindTeacherTasks(){
 
   /* فلتر جدول الطلاب */
   const stGradeEl = document.getElementById('teacherStGrade');
-  if (stGradeEl) stGradeEl.addEventListener('change', function(){ TeacherFormsUI.studentGradeFilter = this.value; render(); bindTeacherTasks(); });
+  if (stGradeEl) stGradeEl.addEventListener('change', async function(){ TeacherFormsUI.studentGradeFilter = this.value; await render(); bindTeacherTasks(); });
   const stSectionEl = document.getElementById('teacherStSection');
-  if (stSectionEl) stSectionEl.addEventListener('change', function(){ TeacherFormsUI.studentSectionFilter = this.value; render(); bindTeacherTasks(); });
+  if (stSectionEl) stSectionEl.addEventListener('change', async function(){ TeacherFormsUI.studentSectionFilter = this.value; await render(); bindTeacherTasks(); });
 
   /* ملف الطالب */
   document.querySelectorAll('[data-action="openStudentProfile"]').forEach(function(el){
-    el.addEventListener('click', function(){
+    el.addEventListener('click', async function(){
       _teacherStudentProfile = el.getAttribute('data-name');
       TeacherFormsUI.dashTab = 'profile';
-      render(); bindTeacherTasks();
+      await render(); bindTeacherTasks();
     });
   });
 
   /* رجوع من ملف الطالب */
   const profileBackBtn = document.querySelector('[data-action="teacherProfileBack"]');
-  if (profileBackBtn) profileBackBtn.addEventListener('click', function(){
+  if (profileBackBtn) profileBackBtn.addEventListener('click', async function(){
     TeacherFormsUI.dashTab = 'main';
-    render(); bindTeacherTasks();
+    _teacherStudentProfile = null;
+    await render(); bindTeacherTasks();
   });
 
   /* حفظ ملاحظة الطالب */
@@ -8200,7 +8221,18 @@ async function screenTeacherSession(subId, idx){
           inputField('المادة','subject', sess.subject, {readonly: sessReadonly}) +
           inputField('التاريخ','date', sess.date, {type:'date', readonly: sessReadonly}) +
         '</div>' +
-        inputField('الإجراءات/الأدوات المطبقة ونتيجة تقويم الأسبوع','notes', sess.notes, {type:'textarea', readonly: sessReadonly}) +
+        inputField('الإجراءات والأدوات المطبقة في هذه الجلسة','notes', sess.notes, {type:'textarea', readonly: sessReadonly}) +
+        '<div class="field-grid cols-2">' +
+          '<div class="field"><label>تقييم أداء الطالب هذا الأسبوع</label>' +
+            (sessReadonly
+              ? '<div class="input" style="background:var(--bg-2,#f4f6f8);">'+(sess.studentPerf||'—')+'</div>'
+              : '<select class="input" data-field="studentPerf">' +
+                  '<option value="">— اختر —</option>' +
+                  ['ضعيف','متوسط','جيد','ممتاز'].map(function(v){ return '<option value="'+v+'"'+(sess.studentPerf===v?' selected':'')+'>'+v+'</option>'; }).join('') +
+                '</select>') +
+          '</div>' +
+          inputField('الخطوة التالية للأسبوع القادم','nextStep', sess.nextStep, {readonly: sessReadonly}) +
+        '</div>' +
         '<div class="block-title"><span class="dot"></span> شواهد الأسبوع (صور أوراق عمل، اختبارات، إنجاز الطالب...)</div>' +
         '<div class="evidence-grid">' + files +
           (!sessReadonly ? '<label class="evidence-add">+<input type="file" id="evidenceInput" accept="image/*,application/pdf" multiple style="display:none;"></label>' : '') +
@@ -8227,7 +8259,8 @@ function bindTeacherSession(){
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
     if (pad && !pad.isEmpty()) sess.sig = pad.toDataUrl();
   }
-  document.getElementById('evidenceInput').addEventListener('change', function(e){
+  const evInput = document.getElementById('evidenceInput');
+  if (evInput) evInput.addEventListener('change', function(e){
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
     sess.evidenceFiles = sess.evidenceFiles || [];
     Array.from(e.target.files).forEach(function(file){
@@ -8250,7 +8283,8 @@ function bindTeacherSession(){
       render(); bindTeacherSession();
     });
   });
-  document.querySelector('[data-action="saveTeacherSession"]').addEventListener('click', async function(){
+  const saveSessionBtn = document.querySelector('[data-action="saveTeacherSession"]');
+  if (saveSessionBtn) saveSessionBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     const pad = Pads['pad_teacher_sess'];
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
