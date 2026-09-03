@@ -5400,16 +5400,17 @@ async function screenStudentRoster(){
   const students = await DB.listStudents({ school: State.user.school });
   const myId = State.user.id;
 
-  /* — قوائم الصفوف والشعب المتاحة — */
-  const grades = students.map(function(s){ return s.grade||''; }).filter(Boolean)
-    .filter(function(v,i,a){ return a.indexOf(v)===i; })
-    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
-  const allSections = students.map(function(s){ return s.section||''; }).filter(Boolean)
-    .filter(function(v,i,a){ return a.indexOf(v)===i; })
-    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
-
-  /* — تطبيق الفلتر — */
+  /* — تطبيق الفلتر الأساسي (المعلم: طلابه فقط) — */
   let filtered = students;
+  if (!isAdmin && State.user.role === 'teacher') filtered = filtered.filter(function(s){ return Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(myId) > -1; });
+
+  /* — قوائم الصفوف والشعب من القائمة المفلترة — */
+  const grades = filtered.map(function(s){ return s.grade||''; }).filter(Boolean)
+    .filter(function(v,i,a){ return a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const allSections = filtered.map(function(s){ return s.section||''; }).filter(Boolean)
+    .filter(function(v,i,a){ return a.indexOf(v)===i; })
+    .sort(function(a,b){ return a.localeCompare(b,'ar'); });
   if (StudentRosterUI.gradeFilter) filtered = filtered.filter(function(s){ return s.grade===StudentRosterUI.gradeFilter; });
   if (StudentRosterUI.sectionFilter) filtered = filtered.filter(function(s){ return s.section===StudentRosterUI.sectionFilter; });
 
@@ -7546,7 +7547,7 @@ function bindCoordinatorMyStudents(){
 }
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
-let TeacherFormsUI = { tab: 'active', dashTab: 'main' }; /* dashTab: 'main'|'agenda'|'profile' */
+let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '' }; /* dashTab: 'main'|'agenda'|'profile' */
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
 
@@ -7808,6 +7809,13 @@ async function screenTeacherTasks(){
     return Array.isArray(s.assigned_teacher_ids) && s.assigned_teacher_ids.indexOf(State.user.id) > -1;
   }).sort(function(a,b){ return (a.grade||a.student_grade||'').localeCompare(b.grade||b.student_grade||'','ar') || (a.full_name||'').localeCompare(b.full_name||'','ar'); });
 
+  /* فلتر الصف والشعبة */
+  const stGrades = myStudents.map(function(s){ return s.grade||s.student_grade||''; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const stSections = myStudents.map(function(s){ return s.section||s.student_section||''; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  let filteredStudents = myStudents;
+  if (TeacherFormsUI.studentGradeFilter) filteredStudents = filteredStudents.filter(function(s){ return (s.grade||s.student_grade||'')===TeacherFormsUI.studentGradeFilter; });
+  if (TeacherFormsUI.studentSectionFilter) filteredStudents = filteredStudents.filter(function(s){ return (s.section||s.student_section||'')===TeacherFormsUI.studentSectionFilter; });
+
   const formsByStudent = {};
   myForms.forEach(function(s){
     function mark(name){
@@ -7820,7 +7828,7 @@ async function screenTeacherTasks(){
     (s.payload.behaviorStudents||[]).forEach(function(st){ mark(st.name); });
   });
 
-  const studentRows = myStudents.map(function(s){
+  const studentRows = filteredStudents.map(function(s){
     const formsForSt = formsByStudent[s.full_name] || [];
     const badges = formsForSt.map(function(f){
       const def = formDef(f.form_type);
@@ -7841,11 +7849,26 @@ async function screenTeacherTasks(){
     );
   }).join('');
 
+  const studentFilterBar = myStudents.length ? (
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;margin-bottom:8px;">' +
+      '<select id="teacherStGrade" class="input" style="max-width:150px;">' +
+        '<option value="">— كل الصفوف —</option>' +
+        stGrades.map(function(g){ return '<option value="'+esc(g)+'"'+(TeacherFormsUI.studentGradeFilter===g?' selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+      '</select>' +
+      '<select id="teacherStSection" class="input" style="max-width:130px;">' +
+        '<option value="">— كل الشعب —</option>' +
+        stSections.map(function(sec){ return '<option value="'+esc(sec)+'"'+(TeacherFormsUI.studentSectionFilter===sec?' selected':'')+'>'+esc(sec)+'</option>'; }).join('') +
+      '</select>' +
+      '<span style="color:var(--muted);font-size:12px;">'+filteredStudents.length+' / '+myStudents.length+' طالب</span>' +
+    '</div>'
+  ) : '';
+
   const studentSummaryHtml = myStudents.length ? (
     '<div class="section-head" style="margin-top:20px;"><h2>طلابي المعيَّنون إليّ ('+myStudents.length+')</h2></div>' +
+    studentFilterBar +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
-      '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">—</td></tr>')+'</tbody>' +
+      '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
     '</table></div></div>'
   ) : '';
 
@@ -8019,7 +8042,7 @@ async function screenTeacherTasks(){
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
     (TeacherFormsUI.dashTab==='agenda' ? weekAgendaHtml : '') +
-    (TeacherFormsUI.dashTab==='profile' ? profileHtml : '')
+    (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '')
   );
 }
 function bindTeacherTasks(){
@@ -8043,6 +8066,12 @@ function bindTeacherTasks(){
     });
   });
 
+  /* فلتر جدول الطلاب */
+  const stGradeEl = document.getElementById('teacherStGrade');
+  if (stGradeEl) stGradeEl.addEventListener('change', function(){ TeacherFormsUI.studentGradeFilter = this.value; render(); bindTeacherTasks(); });
+  const stSectionEl = document.getElementById('teacherStSection');
+  if (stSectionEl) stSectionEl.addEventListener('change', function(){ TeacherFormsUI.studentSectionFilter = this.value; render(); bindTeacherTasks(); });
+
   /* ملف الطالب */
   document.querySelectorAll('[data-action="openStudentProfile"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -8050,6 +8079,13 @@ function bindTeacherTasks(){
       TeacherFormsUI.dashTab = 'profile';
       render(); bindTeacherTasks();
     });
+  });
+
+  /* رجوع من ملف الطالب */
+  const profileBackBtn = document.querySelector('[data-action="teacherProfileBack"]');
+  if (profileBackBtn) profileBackBtn.addEventListener('click', function(){
+    TeacherFormsUI.dashTab = 'main';
+    render(); bindTeacherTasks();
   });
 
   /* حفظ ملاحظة الطالب */
