@@ -1891,6 +1891,10 @@ const DB = {
     obj.created_at = nowIso(); obj.read_by = obj.read_by || [];
     if (isRemote()){
       const rows = await remoteFetch('notifications', { method:'POST', body:obj, prefer:'return=representation' });
+      /* إرسال Push تلقائياً لكل إشعار موجّه لمستخدم محدد */
+      if (obj.target_type === 'user' && obj.target_id){
+        pushNotify(obj.target_id, obj.title, obj.body||'').catch(function(){});
+      }
       return rows && rows[0];
     }
     obj.id = uid();
@@ -3279,6 +3283,14 @@ function bindTopNav(){
     }
     try{
       await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:target_type, target_id:target_id, type:type, title:title, body:body, due_date: due||null });
+      /* Push لإشعارات المجتمع والمدرسة (لا تُغطّيها createNotification تلقائياً) */
+      if (target_type==='community' && target_id){
+        remoteFetch('profiles?community_id=eq.'+encodeURIComponent(target_id)+'&school=eq.'+encodeURIComponent(State.user.school)).then(function(members){
+          (members||[]).forEach(function(m){ if (m.id!==State.user.id) pushNotify(m.id, title, body).catch(function(){}); });
+        }).catch(function(){});
+      } else if (target_type==='school'){
+        pushNotifyPrincipal(State.user.school, title, body).catch(function(){});
+      }
       invalidateNotifCache();
       toast('تم إرسال التنبيه.');
       NotifUI.compose=false; NotifUI.open=true;
@@ -4153,7 +4165,7 @@ function bindCoordinatorVisits(){
     try{
       await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
       const visitedIds = [...new Set(rows.map(function(r){ return r.visitingTeacherId; }).concat(rows.map(function(r){ return r.visitedTeacherId; })))];
-      visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); });
+      visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); /* push handled inside createNotification */ });
       toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
       VisitsUI.draft = null; render(); bindCoordinatorVisits();
     }catch(e){ toast(e.message); this.disabled = false; }
@@ -4315,7 +4327,7 @@ function bindCoordinatorDemoLessons(){
       const notifTargets = [];
       communityTeachers.forEach(function(u){ notifTargets.push(u.id); });
       principals.forEach(function(u){ notifTargets.push(u.id); });
-      notifTargets.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'حصة توضيحية جديدة', body:notifBody }).catch(function(){}); });
+      notifTargets.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'حصة توضيحية جديدة', body:notifBody }).catch(function(){}); /* push handled inside createNotification */ });
       toast('تم تسجيل الحصة التوضيحية وإرسال الإشعارات.');
       DemoLessonUI.modalOpen = false; DemoLessonUI.draft = null; render(); bindCoordinatorDemoLessons();
     }catch(e){ toast(e.message); this.disabled = false; }
@@ -7529,6 +7541,10 @@ function bindTeacherTasks(){
     if (!msg || !msg.trim()) return;
     try{
       await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'community', target_id:State.user.community_id, type:'general', title:'رسالة من معلم', body:msg.trim() });
+      /* push للمنسق المسؤول عن المجتمع */
+      if (State.user.community_id){
+        remoteFetch('profiles?community_id=eq.'+encodeURIComponent(State.user.community_id)+'&role=eq.coordinator&school=eq.'+encodeURIComponent(State.user.school)).then(function(cs){ (cs||[]).forEach(function(c){ pushNotify(c.id,'رسالة من معلم',msg.trim()).catch(function(){}); }); }).catch(function(){});
+      }
       invalidateNotifCache();
       toast('تم إرسال رسالتك إلى المنسق.');
     }catch(e){ toast(e.message); }
