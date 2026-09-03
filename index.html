@@ -9421,19 +9421,24 @@ function dropdownPicker(name, options, selected, otherVal, ro){
   if (isOtherSelected){
     chips.push('<span class="picker-chip picker-chip-other"><span>أخرى</span><button type="button" class="picker-chip-rmv" data-action="removeDropdownItem" data-group="'+name+'" data-val="أخرى">×</button></span>');
   }
+  var selId = name+'_sel', preId = name+'_pre_other';
+  var onchangeJs = 'var d=document.getElementById("'+preId+'");if(d)d.style.display=this.value==="أخرى"?"block":"none";';
   return (
     '<div class="dropdown-picker">' +
       '<div class="picker-row">' +
-        '<select id="'+name+'_sel" class="input" style="flex:1;min-width:0;">' +
+        '<select id="'+selId+'" class="input" style="flex:1;min-width:0;" onchange="'+onchangeJs+'">' +
           '<option value="">— اختر بنداً —</option>' +
           available.map(function(opt){ return '<option value="'+esc(opt)+'">'+esc(opt)+'</option>'; }).join('') +
           (isOtherSelected ? '' : '<option value="أخرى">أخرى…</option>') +
         '</select>' +
-        '<button type="button" class="btn btn-sm" data-action="addDropdownItem" data-group="'+name+'" data-select="'+name+'_sel">+ إضافة</button>' +
+        '<button type="button" class="btn btn-sm" data-action="addDropdownItem" data-group="'+name+'" data-select="'+selId+'">+ إضافة</button>' +
+      '</div>' +
+      '<div id="'+preId+'" style="display:none;margin-top:6px;">' +
+        '<input class="input" id="'+name+'_other_input" placeholder="اكتب الإجراء المخصص…" style="width:100%;">' +
       '</div>' +
       (chips.length ? '<div class="picker-chips">'+chips.join('')+'</div>' : '') +
       (isOtherSelected ?
-        '<div style="margin-top:8px;"><input class="input" id="'+name+'_other" data-field="'+name.replace('Items','Other')+'" value="'+esc(otherVal||'')+'" placeholder="اكتب وصفاً مخصصاً…" style="width:100%;"></div>'
+        '<div style="margin-top:8px;"><input class="input" id="'+name+'_other" data-field="'+name.replace('Items','Other')+'" value="'+esc(otherVal||'')+'" placeholder="اكتب الإجراء المخصص…" style="width:100%;"></div>'
       : '') +
     '</div>'
   );
@@ -9857,6 +9862,12 @@ function bindEditor(){
       const sel = document.getElementById(el.getAttribute('data-select'));
       if (!sel || !sel.value) return;
       const val = sel.value;
+      if (val === 'أخرى'){
+        const otherInput = document.getElementById(group+'_other_input');
+        if (otherInput && otherInput.value.trim()){
+          setPath(EditorState.data, group.replace('Items','Other'), otherInput.value.trim());
+        }
+      }
       let arr = getPath(EditorState.data, group) || [];
       if (arr.indexOf(val) === -1){ arr = arr.concat([val]); setPath(EditorState.data, group, arr); }
       render(); bindEditor();
