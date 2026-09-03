@@ -2983,8 +2983,8 @@ function blankSelfEvalCriteria(){
   SELF_EVAL_CRITERIA.forEach(function(c){ obj[c.key] = { score:'', note:'' }; });
   return obj;
 }
-function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[] }; }
-function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', notesItems:[], notesOther:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[] }; }
+function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[], baseline:'', targetGoal:'', targetDate:'' }; }
+function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', notesItems:[], notesOther:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[], goalAchieved:'', masteryPct:'', studentPerf:'', nextStep:'' }; }
 function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
 function openEditor(formType, submission){
@@ -7550,6 +7550,7 @@ function bindCoordinatorMyStudents(){
 let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '' }; /* dashTab: 'main'|'agenda'|'profile' */
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
+let _teacherAllStudentsCache = [];
 
 function teacherNotesKey(studentName){
   return 'teacher_notes_'+(State.user?State.user.id:'x')+'_'+studentName;
@@ -7647,6 +7648,34 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents)
   var stRec = allStudents.find(function(s){ return s.full_name===studentName; });
   var notes = teacherGetNotes(studentName);
   var doneSess = stSessions.filter(function(t){ return !!t.sess.sig; }).length;
+  var hasIndividualPlan = stForms.some(function(f){ return f.form_type==='individualAgreement'; });
+
+  /* SVG mastery progress chart */
+  var masterySessions = stSessions.filter(function(t){ return t.sess.masteryPct!=null && t.sess.masteryPct!==''; });
+  var masteryChartHtml = '';
+  if (masterySessions.length >= 2){
+    var W=220, H=60, pad=6;
+    var pts = masterySessions.map(function(t,i){
+      var x = pad + i*(W-2*pad)/(masterySessions.length-1);
+      var y = pad + (1 - (+t.sess.masteryPct)/100)*(H-2*pad);
+      return {x:x, y:y, v:+t.sess.masteryPct};
+    });
+    var polyline = pts.map(function(p){ return p.x+','+p.y; }).join(' ');
+    var dots = pts.map(function(p){
+      return '<circle cx="'+p.x+'" cy="'+p.y+'" r="3.5" fill="var(--primary)" title="'+p.v+'%"></circle>' +
+        '<text x="'+p.x+'" y="'+(p.y-7)+'" font-size="9" text-anchor="middle" fill="var(--muted)">'+p.v+'%</text>';
+    }).join('');
+    masteryChartHtml = (
+      '<div style="margin-top:10px;">' +
+        '<b style="font-size:12px;color:var(--muted);">منحنى الإتقان عبر الجلسات</b>' +
+        '<svg width="'+W+'" height="'+H+'" style="display:block;margin-top:4px;overflow:visible;">' +
+          '<polyline points="'+polyline+'" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round"/>' +
+          dots +
+        '</svg>' +
+      '</div>'
+    );
+  }
+
   return (
     '<div class="program-card">' +
       '<div class="ph"><h3>ملف الطالب: '+esc(studentName)+'</h3>' +
@@ -7657,6 +7686,7 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents)
           '<div style="margin-bottom:14px;">' +
             '<b style="font-size:13px;">جلسات الخطة الفردية</b>' +
             teacherSessionProgressBar(doneSess, stSessions.length) +
+            masteryChartHtml +
             '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">' +
             stSessions.map(function(t){
               return '<div style="background:var(--card-2,#f4f6f8);border-radius:8px;padding:8px 12px;display:flex;gap:10px;align-items:center;">' +
@@ -7681,6 +7711,12 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents)
               '</div>';
             }).join('') +
             '</div>' +
+          '</div>'
+        ) : '') +
+        (!hasIndividualPlan && stRec ? (
+          '<div style="margin-bottom:14px;padding:10px 12px;background:var(--bg-2,#f4f6f8);border-radius:8px;border:1px dashed var(--border);">' +
+            '<span style="font-size:12.5px;color:var(--muted);margin-inline-end:10px;">لا توجد خطة فردية لهذا الطالب بعد.</span>' +
+            '<button class="btn btn-primary btn-sm" data-action="startIndividualPlan" data-student="'+esc(studentName)+'">+ ابدأ خطة فردية</button>' +
           '</div>'
         ) : '') +
         '<div>' +
@@ -7735,6 +7771,7 @@ async function screenTeacherTasks(){
   generalTasks.sort(function(a,b){ return ((a.status==='done'?1:0)-(b.status==='done'?1:0)) || (new Date(a.due_date||0)-new Date(b.due_date||0)); });
   demoLessonTasks.sort(function(a,b){ return new Date(a.due_date||a.created_at)-new Date(b.due_date||b.created_at); });
   _teacherDemoLessonsCache = demoLessonTasks;
+  _teacherAllStudentsCache = schoolStudents;
   const now = new Date();
   const overdueTasks = generalTasks.filter(function(t){ return t.status!=='done' && t.due_date && new Date(t.due_date) < now; });
 
@@ -7797,6 +7834,27 @@ async function screenTeacherTasks(){
     var last = sessions[sessions.length-1].date;
     return last && (now - new Date(last).getTime()) > 14*24*60*60*1000;
   });
+
+  /* — تنبيه جلسات خلال 48 ساعة — */
+  const upcoming48hSessions = sessTasks.filter(function(t){
+    if (t.sess.sig) return false;
+    if (!t.sess.date) return false;
+    var d = new Date(t.sess.date);
+    return d > now && (d - now) <= 48*60*60*1000;
+  });
+  const upcoming48hAlert = upcoming48hSessions.length ? (
+    '<div style="background:color-mix(in srgb,var(--primary) 8%,transparent);border:1.5px solid var(--primary);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;">' +
+      '<div style="font-weight:700;font-size:13.5px;color:var(--primary);margin-bottom:8px;">⏰ '+upcoming48hSessions.length+' جلسة متابعة خلال الـ 48 ساعة القادمة — تأكد من التعبئة المسبقة</div>' +
+      upcoming48hSessions.map(function(t){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid color-mix(in srgb,var(--primary) 20%,transparent);">' +
+          '<b style="flex:1;">'+esc(t.sub.payload.studentName||'—')+'</b>' +
+          '<span style="color:var(--muted);font-size:12px;">'+fmtDate(t.sess.date)+'</span>' +
+          '<button class="btn btn-primary btn-sm" data-action="openTeacherSession" data-sub="'+t.sub.id+'" data-idx="'+t.idx+'">تعبئة الجلسة</button>' +
+        '</div>';
+      }).join('') +
+    '</div>'
+  ) : '';
+
   const expiredAlert = expiredPlans.length ? (
     '<div style="background:var(--warn-bg,#fff8e1);border:1.5px solid var(--warn-border,#f9a825);border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;">' +
       '<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;">⚠ '+expiredPlans.length+' خطة فردية متوقفة تحتاج متابعة</div>' +
@@ -8024,7 +8082,7 @@ async function screenTeacherTasks(){
     : '';
 
   const mainContent = (
-    returnedAlert + expiredAlert + overdueAlert +
+    upcoming48hAlert + returnedAlert + expiredAlert + overdueAlert +
     '<div class="section-head"><h2>الخطط العلاجية والنماذج الخاصة بي</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" data-action="goStudentRoster">بيانات الطلاب</button>' +
@@ -8043,7 +8101,13 @@ async function screenTeacherTasks(){
       '<tbody>'+(myFormsRows||'<tr class="empty-row"><td colspan="4">لا توجد نماذج في هذا القسم.</td></tr>')+'</tbody>' +
     '</table></div></div>' +
     studentSummaryHtml +
-    (visitScheduleCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> جدول الزيارات التبادلية المعتمد من منسق مجتمعك</div>' + visitScheduleCards) : '') +
+    (visitScheduleCards ? (function(){
+      var allVRows = [];
+      visitSchedules.forEach(function(s){ (s.rows||[]).forEach(function(r){ allVRows.push(r); }); });
+      var completedVisits = allVRows.filter(function(r){ return r.date && new Date(r.date) < now; }).length;
+      var visitCounter = allVRows.length ? '<span style="font-size:12px;color:var(--muted);margin-inline-start:8px;">'+completedVisits+'/'+allVRows.length+' زيارة منجزة</span>' : '';
+      return '<div class="block-title" style="margin-top:22px;"><span class="dot"></span> جدول الزيارات التبادلية المعتمد من منسق مجتمعك'+visitCounter+'</div>'+visitScheduleCards;
+    })() : '') +
     (demoLessonTasks.length ? demoLessonCountdownHtml(demoLessonTasks) : '') +
     (demoLessonCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> حصص توضيحية مجدوَلة بواسطة منسق المجتمع المهني</div>' + demoLessonCards) : '') +
     (taskCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> مهام مكلَّف بها من منسق المجتمع المهني</div>' + taskCards) : '') +
@@ -8115,6 +8179,15 @@ function bindTeacherTasks(){
       var sName = el.getAttribute('data-student');
       var ta = document.getElementById('studentNotesTA');
       if (ta){ teacherSaveNotes(sName, ta.value); toast('تم حفظ الملاحظة.'); }
+    });
+  });
+
+  /* بدء خطة فردية من ملف الطالب */
+  document.querySelectorAll('[data-action="startIndividualPlan"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var sName = el.getAttribute('data-student');
+      var stRec = (window._teacherAllStudentsCache||[]).find(function(s){ return s.full_name===sName; });
+      openPlanForStudent('individualAgreement', stRec || { full_name: sName });
     });
   });
 
@@ -8222,6 +8295,21 @@ async function screenTeacherSession(subId, idx){
           inputField('التاريخ','date', sess.date, {type:'date', readonly: sessReadonly}) +
         '</div>' +
         inputField('الإجراءات والأدوات المطبقة في هذه الجلسة','notes', sess.notes, {type:'textarea', readonly: sessReadonly}) +
+        '<div class="field-grid cols-2">' +
+          '<div class="field"><label>هل تحقق هدف هذه الجلسة؟</label>' +
+            (sessReadonly
+              ? '<div class="input" style="background:var(--bg-2,#f4f6f8);">'+(sess.goalAchieved||'—')+'</div>'
+              : '<select class="input" data-field="goalAchieved">' +
+                  '<option value="">— اختر —</option>' +
+                  ['تحقق بالكامل','تحقق جزئياً','لم يتحقق'].map(function(v){ return '<option value="'+v+'"'+(sess.goalAchieved===v?' selected':'')+'>'+v+'</option>'; }).join('') +
+                '</select>') +
+          '</div>' +
+          '<div class="field"><label>نسبة الإتقان المُقدَّرة للطالب (%)</label>' +
+            (sessReadonly
+              ? '<div class="input" style="background:var(--bg-2,#f4f6f8);">'+(sess.masteryPct!=null&&sess.masteryPct!==''?esc(String(sess.masteryPct))+'%':'—')+'</div>'
+              : '<input class="input" type="number" min="0" max="100" data-field="masteryPct" value="'+(sess.masteryPct!=null&&sess.masteryPct!==''?esc(String(sess.masteryPct)):'')+'" placeholder="0 – 100">') +
+          '</div>' +
+        '</div>' +
         '<div class="field-grid cols-2">' +
           '<div class="field"><label>تقييم أداء الطالب هذا الأسبوع</label>' +
             (sessReadonly
@@ -10182,6 +10270,11 @@ function renderGroupPlan(d, ro, students){
         studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro) +
         '<div class="field-grid cols-2">' +
           inputField('درجة اختبار نهاية الفصل (من 40)','students.'+i+'.examScore',s.examScore,{type:'number',readonly:ro}) +
+          inputField('الدرجة الأساسية (Baseline)','students.'+i+'.baseline',s.baseline,{type:'number',readonly:ro}) +
+        '</div>' +
+        '<div class="field-grid cols-2">' +
+          inputField('الهدف المستهدف','students.'+i+'.targetGoal',s.targetGoal,{readonly:ro,placeholder:'مثال: رفع الدرجة إلى 30/40'}) +
+          inputField('التاريخ المستهدف للتحقق','students.'+i+'.targetDate',s.targetDate,{type:'date',readonly:ro}) +
         '</div>' +
         '<div class="field-grid cols-2">' +
           inputField('شواهد التشخيص','students.'+i+'.diag',s.diag,{type:'textarea',readonly:ro}) +
@@ -11000,6 +11093,14 @@ async function screenReview(id){
       '<div class="review-panel no-print">' +
         '<h3>اعتماد مدير المدرسة</h3>' +
         '<div class="review-grid">' +
+          '<div class="field">' +
+            '<label style="margin-bottom:8px;display:block;">قائمة المراجعة الإشرافية</label>' +
+            '<div style="display:flex;flex-direction:column;gap:7px;font-size:13px;">' +
+              ['الهدف قابل للقياس وواضح','الاستراتيجيات مناسبة لمستوى الطالب','الشواهد التعليمية مرفقة وموثَّقة','المتابعة الأسبوعية منتظمة وكاملة','توقيع ولي الأمر / المعلم موجود','الخطة تتوافق مع معايير البرنامج'].map(function(lbl,idx){
+                return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="rv_chk_'+idx+'" style="width:16px;height:16px;"> '+lbl+'</label>';
+              }).join('') +
+            '</div>' +
+          '</div>' +
           '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
           '<div class="field"><label>التقييم عند الاعتماد (من 0 إلى 100)</label>'+ratingInputHtml('reviewRating', s.principal_rating)+'</div>' +
           '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
