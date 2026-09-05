@@ -276,64 +276,6 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
   border-radius:4px; transition:.15s;
 }
 .login-pass-toggle:hover{ color:var(--navy); background:var(--surface-2); }
-
-/* === Login v2 full redesign === */
-.lv2-page{
-  min-height:100vh; background:#ecf3ff;
-  display:flex; flex-direction:column; align-items:center;
-  padding:0 24px 175px; position:relative; overflow:hidden;
-}
-@media(prefers-color-scheme:dark){
-  :root:not([data-theme="light"]) .lv2-page{ background:var(--bg); }
-}
-:root[data-theme="dark"] .lv2-page{ background:var(--bg); }
-.lv2-blob-wrap{ position:absolute; top:0; left:0; pointer-events:none; z-index:0; }
-.lv2-circle-tr{
-  position:absolute; top:78px; right:28px;
-  width:18px; height:18px; border-radius:50%;
-  background:rgba(59,130,246,.2); pointer-events:none;
-}
-.lv2-brand{
-  display:flex; align-items:center; gap:16px;
-  margin-top:44px; margin-bottom:28px;
-  z-index:1; position:relative;
-}
-.lv2-logo{ width:82px; height:82px; object-fit:contain; }
-.lv2-brand-title{ font-size:21px; font-weight:800; color:var(--navy); line-height:1.3; }
-.lv2-brand-sub{ font-size:14px; color:var(--muted); margin-top:3px; }
-.lv2-heading-wrap{ text-align:center; margin-bottom:10px; z-index:1; position:relative; }
-.lv2-heading{ font-size:30px; font-weight:800; color:var(--text); margin:0 0 10px; }
-.lv2-underline{ width:54px; height:4px; background:#f59e0b; border-radius:2px; margin:0 auto; }
-.lv2-subtitle{ color:var(--muted); font-size:14.5px; text-align:center; margin:0 0 22px; z-index:1; position:relative; }
-.lv2-form-card{
-  background:var(--surface); border-radius:16px; padding:28px 24px;
-  width:100%; max-width:480px;
-  box-shadow:0 6px 32px rgba(15,33,64,.10);
-  z-index:1; position:relative;
-}
-.lv2-field{ margin-bottom:18px; }
-.lv2-label{ display:block; font-size:14px; font-weight:700; color:var(--navy); margin-bottom:8px; text-align:right; }
-.lv2-input{ border-radius:10px; height:52px; font-size:15px; }
-.lv2-btn{ height:52px; font-size:16px; border-radius:10px; margin-top:4px; letter-spacing:.3px; }
-.lv2-credit{
-  margin-top:22px; display:flex; flex-direction:column; align-items:center; gap:6px;
-  color:var(--muted); font-size:13px; z-index:1; position:relative;
-}
-.lv2-deco-bottom{
-  position:absolute; bottom:0; left:0; right:0; height:160px;
-  pointer-events:none; display:flex; justify-content:space-between;
-  align-items:flex-end; z-index:0; padding:0 16px;
-}
-.lv2-deco-books{ width:130px; height:155px; flex-shrink:0; }
-.lv2-deco-laptop{ width:170px; height:155px; flex-shrink:0; }
-@media(max-width:540px){
-  .lv2-brand{ flex-direction:column; text-align:center; gap:10px; margin-top:34px; }
-  .lv2-brand-title{ font-size:18px; }
-  .lv2-form-card{ padding:22px 16px; }
-  .lv2-heading{ font-size:26px; }
-  .lv2-deco-books{ width:88px; }
-  .lv2-deco-laptop{ width:115px; }
-}
 .error-text{ color:var(--danger); font-size:13px; margin:-4px 0 10px; }
 
 /* ---------- top nav ---------- */
@@ -3399,85 +3341,24 @@ function bindTopNav(){
 
 /* ----- شاشة الدخول ----- */
 function screenLogin(){
-  var schoolDrop = (Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
-    '<div class="lv2-field"><label class="lv2-label">المدرسة</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><select class="input login-has-icon lv2-input" id="loginSchool"><option value="">اختر اسم المدرسة</option>' +
-    SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
-    '</select></div></div>' : '';
-
   return (
     '<button class="theme-toggle-btn" title="تبديل الوضع الداكن/الفاتح" data-action="toggleTheme">'+(getTheme()==='dark'?SUN_SVG:MOON_SVG)+'</button>' +
-    '<div class="lv2-page">' +
-
-    /* Blob decoration — top left */
-    '<div class="lv2-blob-wrap" aria-hidden="true">' +
-      '<svg viewBox="0 0 240 260" width="240" height="260" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-        '<path d="M0 0 L240 0 L240 55 C195 68 155 42 115 92 C75 142 45 198 0 215 Z" fill="#1a3a8a"/>' +
-        '<path d="M0 0 L175 0 C155 38 125 58 88 92 C52 126 24 160 0 178 Z" fill="#2448b3" opacity=".5"/>' +
-        '<g stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".9">' +
-          '<path d="M195 13 L162 35"/><path d="M195 13 L168 44"/><path d="M162 35 L171 28 L195 13"/>' +
-        '</g>' +
-        '<g stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".85">' +
-          '<path d="M128 57 Q120 52 110 55 Q102 58 100 65 L100 82 Q110 79 118 83 Q126 79 132 82 L132 65 Q130 58 128 57 Z"/>' +
-          '<line x1="116" y1="54" x2="116" y2="81"/>' +
-        '</g>' +
-        '<g stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".85">' +
-          '<path d="M68 115 a13 13 0 1 0 20 -11"/>' +
-          '<polyline points="88,104 88,111 95,106"/>' +
-        '</g>' +
-        '<circle cx="48" cy="38" r="5" fill="#fff" opacity=".22"/>' +
-      '</svg>' +
-    '</div>' +
-
-    '<div class="lv2-circle-tr" aria-hidden="true"></div>' +
-
-    /* Brand */
-    '<div class="lv2-brand">' +
-      '<img class="lv2-logo" src="logo.png" alt="'+esc(SiteSettings.program_title || 'الشعار')+'">' +
-      '<div><div class="lv2-brand-title">'+esc(SiteSettings.program_title)+'</div><div class="lv2-brand-sub">'+esc(SiteSettings.program_subtitle)+'</div></div>' +
-    '</div>' +
-
-    /* Heading */
-    '<div class="lv2-heading-wrap"><h2 class="lv2-heading">تسجيل الدخول</h2><div class="lv2-underline"></div></div>' +
-    '<p class="lv2-subtitle">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</p>' +
-
-    /* Form card */
-    '<div class="lv2-form-card">' +
-      '<div id="loginError" class="error-text" style="display:none;margin-bottom:10px;"></div>' +
-      '<div class="lv2-field"><label class="lv2-label">اسم المستخدم</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><input class="input login-has-icon lv2-input" id="loginUser" placeholder="مثال: Abdullh H" autocomplete="username"></div></div>' +
-      '<div class="lv2-field"><label class="lv2-label">كلمة المرور</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input class="input login-has-icon login-pass-end lv2-input" id="loginPass" type="password" placeholder="••••••" autocomplete="current-password"><button class="login-pass-toggle" id="loginPassToggle" type="button" tabindex="-1" title="إظهار/إخفاء كلمة المرور"><svg id="loginEyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>' +
-      schoolDrop +
-      '<button class="btn btn-primary btn-block lv2-btn" data-action="doLogin">تسجيل الدخول</button>' +
-    '</div>' +
-
-    /* Credit */
-    '<div class="lv2-credit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg><span>برمجة الأستاذ عبدالله حمدي</span></div>' +
-
-    /* Bottom decorations */
-    '<div class="lv2-deco-bottom" aria-hidden="true">' +
-      '<svg class="lv2-deco-books" viewBox="0 0 130 155" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect x="5" y="110" width="88" height="22" rx="4" fill="#1a3a8a"/><rect x="5" y="110" width="10" height="22" fill="#2d52c4"/>' +
-        '<rect x="12" y="88" width="76" height="22" rx="4" fill="#f59e0b"/><rect x="12" y="88" width="10" height="22" fill="#fbbf24"/>' +
-        '<rect x="8" y="66" width="80" height="22" rx="4" fill="#3b82f6"/><rect x="8" y="66" width="10" height="22" fill="#60a5fa"/>' +
-        '<rect x="97" y="108" width="26" height="26" rx="5" fill="#cbd5e1"/><ellipse cx="110" cy="108" rx="13" ry="4" fill="#e2e8f0"/>' +
-        '<line x1="104" y1="108" x2="100" y2="78" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"/>' +
-        '<line x1="110" y1="108" x2="110" y2="74" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>' +
-        '<line x1="116" y1="108" x2="120" y2="78" stroke="#1a3a8a" stroke-width="4" stroke-linecap="round"/>' +
-        '<line x1="0" y1="133" x2="130" y2="133" stroke="#c7d2fe" stroke-width="2"/>' +
-      '</svg>' +
-      '<svg class="lv2-deco-laptop" viewBox="0 0 170 155" xmlns="http://www.w3.org/2000/svg">' +
-        '<path d="M18 130 Q4 105 12 82 Q20 60 18 130" fill="#86efac"/><path d="M18 130 Q32 100 28 78 Q24 58 18 130" fill="#4ade80"/><rect x="16" y="128" width="4" height="15" rx="2" fill="#92400e"/>' +
-        '<rect x="30" y="18" width="125" height="88" rx="7" fill="#dbeafe" stroke="#93c5fd" stroke-width="2"/>' +
-        '<rect x="42" y="30" width="44" height="6" rx="3" fill="#93c5fd"/>' +
-        '<rect x="42" y="42" width="66" height="4" rx="2" fill="#bfdbfe"/><rect x="42" y="51" width="55" height="4" rx="2" fill="#bfdbfe"/>' +
-        '<rect x="42" y="62" width="76" height="10" rx="3" fill="#1a3a8a" opacity=".22"/>' +
-        '<rect x="42" y="77" width="50" height="4" rx="2" fill="#bfdbfe"/>' +
-        '<path d="M18 106 L30 106 L155 106 L165 106 L170 126 L13 126 Z" fill="#bfdbfe" stroke="#93c5fd" stroke-width="1.5"/>' +
-        '<rect x="65" y="113" width="55" height="5" rx="2" fill="#93c5fd"/>' +
-        '<path d="M158 126 Q168 108 165 94 Q162 80 158 126" fill="#86efac"/><rect x="156" y="124" width="4" height="12" rx="2" fill="#92400e"/>' +
-        '<line x1="0" y1="133" x2="170" y2="133" stroke="#c7d2fe" stroke-width="2"/>' +
-      '</svg>' +
-    '</div>' +
-
+    '<div class="center-screen">' +
+      '<div class="login-card">' +
+        '<div class="brand"><img class="brand-mark" src="logo.png" alt="شعار دعم التحصيل الدراسي"><div><div class="brand-title">'+esc(SiteSettings.program_title)+'</div><div class="brand-sub">'+esc(SiteSettings.program_subtitle)+'</div></div></div>' +
+        '<div class="login-h">تسجيل الدخول</div>' +
+        '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
+        '<div id="loginError" class="error-text" style="display:none;"></div>' +
+        '<div class="field"><label>اسم المستخدم</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><input class="input login-has-icon" id="loginUser" placeholder="مثال: Abdullh H"></div></div>' +
+        '<div class="field"><label>كلمة المرور</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input class="input login-has-icon login-pass-end" id="loginPass" type="password" placeholder="••••••"><button class="login-pass-toggle" id="loginPassToggle" type="button" tabindex="-1" title="إظهار/إخفاء كلمة المرور"><svg id="loginEyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>' +
+        ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
+          '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
+            '<option value="">اختر اسم المدرسة</option>' +
+            SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
+          '</select></div>' : '') +
+        '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
+        '<div class="credit-line">برمجة الأستاذ عبدالله حمدي</div>' +
+      '</div>' +
     '</div>'
   );
 }
