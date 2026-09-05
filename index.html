@@ -6655,6 +6655,13 @@ async function screenCounselorCases(){
     '</div>'
   ) : '';
 
+  /* عدد الإحالات لكل طالب (من كامل السجلات بغض النظر عن الفلتر) */
+  const referralCount = {};
+  cases.forEach(function(c){
+    var n = c.student_name||''; if (!n) return;
+    referralCount[n] = (referralCount[n]||0) + 1;
+  });
+
   const rows = filtered.map(function(c){
     const isStale = staleIds.has(c.id);
     const priorityBadge = c.priority && c.priority!=='normal'
@@ -6668,9 +6675,16 @@ async function screenCounselorCases(){
     var stageLabel = { 'open':'مفتوحة', 'in_progress':'تحت المتابعة', 'closed':'مُغلقة', 'referred':'محالة' };
     var stageColor = { 'open':'var(--pending)', 'in_progress':'var(--navy)', 'closed':'var(--success)', 'referred':'var(--teal)' };
     var stageBadge = '<span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;background:color-mix(in srgb,'+(stageColor[c.status]||'var(--muted)')+' 15%,var(--surface));color:'+(stageColor[c.status]||'var(--muted)')+';">'+(stageLabel[c.status]||c.status||'مفتوحة')+'</span>';
+    var cnt = referralCount[c.student_name]||1;
+    var cntBadge = cnt > 1
+      ? '<span style="display:inline-flex;align-items:center;justify-content:center;background:var(--navy);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:800;margin-inline-start:4px;flex-shrink:0;" title="إجمالي الإحالات لهذا الطالب">'+cnt+'</span>'
+      : '';
+    var highRiskBadge = cnt >= 3
+      ? '<span style="display:inline-flex;align-items:center;gap:3px;background:var(--danger);color:#fff;border-radius:6px;padding:1px 7px;font-size:10.5px;font-weight:700;margin-inline-start:5px;" title="تحذير: '+cnt+' إحالات لنفس الطالب">⚠ تكرار إحالة</span>'
+      : '';
     return (
-      '<tr style="'+staleStyle+'">' +
-        '<td><b>'+esc(c.student_name)+'</b>'+stageBadge+priorityBadge+(isStale?'<span title="بدون متابعة منذ أسبوعين" style="margin-right:4px;font-size:13px;">⚠️</span>':'')+'</td>' +
+      '<tr style="'+staleStyle+(cnt>=3?'border-right:3px solid var(--danger);':'')+(cnt===2?'border-right:3px solid var(--pending);':'')+'">' +
+        '<td><b>'+esc(c.student_name)+'</b>'+cntBadge+highRiskBadge+stageBadge+priorityBadge+(isStale?'<span title="بدون متابعة منذ أسبوعين" style="margin-right:4px;font-size:13px;">⚠️</span>':'')+'</td>' +
         '<td>'+esc(c.student_grade||'—')+'</td>' +
         '<td>'+esc(c.student_section||'—')+'</td>' +
         '<td>'+esc(catLabel)+'</td>' +
