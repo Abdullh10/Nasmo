@@ -6505,12 +6505,69 @@ function bindAdminSettings(){
    حساب المرشد الطلابي
    ============================================================ */
 let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
+
+const COUNSELING_GOAL_PRESETS = [
+  'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
+  'تحسين التحصيل الدراسي وعادات الدراسة',
+  'تطوير المهارات الاجتماعية والتواصل مع الأقران',
+  'تعديل السلوك غير المرغوب داخل الفصل',
+  'تنمية مهارات ضبط النفس وإدارة الانفعالات',
+  'خفض مستوى القلق والتوتر المدرسي',
+  'تحسين العلاقة مع أفراد الأسرة وولي الأمر',
+  'مساعدة الطالب على التكيف مع البيئة المدرسية',
+  'تعزيز الدافعية نحو التعلم والمشاركة الصفية',
+  'تطوير مهارات اتخاذ القرار وحل المشكلات',
+];
+const COUNSELING_INTERVENTION_PRESETS = [
+  'الإرشاد الفردي عبر جلسات حوارية مباشرة',
+  'تقنية الاسترخاء وإدارة التوتر والتنفس العميق',
+  'النمذجة والتعلم بالقدوة من نماذج إيجابية',
+  'التدريب على المهارات الاجتماعية وحل النزاعات',
+  'التغذية الراجعة الإيجابية والتعزيز السلوكي',
+  'إعادة البناء المعرفي وتعديل الأفكار السلبية',
+  'التواصل مع ولي الأمر ومتابعة البيئة الأسرية',
+  'التنسيق مع المعلمين لتقديم دعم داخل الفصل',
+  'توجيه الطالب نحو أنشطة وهوايات إيجابية',
+  'وضع خطة سلوكية يومية مع متابعة مستمرة',
+  'تحويل الطالب لجهات دعم متخصصة عند الحاجة',
+];
+const COUNSELOR_NOTES_PRESETS = [
+  'الطالب يُبدي تجاوباً إيجابياً مع الجلسات',
+  'لوحظ تحسن ملحوظ في مستوى الانتظام والانضباط',
+  'الطالب يحتاج متابعة مستمرة ودعماً إضافياً',
+  'يُنصح بالتنسيق مع ولي الأمر لمتابعة التحسن',
+  'الحالة تستدعي التحويل لمختص أو جهة متخصصة',
+  'الطالب يُعاني من ضغوط أسرية تؤثر على أدائه',
+  'تم ملاحظة تراجع في الاستجابة — يحتاج مراجعة الخطة',
+  'الجلسة مثمرة والطالب يُعبّر عن رغبة في التحسن',
+];
+const SESSION_NOTES_PRESETS = [
+  'ناقشنا المشكلة وتوصلنا لاستراتيجية للتعامل معها',
+  'الطالب عبّر عن مشاعره بصراحة وتعاون جيد',
+  'تم تطبيق تقنية الاسترخاء — استجاب الطالب بشكل إيجابي',
+  'راجعنا الأهداف السابقة وقيّمنا التقدم المحقق',
+  'وضعنا خطة عمل للأسبوع القادم مع الطالب',
+  'الطالب أبدى مقاومة — تم تعديل الأسلوب الإرشادي',
+  'تم التواصل مع ولي الأمر وإحاطته بالتقدم',
+  'جلسة متابعة — الطالب ملتزم بالخطة الموضوعة',
+];
 const CASE_STATUS_LABEL = { open:'مفتوحة', in_progress:'قيد المتابعة', closed:'مغلقة' };
 const CASE_STATUS_CLASS = { open:'pending', in_progress:'approved', closed:'' };
 const CASE_CATEGORY_LABEL = { behavioral:'سلوكي', academic:'أكاديمي', social:'اجتماعي', psychological:'نفسي', family:'أسري', other:'أخرى' };
 const CASE_PRIORITY_LABEL = { urgent:'عاجل', medium:'متوسط', normal:'عادي' };
 const CASE_PRIORITY_CLASS = { urgent:'danger', medium:'pending', normal:'' };
 const CONTACT_TYPE_LABEL = { call:'اتصال', whatsapp:'واتساب', meeting:'حضور', other:'أخرى' };
+
+function counselingPresetField(label, id, currentVal, presets, rows, placeholder){
+  return '<div class="field" style="margin-bottom:8px;">' +
+    '<label style="display:flex;justify-content:space-between;align-items:center;">'+esc(label)+' <span style="font-weight:400;color:var(--muted);font-size:11px;">اختر اقتراحاً أو اكتب</span></label>' +
+    '<select class="input" id="'+id+'_preset" style="margin-bottom:6px;" data-action="counselPreset" data-target="'+id+'">' +
+      '<option value="">— اقتراحات —</option>' +
+      presets.map(function(p){ return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('') +
+    '</select>' +
+    '<textarea class="input" id="'+id+'" rows="'+(rows||2)+'" placeholder="'+(placeholder||'')+'">'+esc(currentVal||'')+'</textarea>' +
+  '</div>';
+}
 
 async function screenCounselorCases(){
   const [cases, schoolUsers, schoolStudents] = await Promise.all([
@@ -6877,8 +6934,8 @@ function counselorCaseModal(c, teachers, students){
           '</div>' +
           '<div style="background:var(--card-2,#f4f6f8);border-radius:10px;padding:12px 14px;margin-bottom:12px;">' +
             '<div style="font-weight:700;font-size:13px;margin-bottom:8px;">الخطة الإرشادية</div>' +
-            '<div class="field" style="margin-bottom:8px;"><label>الهدف الإرشادي</label><textarea class="input" id="caseCounselingGoal" rows="2" placeholder="ما الهدف من التدخل الإرشادي؟">'+esc(c.counseling_goal||'')+'</textarea></div>' +
-            '<div class="field" style="margin-bottom:8px;"><label>التدخلات المقترحة</label><textarea class="input" id="caseCounselingInterventions" rows="2" placeholder="الأساليب والأنشطة المستخدمة...">'+esc(c.counseling_interventions||'')+'</textarea></div>' +
+            counselingPresetField('الهدف الإرشادي','caseCounselingGoal',c.counseling_goal,COUNSELING_GOAL_PRESETS,2,'ما الهدف من التدخل الإرشادي؟') +
+            counselingPresetField('التدخلات المقترحة','caseCounselingInterventions',c.counseling_interventions,COUNSELING_INTERVENTION_PRESETS,2,'الأساليب والأنشطة المستخدمة...') +
             '<div class="field" style="margin-bottom:0;"><label>مستوى التقدم</label>' +
               '<select class="input" id="caseCounselingProgress">' +
                 '<option value="" '+(!(c.counseling_progress)?'selected':'')+'>— لم يُحدَّد —</option>' +
@@ -6890,11 +6947,11 @@ function counselorCaseModal(c, teachers, students){
               '</select>' +
             '</div>' +
           '</div>' +
-          '<div class="field"><label>ملاحظات المرشد (سرية)</label><textarea class="input" id="caseCounselorNotes" rows="2">'+esc(c.counselor_notes||'')+'</textarea></div>' +
+          counselingPresetField('ملاحظات المرشد (سرية)','caseCounselorNotes',c.counselor_notes,COUNSELOR_NOTES_PRESETS,2,'') +
           '<div class="field"><label>جوال ولي الأمر</label><input class="input" id="caseParentPhoneEdit" value="'+esc(c.parent_phone||'')+'"></div>' +
           '<div style="background:var(--card-2,#f4f6f8);border-radius:10px;padding:12px 14px;margin-bottom:12px;">' +
             '<div style="font-weight:700;font-size:13px;margin-bottom:8px;">إضافة جلسة إرشادية</div>' +
-            '<div class="field" style="margin-bottom:8px;"><label>ملاحظات الجلسة</label><textarea class="input" id="caseNewSession" rows="2" placeholder="ملاحظات الجلسة..."></textarea></div>' +
+            counselingPresetField('ملاحظات الجلسة','caseNewSession','',SESSION_NOTES_PRESETS,2,'ملاحظات الجلسة...') +
             '<div class="field" style="margin-bottom:0;"><label>الجلسة القادمة (تاريخ مجدوَل)</label><input class="input" type="date" id="caseNextSessionDate" value="'+esc(c.next_session_date||'')+'"></div>' +
           '</div>' +
           /* سجل تواصل ولي الأمر */
@@ -6965,6 +7022,16 @@ function bindCounselorCases(){
   const categoryFilterEl = document.getElementById('caseCategoryFilter');
   if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); bindCounselorCases(); });
 
+  document.querySelectorAll('[data-action="counselPreset"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      if (!el.value) return;
+      var targetId = el.getAttribute('data-target');
+      var textarea = document.getElementById(targetId);
+      if (!textarea) return;
+      textarea.value = textarea.value ? textarea.value + '\n' + el.value : el.value;
+      el.value = '';
+    });
+  });
   const addBtn = document.querySelector('[data-action="addCase"]');
   if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); bindCounselorCases(); });
 
