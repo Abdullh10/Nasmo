@@ -2196,7 +2196,7 @@ const DB = {
       ) || [];
     }
     const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
-    return list.filter(function(c){ return c.school===school && c.referred_by_name===teacherName && (c.rec_status==='pending'||c.rec_status==='returned'); });
+    return list.filter(function(c){ return c.school===school && c.referred_by_name===teacherName && c.rec_status==='pending'; });
   },
   async createCounselingCase(obj){
     obj.created_at = nowIso(); obj.updated_at = nowIso();
@@ -6999,7 +6999,7 @@ function counselorCaseModal(c, teachers, students){
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="saveCase">'+(isNew?'إضافة الحالة':'حفظ التعديلات')+'</button>' +
           (!isNew ? '<button class="btn btn-ghost btn-block" data-action="printCase">طباعة التقرير الإرشادي</button>' : '') +
-          (!isNew && c.referred_by_name && c.referred_by_name !== State.user.full_name ? '<button class="btn btn-ghost btn-block" data-action="backReferCase">إرسال توصية للمُحيل: '+esc(c.referred_by_name)+'</button>' : '') +
+          (!isNew && c.referred_by_name && c.referred_by_name !== State.user.full_name ? '<button class="btn btn-ghost btn-block" data-action="backReferCase">'+(c.rec_status==='pending'?'🔄 تحديث التوصية للمُحيل: ':'📤 إرسال توصية للمُحيل: ')+esc(c.referred_by_name)+'</button>' : '') +
           (!isNew && c.parent_phone ? '<a href="https://wa.me/'+encodeURIComponent(c.parent_phone.replace(/[^0-9]/g,''))+'" target="_blank" class="btn btn-ghost btn-block" style="color:#25D366;text-align:center;">تواصل مع ولي الأمر عبر واتساب</a>' : '') +
           '<button class="btn btn-ghost btn-block" data-action="closeCaseModal">إغلاق</button>' +
         '</div>' +
