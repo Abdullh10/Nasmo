@@ -962,6 +962,31 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 --   using (school = my_school() or my_role() = 'admin')
 --   with check (school = my_school() or my_role() = 'admin');
 
+-- ميزة "رعاية الموهوبين" — جدول بلاغات المواهب — نفّذ مرة واحدة:
+-- create table if not exists gifted_reports (
+--   id uuid primary key default gen_random_uuid(),
+--   school text not null,
+--   student_name text not null default '',
+--   student_grade text default '',
+--   student_section text default '',
+--   talent_type text not null default '',
+--   performance_level text default '',
+--   discovery_indicators text default '',
+--   proposed_action text default '',
+--   notes text default '',
+--   reported_by_id uuid references profiles(id),
+--   reported_by_name text default '',
+--   notified_principal boolean default false,
+--   notified_counselor boolean default false,
+--   notified_coordinator boolean default false,
+--   status text default 'new',
+--   created_at timestamptz default now()
+-- );
+-- alter table gifted_reports enable row level security;
+-- create policy "gifted_reports_all" on gifted_reports for all
+--   using (school = my_school() or my_role() in ('admin','super_admin'))
+--   with check (school = my_school() or my_role() in ('admin','super_admin'));
+
 -- ميزة "سوبر أدمن - إدارة متعددة المدارس" — نفّذ هذه الأوامر مرة واحدة في SQL Editor:
 -- 1) توسيع قيود الدور في جدول profiles ليشمل super_admin:
 -- alter table profiles drop constraint if exists profiles_role_check;
@@ -1153,6 +1178,7 @@ const LS_PRACTICE = "dtd_practice_v1";
 const LS_STUDENTS = "dtd_students_v1";
 const LS_VISIT_SCHEDULES = "dtd_visit_schedules_v1";
 const LS_COUNSELING = "dtd_counseling_v1";
+const LS_GIFTED     = "dtd_gifted_v1";
 
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
@@ -2255,6 +2281,29 @@ const DB = {
     list = list.filter(function(c){ return c.id!==id; });
     localStorage.setItem(LS_COUNSELING, JSON.stringify(list));
     return true;
+  },
+  async createGiftedReport(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      await remoteFetch('gifted_reports', { method:'POST', body:obj, prefer:'return=minimal' });
+      return obj;
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem(LS_GIFTED) || '[]');
+    list.push(obj);
+    localStorage.setItem(LS_GIFTED, JSON.stringify(list));
+    return obj;
+  },
+  async listGiftedReports(school, studentName){
+    if (isRemote()){
+      let url = 'gifted_reports?school=eq.' + encodeURIComponent(school) + '&order=created_at.desc';
+      if (studentName) url += '&student_name=eq.' + encodeURIComponent(studentName);
+      return await remoteFetch(url) || [];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_GIFTED) || '[]');
+    let filtered = list.filter(function(r){ return r.school===school; });
+    if (studentName) filtered = filtered.filter(function(r){ return r.student_name===studentName; });
+    return filtered.sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
   },
   async clearData(types, school){
     types = types || [];
@@ -7908,7 +7957,7 @@ function teacherWeekAgendaHtml(sessTasks, generalTasks, rawVisits, demoLessonTas
   '</div>';
 }
 
-function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents){
+function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents, giftedReports){
   var stForms = myForms.filter(function(s){
     return s.payload.studentName===studentName ||
       (s.payload.students||[]).some(function(st){ return st.name===studentName; }) ||
@@ -7997,6 +8046,26 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents)
             '<button class="btn btn-primary btn-sm" data-action="startIndividualPlan" data-student="'+esc(studentName)+'">+ ابدأ خطة فردية</button>' +
           '</div>'
         ) : '') +
+        ((giftedReports && giftedReports.length) ? (
+          '<div style="margin-bottom:14px;">' +
+            '<b style="font-size:13px;color:var(--golden,#b8860b);">⭐ سجل بلاغات الموهبة ('+giftedReports.length+')</b>' +
+            '<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">' +
+            giftedReports.map(function(r){
+              return '<div style="background:color-mix(in srgb,var(--golden,#b8860b) 6%,var(--surface));border:1px solid color-mix(in srgb,var(--golden,#b8860b) 30%,transparent);border-radius:10px;padding:10px 14px;">' +
+                '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">' +
+                  '<span style="font-weight:700;font-size:13px;color:var(--golden,#b8860b);">'+esc(r.talent_type)+'</span>' +
+                  (r.performance_level ? '<span style="background:var(--surface-2,#f4f6f8);border-radius:6px;padding:1px 8px;font-size:11.5px;">'+esc(r.performance_level)+'</span>' : '') +
+                  '<span style="color:var(--muted);font-size:11.5px;margin-inline-start:auto;">'+fmtDate(r.created_at)+'</span>' +
+                '</div>' +
+                (r.discovery_indicators ? '<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">المؤشرات: '+esc(r.discovery_indicators)+'</div>' : '') +
+                (r.proposed_action ? '<div style="font-size:12px;margin-bottom:4px;"><b>الإجراء المقترح:</b> '+esc(r.proposed_action)+'</div>' : '') +
+                (r.notes ? '<div style="font-size:12px;color:var(--muted);">'+esc(r.notes)+'</div>' : '') +
+                '<div style="font-size:11px;color:var(--muted);margin-top:6px;border-top:1px solid color-mix(in srgb,var(--golden,#b8860b) 20%,transparent);padding-top:5px;">أبلغ: '+esc(r.reported_by_name||'—')+'</div>' +
+              '</div>';
+            }).join('') +
+            '</div>' +
+          '</div>'
+        ) : '') +
         '<div>' +
           '<b style="font-size:13px;display:block;margin-bottom:6px;">ملاحظاتي على الطالب</b>' +
           '<textarea class="input" id="studentNotesTA" rows="3" placeholder="اكتب ملاحظاتك هنا…" data-student="'+esc(studentName)+'" style="width:100%;">'+esc(notes)+'</textarea>' +
@@ -8007,13 +8076,16 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents)
   );
 }
 async function screenTeacherTasks(){
-  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs] = await Promise.all([
+  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
     DB.listTasks({ school: State.user.school }),
     DB.listGoals({ school: State.user.school }),
     State.user.community_id ? DB.listVisitSchedules({ school: State.user.school }) : Promise.resolve([]),
     DB.listStudents({ school: State.user.school }),
-    DB.listCounselingRecsForTeacher(State.user.school, State.user.full_name).catch(function(){ return []; })
+    DB.listCounselingRecsForTeacher(State.user.school, State.user.full_name).catch(function(){ return []; }),
+    (_teacherStudentProfile
+      ? DB.listGiftedReports(State.user.school, _teacherStudentProfile).catch(function(){ return []; })
+      : Promise.resolve([]))
   ]);
 
   /* — جلسات الخطة الفردية — */
@@ -8365,7 +8437,7 @@ async function screenTeacherTasks(){
 
   /* — ملف الطالب — */
   const profileHtml = (_teacherStudentProfile)
-    ? teacherStudentProfileHtml(_teacherStudentProfile, myForms, sessTasks, myStudents)
+    ? teacherStudentProfileHtml(_teacherStudentProfile, myForms, sessTasks, myStudents, studentGiftedReports)
     : '';
 
   var isNewTeacher = !sessTasks.length && !_teacherAllStudentsCache.length;
@@ -8443,37 +8515,69 @@ async function screenTeacherTasks(){
   const studentOptions = myStudents.map(function(s){
     return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+' — '+esc(s.grade||s.student_grade||'')+(s.section||s.student_section?' / '+esc(s.section||s.student_section||''):'')+'</option>';
   }).join('');
+  const GIFTED_INDICATORS = ['تفوق ملحوظ في المادة','سرعة استيعاب وتعلم','إبداع وأصالة في الأفكار','مبادرة وقيادة','فضول علمي مرتفع','مهارة تحليل وحل مشكلات','إنجازات في مسابقات','تميّز في الأنشطة اللاصفية'];
   const giftedModal = GiftedUI.modalOpen ? (
     '<div class="modal-bg" data-action="closeGiftedModalBg">' +
-      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">' +
         '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:var(--golden,#b8860b);">⭐</span> إشعار رعاية الموهوبين</h3>' +
-        '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">أدخل اسم الطالب الموهوب وملاحظاتك ثم اختر من ترسل الإشعار إليه.</p>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">وثّق موهبة الطالب وأرسل إشعاراً للجهات المعنية ليُحفظ في سجله الدائم.</p>' +
         '<div class="field"><label>اسم الطالب</label>' +
           (myStudents.length
             ? '<select class="input" id="giftedStudentSel"><option value="">— اختر طالباً —</option>'+studentOptions+'</select>'
             : '<input class="input" id="giftedStudentName" placeholder="اكتب اسم الطالب" maxlength="120">') +
         '</div>' +
-        '<div class="field"><label>نوع الموهبة / الملاحظة</label>' +
-          '<select class="input" id="giftedType">' +
-            '<option value="أكاديمية">موهبة أكاديمية</option>' +
-            '<option value="علمية">موهبة علمية / بحثية</option>' +
-            '<option value="إبداعية">موهبة إبداعية / فنية</option>' +
-            '<option value="قيادية">مهارات قيادية</option>' +
-            '<option value="رياضية">موهبة رياضية</option>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+          '<div class="field" style="margin:0;"><label>نوع الموهبة</label>' +
+            '<select class="input" id="giftedType">' +
+              '<option value="أكاديمية">أكاديمية</option>' +
+              '<option value="علمية وبحثية">علمية وبحثية</option>' +
+              '<option value="تقنية ورقمية">تقنية ورقمية</option>' +
+              '<option value="إبداعية">إبداعية</option>' +
+              '<option value="فنية">فنية</option>' +
+              '<option value="لغوية وأدبية">لغوية وأدبية</option>' +
+              '<option value="قيادية">قيادية</option>' +
+              '<option value="رياضية">رياضية</option>' +
+              '<option value="أخرى">أخرى</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="field" style="margin:0;"><label>مستوى الأداء الحالي</label>' +
+            '<select class="input" id="giftedPerformance">' +
+              '<option value="فوق المتوسط">فوق المتوسط</option>' +
+              '<option value="متميز">متميز</option>' +
+              '<option value="استثنائي">استثنائي</option>' +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+        '<div class="field"><label>مؤشرات الاكتشاف</label>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">' +
+            GIFTED_INDICATORS.map(function(ind,i){
+              return '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--surface-2,#f4f6f8);border-radius:6px;padding:4px 8px;"><input type="checkbox" class="gifted-indicator-cb" value="'+esc(ind)+'"> '+esc(ind)+'</label>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="field"><label>الإجراء المقترح من المعلم</label>' +
+          '<select class="input" id="giftedAction">' +
+            '<option value="تحويل لبرامج الموهوبين">تحويل لبرامج الموهوبين</option>' +
+            '<option value="إثراء داخل الفصل">إثراء داخل الفصل</option>' +
+            '<option value="ترشيح لمسابقة">ترشيح لمسابقة أو أولمبياد</option>' +
+            '<option value="تواصل مع ولي الأمر">تواصل مع ولي الأمر</option>' +
+            '<option value="إشراك في نشاط لاصفي">إشراك في نشاط لاصفي</option>' +
+            '<option value="تقييم متخصص">تقييم متخصص</option>' +
             '<option value="أخرى">أخرى</option>' +
           '</select>' +
         '</div>' +
-        '<div class="field"><label>الملاحظات التفصيلية</label>' +
-          '<textarea class="input" id="giftedNote" rows="4" placeholder="اذكر مؤشرات الموهبة، ومستوى الأداء، وأي توصيات..." style="resize:vertical;"></textarea>' +
+        '<div class="field"><label>ملاحظات تفصيلية (اختياري)</label>' +
+          '<textarea class="input" id="giftedNote" rows="3" placeholder="أي تفاصيل إضافية عن الموهبة أو مقترحاتك…" style="resize:vertical;"></textarea>' +
         '</div>' +
         '<div class="field"><label>إرسال الإشعار إلى</label>' +
-          '<div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">' +
+          '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;">' +
             '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToPrincipal" checked> مدير المدرسة</label>' +
             '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> المرشد الطلابي</label>' +
+            (State.user.community_id ? '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCoord"> منسق المجتمع (للاطلاع)</label>' : '') +
           '</div>' +
         '</div>' +
         '<div class="modal-actions">' +
-          '<button class="btn btn-primary btn-block" data-action="sendGiftedNotif" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">⭐ إرسال الإشعار</button>' +
+          '<button class="btn btn-primary btn-block" data-action="sendGiftedNotif" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">⭐ توثيق وإرسال الإشعار</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeGiftedModal">إلغاء</button>' +
         '</div>' +
       '</div>' +
@@ -8651,33 +8755,65 @@ function bindTeacherTasks(){
     const studentName = (selEl ? selEl.value : (nameEl ? nameEl.value.trim() : '')).trim();
     if (!studentName){ toast('يرجى اختيار اسم الطالب.'); return; }
     const giftedType = (document.getElementById('giftedType')||{}).value || 'أكاديمية';
+    const performance = (document.getElementById('giftedPerformance')||{}).value || '';
+    const giftedAction = (document.getElementById('giftedAction')||{}).value || '';
     const note = ((document.getElementById('giftedNote')||{}).value || '').trim();
-    const toPrincipal = document.getElementById('giftedToPrincipal') && document.getElementById('giftedToPrincipal').checked;
-    const toCounselor = document.getElementById('giftedToCounselor') && document.getElementById('giftedToCounselor').checked;
-    if (!toPrincipal && !toCounselor){ toast('يرجى اختيار جهة استلام الإشعار على الأقل.'); return; }
+    const indicators = [];
+    document.querySelectorAll('.gifted-indicator-cb:checked').forEach(function(cb){ indicators.push(cb.value); });
+    const toPrincipal = !!(document.getElementById('giftedToPrincipal') && document.getElementById('giftedToPrincipal').checked);
+    const toCounselor = !!(document.getElementById('giftedToCounselor') && document.getElementById('giftedToCounselor').checked);
+    const toCoord = !!(document.getElementById('giftedToCoord') && document.getElementById('giftedToCoord').checked);
+    if (!toPrincipal && !toCounselor && !toCoord){ toast('يرجى اختيار جهة استلام الإشعار على الأقل.'); return; }
     sendGiftedBtn.disabled = true;
     try{
+      /* العثور على بيانات الطالب */
+      const stRec2 = (window._teacherAllStudentsCache||[]).find(function(s){ return s.full_name===studentName; });
+      /* حفظ التقرير في قاعدة البيانات */
+      await DB.createGiftedReport({
+        school: State.user.school,
+        student_name: studentName,
+        student_grade: stRec2 ? (stRec2.grade||stRec2.student_grade||'') : '',
+        student_section: stRec2 ? (stRec2.section||stRec2.student_section||'') : '',
+        talent_type: giftedType,
+        performance_level: performance,
+        discovery_indicators: indicators.join('، '),
+        proposed_action: giftedAction,
+        notes: note,
+        reported_by_id: State.user.id,
+        reported_by_name: State.user.full_name,
+        notified_principal: toPrincipal,
+        notified_counselor: toCounselor,
+        notified_coordinator: toCoord,
+        status: 'new'
+      });
+      /* إرسال الإشعارات */
       const notifTitle = '⭐ طالب موهوب: ' + studentName;
-      const notifBody = 'أبلغ المعلم '+esc(State.user.full_name)+' عن موهبة الطالب '+esc(studentName)+
-        '\nنوع الموهبة: '+esc(giftedType)+
-        (note ? '\nالملاحظات: '+note : '');
+      const notifBody = 'بلّغ المعلم '+State.user.full_name+' عن موهبة الطالب '+studentName+
+        '\nنوع الموهبة: '+giftedType+
+        (performance ? ' | المستوى: '+performance : '')+
+        (indicators.length ? '\nالمؤشرات: '+indicators.join('، ') : '')+
+        (giftedAction ? '\nالإجراء المقترح: '+giftedAction : '')+
+        (note ? '\nملاحظات: '+note : '');
       const targets = [];
       if (toPrincipal){
-        const principals = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.principal') || [];
-        principals.forEach(function(p){ targets.push(p); });
+        const ps = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.principal') || [];
+        ps.forEach(function(p){ targets.push(p); });
       }
       if (toCounselor){
-        const counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor') || [];
-        counselors.forEach(function(c){ targets.push(c); });
+        const cs = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor') || [];
+        cs.forEach(function(c){ targets.push(c); });
       }
-      if (!targets.length){ toast('لم يتم العثور على أي حساب للمدير أو المرشد في المدرسة.'); sendGiftedBtn.disabled = false; return; }
+      if (toCoord && State.user.community_id){
+        const coords = await remoteFetch('profiles?community_id=eq.'+encodeURIComponent(State.user.community_id)+'&role=eq.coordinator&school=eq.'+encodeURIComponent(State.user.school)) || [];
+        coords.forEach(function(c){ targets.push(c); });
+      }
       for (var i = 0; i < targets.length; i++){
         await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:targets[i].id, type:'general', title:notifTitle, body:notifBody });
         pushNotify(targets[i].id, notifTitle, 'من المعلم '+State.user.full_name).catch(function(){});
       }
       invalidateNotifCache();
       GiftedUI.modalOpen = false;
-      toast('تم إرسال إشعار رعاية الموهوبين بنجاح.');
+      toast('تم توثيق بلاغ الموهبة وإرسال الإشعارات بنجاح.');
       await render(); bindTeacherTasks();
     }catch(e){ toast(arabicError(e)); sendGiftedBtn.disabled = false; }
   });
