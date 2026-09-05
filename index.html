@@ -3996,6 +3996,10 @@ function bindCoordinatorTasks(){
     const teacherSel = document.getElementById('tkTeacher');
     const teacherId = teacherSel.value;
     if (!teacherId){ toast('لا يوجد معلم لإسناد المهمة له.'); this.disabled = false; return; }
+    // حماية المدرسة المتقاطعة: القائمة المنسدلة tkTeacher مُعبَّأة من مستخدمي نفس المدرسة
+    // فقط (school = State.user.school)، لذا teacherId ينتمي دائماً للمدرسة الصحيحة.
+    // DB.createNotification يُضيف school: State.user.school صراحةً، وسياسة RLS على
+    // notifications تمنع الإدراج خارج my_school()، ما يُضيف طبقة حماية إضافية على الخادم.
     const teacherName = teacherSel.options[teacherSel.selectedIndex].textContent;
     const title = document.getElementById('tkTitle').value.trim();
     const description = document.getElementById('tkDesc').value.trim();
@@ -4580,6 +4584,11 @@ function bindCoordinatorGoals(){
     const d = GoalsUI.draft;
     const title = d.title.trim();
     if (!title){ toast('يرجى إدخال عنوان الهدف.'); return; }
+    if ((d.baseline_value !== '' && isNaN(Number(d.baseline_value))) ||
+        (d.target_value  !== '' && isNaN(Number(d.target_value)))  ||
+        (d.current_value !== '' && isNaN(Number(d.current_value)))) {
+      toast('قيم الأساس والهدف والحالي يجب أن تكون أرقاماً.'); return;
+    }
     const patch = {
       title:title, semester:d.semester, measure_unit:d.measure_unit.trim()||null, category:d.category,
       baseline_value: d.baseline_value===''?null:Number(d.baseline_value),
@@ -6170,6 +6179,7 @@ async function screenAdminSettings(){
     "create policy \"practice_shares_all\" on practice_shares for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
     'drop policy if exists "students_all" on students;',
     "create policy \"students_all\" on students for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    '-- ملاحظة: تصفية المعلم للطلاب تتم في JS عبر assigned_teacher_ids (السياسة تُتيح الوصول لكل مدرسة، والفلترة الدقيقة تحدث في التطبيق)',
     'drop policy if exists "visit_schedules_all" on visit_schedules;',
     "create policy \"visit_schedules_all\" on visit_schedules for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
     'drop policy if exists "counseling_cases_all" on counseling_cases;',
@@ -8378,6 +8388,7 @@ function bindTeacherSession(){
     if (this.disabled) return; this.disabled = true;
     const pad = Pads['pad_teacher_sess'];
     const sess = TeacherSessionCache.sub.payload.sessions[TeacherSessionCache.idx];
+    if (sess.sig && State.user.id !== sess.teacher_id) { toast('لا يمكن تعديل جلسة بعد التوقيع.'); this.disabled = false; return; }
     if (pad && !pad.isEmpty()) sess.sig = pad.toDataUrl();
     if (!sess.sig){ toast('يرجى التوقيع قبل حفظ الجلسة.'); this.disabled = false; return; }
     try{
@@ -9208,8 +9219,12 @@ function showDeleteUserModal(userId, onDone){
       if (onDone) onDone();
     }catch(e){ toast('فشل الحذف: ' + e.message); }
   }
-  document.getElementById('delAccountOnly').addEventListener('click', function(){ doDelete(false); });
+  document.getElementById('delAccountOnly').addEventListener('click', function(){
+    if (!confirm('هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع.')) return;
+    doDelete(false);
+  });
   document.getElementById('delEverything').addEventListener('click', function(){
+    if (!confirm('هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع.')) return;
     if (!confirm('سيُحذف كل شيء نهائياً بلا رجعة. متأكد؟')) return;
     doDelete(true);
   });
