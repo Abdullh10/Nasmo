@@ -6974,6 +6974,7 @@ function counselorCaseModal(c, teachers, students){
           /* سجل تواصل ولي الأمر */
           '<div style="background:var(--card-2,#f4f6f8);border-radius:10px;padding:12px 14px;margin-bottom:12px;">' +
             '<div style="font-weight:700;font-size:13px;margin-bottom:8px;">سجل التواصل مع ولي الأمر</div>' +
+            '<div id="contactLogList">' +
             ((c.contact_log||[]).length ? (c.contact_log||[]).map(function(cl){
               return '<div style="font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;">' +
                 '<span style="color:var(--muted);">'+esc(cl.date)+'</span>' +
@@ -6981,6 +6982,7 @@ function counselorCaseModal(c, teachers, students){
                 '<span>'+esc(cl.notes||'')+'</span>' +
               '</div>';
             }).join('') : '<div style="color:var(--muted);font-size:12.5px;margin-bottom:8px;">لا يوجد تواصل مسجل بعد.</div>') +
+            '</div>' +
             '<div style="display:flex;gap:6px;margin-top:8px;">' +
               '<select class="input" id="contactTypeSel" style="flex:1;max-width:130px;">' +
                 Object.entries(CONTACT_TYPE_LABEL).map(function(e){ return '<option value="'+e[0]+'">'+e[1]+'</option>'; }).join('') +
@@ -7204,8 +7206,21 @@ function bindCounselorCases(){
     const contactLog = (c.contact_log||[]).concat([newLog]);
     try{
       await DB.updateCounselingCase(CounselorUI.editingId, { contact_log: contactLog, updated_at: nowIso() });
+      /* تحديث الكيس في الذاكرة */
+      if (c) c.contact_log = contactLog;
+      /* تحديث قائمة التواصل في الـ DOM فقط بدون إعادة رسم الصفحة */
+      var logList = document.getElementById('contactLogList');
+      if (logList){
+        logList.innerHTML = contactLog.length ? contactLog.map(function(cl){
+          return '<div style="font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;">' +
+            '<span style="color:var(--muted);">'+esc(cl.date)+'</span>' +
+            '<span class="badge">'+esc(CONTACT_TYPE_LABEL[cl.type]||cl.type)+'</span>' +
+            '<span>'+esc(cl.notes||'')+'</span>' +
+          '</div>';
+        }).join('') : '<div style="color:var(--muted);font-size:12.5px;margin-bottom:8px;">لا يوجد تواصل مسجل بعد.</div>';
+      }
+      if (notesIn) notesIn.value = '';
       toast('تم تسجيل التواصل.');
-      render(); bindCounselorCases();
     }catch(e){ toast(arabicError(e)); }
   });
 
