@@ -8851,7 +8851,7 @@ function bindCredsPrint(){
   });
 }
 /* ==================== لوحة السوبر أدمن ==================== */
-let SuperAdminUI = { addSchoolOpen: false, managingSchool: null, broadcastOpen: false };
+let SuperAdminUI = { addSchoolOpen: false, managingSchool: null, broadcastOpen: false, settingsOpen: false };
 let PrincipalUI = { broadcastOpen: false, teachers: [] };
 
 async function screenSuperAdmin(){
@@ -8888,6 +8888,30 @@ async function screenSuperAdmin(){
       '</td>' +
     '</tr>';
   }).join('');
+  const hasSvcKey = !!getSvcKey();
+  const settingsModal = SuperAdminUI.settingsOpen ? (
+    '<div class="modal-bg" data-action="closeSuperSettings">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px;">' +
+        '<h3>إعدادات حسابي</h3>' +
+        '<div class="field"><label>الاسم الكامل</label><input class="input" id="spName" value="'+esc(State.user.full_name||'')+'"></div>' +
+        '<hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px;">تغيير كلمة المرور</div>' +
+        '<div class="field"><label>كلمة المرور الجديدة <span style="font-weight:400;color:var(--muted);font-size:12px;">(اتركها فارغة للاحتفاظ بالحالية)</span></label><input class="input" id="spPass" type="password" autocomplete="new-password"></div>' +
+        '<div class="field"><label>تأكيد كلمة المرور</label><input class="input" id="spPass2" type="password" autocomplete="new-password"></div>' +
+        '<hr style="border:none;border-top:1px solid var(--border);margin:14px 0;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:6px;">مفتاح خدمة Supabase (service_role)</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">يُستخدم لإنشاء الحسابات عبر Admin API. يُحفظ محلياً على هذا الجهاز فقط.</div>' +
+        '<div style="font-size:12.5px;margin-bottom:10px;padding:8px 12px;border-radius:8px;background:'+(hasSvcKey?'rgba(52,168,83,0.1);color:var(--success);">'+'✓ مفتاح الخدمة محفوظ على هذا الجهاز':'rgba(234,67,53,0.08);color:var(--danger);">')+'⚠ لا يوجد مفتاح — إنشاء الحسابات أبطأ</div>' +
+        '<div class="field"><label>مفتاح الخدمة الجديد</label><input class="input" type="password" id="spSvcKey" placeholder="eyJhbGci…" autocomplete="off"></div>' +
+        (hasSvcKey ? '<button class="btn btn-ghost btn-sm" data-action="spClearSvcKey" style="margin-bottom:12px;">مسح المفتاح الحالي</button>' : '') +
+        '<div id="spError" style="color:var(--danger);font-size:13px;margin-bottom:10px;display:none;"></div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-ghost" data-action="closeSuperSettings">إلغاء</button>' +
+          '<button class="btn btn-primary" data-action="saveSuperSettings">حفظ التعديلات</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
   const addModal = SuperAdminUI.addSchoolOpen ? (
     '<div class="modal-bg" data-action="closeSuperModal">' +
       '<div class="modal-box" onclick="event.stopPropagation()">' +
@@ -8934,6 +8958,7 @@ async function screenSuperAdmin(){
     '<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
       '<button class="btn btn-primary" data-action="superAddSchool">+ إضافة مدرسة جديدة</button>' +
       '<button class="btn btn-gold" data-action="openBroadcast">إذاعة إشعار لجميع المدارس</button>' +
+      '<button class="btn btn-ghost" data-action="openSuperSettings" style="margin-right:auto;">⚙ إعدادات حسابي</button>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
       '<thead><tr><th>المدرسة</th><th style="text-align:center;">منسقون</th><th style="text-align:center;">معلمون</th><th style="text-align:center;">الكل</th><th style="text-align:center;">النماذج</th><th></th></tr></thead>' +
@@ -8951,11 +8976,48 @@ async function screenSuperAdmin(){
           }).join('') +
         '</div>' +
       '</div>' : '') +
-    addModal + broadcastModal
+    addModal + broadcastModal + settingsModal
   );
 }
 
 function bindSuperAdmin(){
+  /* --- إعدادات حساب السوبر أدمن --- */
+  const openSettingsBtn = document.querySelector('[data-action="openSuperSettings"]');
+  if (openSettingsBtn) openSettingsBtn.addEventListener('click', function(){ SuperAdminUI.settingsOpen=true; render(); bindDashboard(); });
+  const closeSettings = function(){ SuperAdminUI.settingsOpen=false; render(); bindDashboard(); };
+  document.querySelectorAll('[data-action="closeSuperSettings"]').forEach(function(el){ el.addEventListener('click', closeSettings); });
+  const spClearBtn = document.querySelector('[data-action="spClearSvcKey"]');
+  if (spClearBtn) spClearBtn.addEventListener('click', function(){ localStorage.removeItem('nasmo_svc_key'); toast('تم مسح مفتاح الخدمة.'); SuperAdminUI.settingsOpen=false; render(); bindDashboard(); });
+  const saveSettingsBtn = document.querySelector('[data-action="saveSuperSettings"]');
+  if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', async function(){
+    const fullName = (document.getElementById('spName')||{}).value||'';
+    const pass = (document.getElementById('spPass')||{}).value||'';
+    const pass2 = (document.getElementById('spPass2')||{}).value||'';
+    const svcKey = ((document.getElementById('spSvcKey')||{}).value||'').trim();
+    const errBox = document.getElementById('spError');
+    errBox.style.display='none';
+    if (!fullName.trim()){ errBox.textContent='الاسم الكامل مطلوب.'; errBox.style.display='block'; return; }
+    if (pass && pass !== pass2){ errBox.textContent='كلمتا المرور غير متطابقتين.'; errBox.style.display='block'; return; }
+    if (pass && pass.length < 6){ errBox.textContent='كلمة المرور يجب أن تكون 6 أحرف على الأقل.'; errBox.style.display='block'; return; }
+    saveSettingsBtn.disabled=true; saveSettingsBtn.textContent='جاري الحفظ…';
+    try{
+      if (pass && isRemote()){
+        const pwRes = await fetch(CONFIG.SUPABASE_URL + '/auth/v1/user', {
+          method:'PUT',
+          headers:{ 'apikey':CONFIG.SUPABASE_ANON_KEY, 'Authorization':'Bearer '+AUTH.accessToken, 'Content-Type':'application/json' },
+          body:JSON.stringify({ password:pass })
+        });
+        if (!pwRes.ok){ const t=await pwRes.text().catch(function(){return '';}); throw new Error('فشل تغيير كلمة المرور: '+t); }
+      }
+      await DB.updateUser(State.user.id, { full_name: fullName.trim() });
+      State.user = Object.assign({}, State.user, { full_name: fullName.trim() });
+      setUserSession(State.user);
+      if (svcKey){ localStorage.setItem('nasmo_svc_key', svcKey); }
+      toast('تم حفظ الإعدادات.');
+      SuperAdminUI.settingsOpen=false; render(); bindDashboard();
+    }catch(e){ errBox.textContent=arabicError(e); errBox.style.display='block'; saveSettingsBtn.disabled=false; saveSettingsBtn.textContent='حفظ التعديلات'; }
+  });
+  /* --- نهاية إعدادات الحساب --- */
   const addBtn = document.querySelector('[data-action="superAddSchool"]');
   if (addBtn) addBtn.addEventListener('click', function(){ SuperAdminUI.addSchoolOpen=true; render(); bindDashboard(); });
   const closeModal = function(){ SuperAdminUI.addSchoolOpen=false; render(); bindDashboard(); };
