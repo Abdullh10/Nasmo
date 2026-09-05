@@ -2969,7 +2969,7 @@ let EditorState = null; // { formType, id(optional), data, status, prepSig, scho
 function blankData(formType){
   const today = new Date().toISOString().slice(0,10);
   switch(formType){
-    case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'' };
+    case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'', enrichmentPlan:'' };
     case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], descriptionItems:[], descriptionOther:'', recommendationItems:[], recommendationOther:'', parentNote:'' };
     case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'' };
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
@@ -2986,7 +2986,7 @@ function blankSelfEvalCriteria(){
   return obj;
 }
 function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[], baseline:'', targetGoal:'', targetDate:'' }; }
-function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', notesItems:[], notesOther:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[], goalAchieved:'', masteryPct:'', studentPerf:'', nextStep:'' }; }
+function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', notesItems:[], notesOther:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[], goalAchieved:'', masteryPct:'', studentPerf:'', nextStep:'', learningIntent:'', studentSelfAssess:'' }; }
 function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
 function openEditor(formType, submission){
@@ -3297,7 +3297,7 @@ function bindTopNav(){
       toast('تم إرسال التنبيه.');
       NotifUI.compose=false; NotifUI.open=true;
       render();
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 }
 
@@ -3486,14 +3486,14 @@ function bindCommunityMembers(){
   document.querySelectorAll('[data-action="linkTeacher"]').forEach(function(el){
     el.addEventListener('click', async function(){
       try{ await DB.updateUser(el.getAttribute('data-id'), { community_id: State.user.community_id }); toast('تمت إضافة المعلم إلى مجتمعك.'); await render(); bindCommunityMembers(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
   document.querySelectorAll('[data-action="unlinkTeacher"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد إزالة هذا المعلم من مجتمعك؟')) return;
       try{ await DB.updateUser(el.getAttribute('data-id'), { community_id: null }); toast('تمت إزالة المعلم من المجتمع.'); await render(); bindCommunityMembers(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
 }
@@ -3673,7 +3673,7 @@ function bindPrincipalCommunities(){
         await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'user', target_id:leaderId, type:'general', title:'رسالة من مدير المدرسة', body:msg.trim() });
         invalidateNotifCache();
         toast('تم إرسال الرسالة إلى المنسق.');
-      }catch(e){ toast(e.message); }
+      }catch(e){ toast(arabicError(e)); }
     });
   });
   var printBtn = document.querySelector('[data-action="printSchoolReport"]');
@@ -4013,7 +4013,7 @@ function bindCoordinatorTasks(){
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       await render(); bindCoordinatorTasks();
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id'), readonly:true }); });
@@ -4022,7 +4022,7 @@ function bindCoordinatorTasks(){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه المهمة نهائيًا؟')) return;
       try{ await DB.deleteTask(el.getAttribute('data-id')); invalidatePendingCache(); toast('تم حذف المهمة.'); await render(); bindCoordinatorTasks(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
 }
@@ -4099,6 +4099,9 @@ async function screenCoordinatorVisits(){
   const all = (await DB.listVisitSchedules({ school: State.user.school })).filter(function(s){ return s.community_id===State.user.community_id; });
   const sent = all.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
 
+  if (!VisitsUI.draft) {
+    try { var saved = localStorage.getItem('nasmo_visit_draft_'+State.user.school); if (saved) VisitsUI.draft = JSON.parse(saved); } catch(e){}
+  }
   const draft = VisitsUI.draft;
   const builder = draft ? (
     '<div class="program-card" style="margin-bottom:16px;">' +
@@ -4158,6 +4161,7 @@ function bindCoordinatorVisits(){
       } else {
         row[field] = el.value;
       }
+      try { localStorage.setItem('nasmo_visit_draft_'+State.user.school, JSON.stringify(VisitsUI.draft)); } catch(e){}
     });
   });
   const sendBtn = document.querySelector('[data-action="sendVisitSchedule"]');
@@ -4173,14 +4177,14 @@ function bindCoordinatorVisits(){
       const visitedIds = [...new Set(rows.map(function(r){ return r.visitingTeacherId; }).concat(rows.map(function(r){ return r.visitedTeacherId; })))];
       visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); /* push handled inside createNotification */ });
       toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
-      VisitsUI.draft = null; await render(); bindCoordinatorVisits();
-    }catch(e){ toast(e.message); this.disabled = false; }
+      VisitsUI.draft = null; localStorage.removeItem('nasmo_visit_draft_'+State.user.school); await render(); bindCoordinatorVisits();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="deleteVisitSchedule"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا الجدول؟ سيختفي فورًا من شاشات جميع المعلمين.')) return;
       try{ await DB.deleteVisitSchedule(el.getAttribute('data-id')); toast('تم حذف الجدول.'); await render(); bindCoordinatorVisits(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
 }
@@ -4336,13 +4340,13 @@ function bindCoordinatorDemoLessons(){
       notifTargets.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'حصة توضيحية جديدة', body:notifBody }).catch(function(){}); /* push handled inside createNotification */ });
       toast('تم تسجيل الحصة التوضيحية وإرسال الإشعارات.');
       DemoLessonUI.modalOpen = false; DemoLessonUI.draft = null; await render(); bindCoordinatorDemoLessons();
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="deleteDemoLesson"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه الحصة التوضيحية؟')) return;
       try{ await DB.deleteTask(el.getAttribute('data-id')); toast('تم حذف الحصة التوضيحية.'); await render(); bindCoordinatorDemoLessons(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
 }
@@ -4537,7 +4541,7 @@ function bindCoordinatorGoals(){
   document.querySelectorAll('[data-action="deleteGoal"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('سيتم حذف هذا الهدف نهائيًا. هل تريد الاستمرار؟')) return;
-      try{ await DB.deleteGoal(el.getAttribute('data-id')); toast('تم حذف الهدف.'); await render(); bindCoordinatorGoals(); }catch(e){ toast(e.message); }
+      try{ await DB.deleteGoal(el.getAttribute('data-id')); toast('تم حذف الهدف.'); await render(); bindCoordinatorGoals(); }catch(e){ toast(arabicError(e)); }
     });
   });
   const glStatusEl = document.getElementById('glStatus');
@@ -4620,7 +4624,7 @@ function bindCoordinatorGoals(){
       }
       GoalsUI.modalOpen = false; GoalsUI.editId = null; GoalsUI.draft = null;
       await render(); bindCoordinatorGoals();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 }
 
@@ -4708,7 +4712,7 @@ function goalReviewModalHtml(g){
         '<h3>تقييم الهدف: '+esc(g.title)+'</h3>' +
         (g.principal_status ? ('<p>'+principalReviewBadgeHtml(g)+'</p>') : '') +
         '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('glRating', g.principal_rating)+'</div>' +
-        '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="glNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(g.principal_note||'')+'</textarea></div>' +
+        '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="glNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(g.principal_note||'')+'</textarea><div style="font-size:11px;color:var(--muted);margin-top:4px;">* مطلوب عند الإرجاع</div></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-gold btn-block" data-action="approveGoal">✓ اعتماد وتقييم</button>' +
           '<button class="btn btn-danger btn-block" data-action="returnGoal">إرجاع للتعديل</button>' +
@@ -4746,7 +4750,7 @@ function bindPrincipalReview(){
       toast('تم اعتماد وتقييم الهدف.');
       PrincipalReviewUI.goalReviewId = null;
       await render(); bindPrincipalReview();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const returnBtn = document.querySelector('[data-action="returnGoal"]');
   if (returnBtn) returnBtn.addEventListener('click', async function(){
@@ -4762,7 +4766,7 @@ function bindPrincipalReview(){
       toast('تم إرجاع الهدف إلى المنسق للتعديل.');
       PrincipalReviewUI.goalReviewId = null;
       await render(); bindPrincipalReview();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 }
 
@@ -4918,7 +4922,7 @@ function bindNotificationsPanel(){
       const n = (State.notifications||[]).find(function(x){ return x.id===id; });
       if (!n) return;
       const readBy = (n.read_by||[]).indexOf(State.user.id)===-1 ? (n.read_by||[]).concat([State.user.id]) : n.read_by;
-      try{ await DB.updateNotification(id, { read_by: readBy }); invalidateNotifCache(); await render(); bindNotificationsPanel(); }catch(e){ toast(e.message); }
+      try{ await DB.updateNotification(id, { read_by: readBy }); invalidateNotifCache(); await render(); bindNotificationsPanel(); }catch(e){ toast(arabicError(e)); }
     });
   });
   const markAllBtn = document.querySelector('[data-action="pnotifMarkAllRead"]');
@@ -4929,7 +4933,7 @@ function bindNotificationsPanel(){
         return DB.updateNotification(n.id, { read_by: (n.read_by||[]).concat([State.user.id]) });
       }));
       invalidateNotifCache(); await render(); bindNotificationsPanel();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   document.querySelectorAll('[data-action="pnotifReply"]').forEach(function(el){
     el.addEventListener('click', async function(){
@@ -4951,13 +4955,13 @@ function bindNotificationsPanel(){
       toast('تم إرسال الرد.');
       NotifPanelUI.replyId = null;
       invalidateNotifCache(); await render(); bindNotificationsPanel();
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="pnotifDelete"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا الإشعار؟')) return;
       try{ await DB.deleteNotification(el.getAttribute('data-id')); invalidateNotifCache(); await render(); bindNotificationsPanel(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
 }
@@ -5132,7 +5136,7 @@ function bindPracticeBank(){
         await DB.deletePracticeShare(el.getAttribute('data-id'));
         toast('تم حذف الممارسة.');
         render(); bindPracticeBank();
-      }catch(e){ toast(e.message); }
+      }catch(e){ toast(arabicError(e)); }
     });
   });
   const closeCompose = function(){ PracticeBankUI.composeOpen = false; resetComposeFields(); render(); bindPracticeBank(); };
@@ -5188,7 +5192,7 @@ function bindPracticeBank(){
       PracticeBankUI.composeOpen = false;
       resetComposeFields();
       render(); bindPracticeBank();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   document.querySelectorAll('[data-action="reviewPractice"]').forEach(function(el){
     el.addEventListener('click', function(){ PracticeBankUI.reviewId = el.getAttribute('data-id'); render(); bindPracticeBank(); });
@@ -5210,7 +5214,7 @@ function bindPracticeBank(){
       toast('تم اعتماد الممارسة وعرضها في معرض المدرسة.');
       PracticeBankUI.reviewId = null;
       render(); bindPracticeBank();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const returnBtn = document.querySelector('[data-action="returnPractice"]');
   if (returnBtn) returnBtn.addEventListener('click', async function(){
@@ -5225,7 +5229,7 @@ function bindPracticeBank(){
       toast('تم إرجاع الممارسة للتعديل.');
       PracticeBankUI.reviewId = null;
       render(); bindPracticeBank();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 }
 
@@ -5645,7 +5649,7 @@ function bindStudentRoster(){
   document.querySelectorAll('[data-action="deleteStudent"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟')) return;
-      try{ await DB.deleteStudent(el.getAttribute('data-id')); go('studentRoster'); }catch(e){ toast(e.message); }
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); go('studentRoster'); }catch(e){ toast(arabicError(e)); }
     });
   });
   const closeModal = function(){ StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null; render(); bindStudentRoster(); };
@@ -5670,7 +5674,7 @@ function bindStudentRoster(){
       }
       StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null;
       go('studentRoster');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const templateBtn = document.querySelector('[data-action="downloadStudentTemplate"]');
   if (templateBtn) templateBtn.addEventListener('click', function(){
@@ -6065,9 +6069,9 @@ function bindExamAnalysis(){
   const printBtn = document.querySelector('[data-action="printExamReport"]');
   if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
   const autoSortBtn = document.querySelector('[data-action="runExamAutoSort"]');
-  if (autoSortBtn) autoSortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(e.message); }); });
+  if (autoSortBtn) autoSortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(arabicError(e)); }); });
   const indivSortBtn = document.querySelector('[data-action="runExamIndividualSort"]');
-  if (indivSortBtn) indivSortBtn.addEventListener('click', function(){ runExamIndividualSort().catch(function(e){ toast(e.message); }); });
+  if (indivSortBtn) indivSortBtn.addEventListener('click', function(){ runExamIndividualSort().catch(function(e){ toast(arabicError(e)); }); });
   document.querySelectorAll('[data-action="restoreExamAnalysis"]').forEach(function(el){
     el.addEventListener('click', function(){
       const entry = loadExamSaved().find(function(e){ return e.id===el.getAttribute('data-id'); });
@@ -6386,7 +6390,7 @@ function bindAdminSettings(){
   if (purgeBtn) purgeBtn.addEventListener('click', async function(){
     purgeBtn.disabled = true; purgeBtn.textContent = 'جارٍ التنظيف...';
     try{ await purgeOrphanedAuthAccounts(); }
-    catch(e){ toast(e.message); }
+    catch(e){ toast(arabicError(e)); }
     finally{ purgeBtn.disabled = false; purgeBtn.textContent = 'حذف الحسابات المعطوبة من Supabase Auth'; }
   });
 
@@ -6403,7 +6407,7 @@ function bindAdminSettings(){
       document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
       toast('تم حفظ الإعدادات.');
       render();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const renameBtn = document.querySelector('[data-action="renameSchool"]');
   if (renameBtn) renameBtn.addEventListener('click', async function(){
@@ -6415,7 +6419,7 @@ function bindAdminSettings(){
       await DB.renameSchool(oldName, newName);
       toast('تم تغيير اسم المدرسة بنجاح.');
       render();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const exportBtn = document.querySelector('[data-action="exportBackup"]');
   if (exportBtn) exportBtn.addEventListener('click', async function(){
@@ -6585,9 +6589,12 @@ async function screenCounselorCases(){
       ? '<a href="https://wa.me/'+encodeURIComponent(c.parent_phone.replace(/[^0-9]/g,''))+'" target="_blank" class="btn btn-ghost btn-sm" style="color:#25D366;">واتساب</a>'
       : '';
     const staleStyle = isStale ? 'background:var(--warn-bg,#fff8e1);' : '';
+    var stageLabel = { 'open':'مفتوحة', 'in_progress':'تحت المتابعة', 'closed':'مُغلقة', 'referred':'محالة' };
+    var stageColor = { 'open':'var(--pending)', 'in_progress':'var(--navy)', 'closed':'var(--success)', 'referred':'var(--teal)' };
+    var stageBadge = '<span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:10px;background:color-mix(in srgb,'+(stageColor[c.status]||'var(--muted)')+' 15%,var(--surface));color:'+(stageColor[c.status]||'var(--muted)')+';">'+(stageLabel[c.status]||c.status||'مفتوحة')+'</span>';
     return (
       '<tr style="'+staleStyle+'">' +
-        '<td><b>'+esc(c.student_name)+'</b>'+priorityBadge+(isStale?'<span title="بدون متابعة منذ أسبوعين" style="margin-right:4px;font-size:13px;">⚠️</span>':'')+'</td>' +
+        '<td><b>'+esc(c.student_name)+'</b>'+stageBadge+priorityBadge+(isStale?'<span title="بدون متابعة منذ أسبوعين" style="margin-right:4px;font-size:13px;">⚠️</span>':'')+'</td>' +
         '<td>'+esc(c.student_grade||'—')+'</td>' +
         '<td>'+esc(c.student_section||'—')+'</td>' +
         '<td>'+esc(catLabel)+'</td>' +
@@ -6945,7 +6952,7 @@ function bindCounselorCases(){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه الحالة الإرشادية نهائياً؟')) return;
       try{ await DB.deleteCounselingCase(el.getAttribute('data-id')); toast('تم حذف الحالة.'); render(); bindCounselorCases(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
 
@@ -7086,7 +7093,7 @@ function bindCounselorCases(){
       await DB.updateCounselingCase(CounselorUI.editingId, { contact_log: contactLog, updated_at: nowIso() });
       toast('تم تسجيل التواصل.');
       render(); bindCounselorCases();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   const saveBtn = document.querySelector('[data-action="saveCase"]');
@@ -7137,7 +7144,7 @@ function bindCounselorCases(){
         close_summary: ''
       };
       try{ await DB.createCounselingCase(obj); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
-      catch(e){ toast(e.message); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
+      catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
     } else {
       saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
       const cases = await DB.listCounselingCases(State.user.school);
@@ -7161,7 +7168,7 @@ function bindCounselorCases(){
         category:category, priority:priority, next_session_date:nextSessionDate };
       patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? (c.close_summary||'') : closeSummary;
       try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
-      catch(e){ toast(e.message); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
+      catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
   });
 }
@@ -7677,12 +7684,20 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents)
       return '<circle cx="'+p.x+'" cy="'+p.y+'" r="3.5" fill="var(--primary)" title="'+p.v+'%"></circle>' +
         '<text x="'+p.x+'" y="'+(p.y-7)+'" font-size="9" text-anchor="middle" fill="var(--muted)">'+p.v+'%</text>';
     }).join('');
+    var targetGoalPct = stRec && stRec.targetGoal ? +stRec.targetGoal : null;
+    var goalLineHtml = '';
+    if (targetGoalPct !== null && !isNaN(targetGoalPct)) {
+      var goalY = pad + (1 - targetGoalPct/100)*(H-2*pad);
+      goalLineHtml = '<line x1="'+pad+'" y1="'+goalY+'" x2="'+(W-pad)+'" y2="'+goalY+'" stroke="var(--success)" stroke-width="1.5" stroke-dasharray="4,3" opacity=".8"/>' +
+        '<text x="'+(W-pad-2)+'" y="'+(goalY-3)+'" font-size="8" fill="var(--success)" text-anchor="end">هدف '+targetGoalPct+'%</text>';
+    }
     masteryChartHtml = (
       '<div style="margin-top:10px;">' +
         '<b style="font-size:12px;color:var(--muted);">منحنى الإتقان عبر الجلسات</b>' +
         '<svg width="'+W+'" height="'+H+'" style="display:block;margin-top:4px;overflow:visible;">' +
           '<polyline points="'+polyline+'" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linejoin="round"/>' +
           dots +
+          goalLineHtml +
         '</svg>' +
       '</div>'
     );
@@ -7851,7 +7866,7 @@ async function screenTeacherTasks(){
   const upcoming48hSessions = sessTasks.filter(function(t){
     if (t.sess.sig) return false;
     if (!t.sess.date) return false;
-    var d = new Date(t.sess.date);
+    var d = new Date(t.sess.date + 'T23:59:59');
     return d > now && (d - now) <= 48*60*60*1000;
   });
   const upcoming48hAlert = upcoming48hSessions.length ? (
@@ -8093,8 +8108,18 @@ async function screenTeacherTasks(){
     ? teacherStudentProfileHtml(_teacherStudentProfile, myForms, sessTasks, myStudents)
     : '';
 
+  var isNewTeacher = !sessTasks.length && !_teacherAllStudentsCache.length;
+  var onboardingBanner = isNewTeacher ? (
+    '<div style="background:color-mix(in srgb,var(--teal) 10%,var(--surface));border:1.5px solid var(--teal);border-radius:12px;padding:16px 20px;margin-bottom:16px;">' +
+      '<div style="font-weight:700;font-size:14px;color:var(--teal);margin-bottom:8px;">👋 مرحباً بك في نسمو!</div>' +
+      '<div style="font-size:13px;color:var(--text);line-height:1.7;">' +
+        'للبدء: <strong>١)</strong> اطلب من المنسق إضافتك لمجتمعك المهني · <strong>٢)</strong> انتظر وصول مهامك الأولى · <strong>٣)</strong> ابدأ بملء الخطة الجماعية ثم الخطط الفردية للطلاب المتعثرين.' +
+      '</div>' +
+    '</div>'
+  ) : '';
+
   const mainContent = (
-    upcoming48hAlert + returnedAlert + expiredAlert + overdueAlert +
+    onboardingBanner + upcoming48hAlert + returnedAlert + expiredAlert + overdueAlert +
     '<div class="section-head"><h2>الخطط العلاجية والنماذج الخاصة بي</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" data-action="goStudentRoster">بيانات الطلاب</button>' +
@@ -8215,7 +8240,7 @@ function bindTeacherTasks(){
       }
       invalidateNotifCache();
       toast('تم إرسال رسالتك إلى المنسق.');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   /* تواصل مع المدير */
@@ -8231,7 +8256,7 @@ function bindTeacherTasks(){
       }
       invalidateNotifCache();
       toast('تم إرسال رسالتك إلى المدير.');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   /* طباعة التقرير الدوري */
@@ -8306,6 +8331,7 @@ async function screenTeacherSession(subId, idx){
           inputField('المادة','subject', sess.subject, {readonly: sessReadonly}) +
           inputField('التاريخ','date', sess.date, {type:'date', readonly: sessReadonly}) +
         '</div>' +
+        inputField('نية التعلم (Learning Intention) — ماذا يتعلم الطالب في هذه الجلسة؟','learningIntent', sess.learningIntent, {type:'textarea', readonly: sessReadonly, placeholder:'مثال: سأتعلم كيف أقرأ الكلمات ذات المقاطع الثلاثية بدقة...'}) +
         inputField('الإجراءات والأدوات المطبقة في هذه الجلسة','notes', sess.notes, {type:'textarea', readonly: sessReadonly}) +
         '<div class="field-grid cols-2">' +
           '<div class="field"><label>هل تحقق هدف هذه الجلسة؟</label>' +
@@ -8332,6 +8358,12 @@ async function screenTeacherSession(subId, idx){
                 '</select>') +
           '</div>' +
           inputField('الخطوة التالية للأسبوع القادم','nextStep', sess.nextStep, {readonly: sessReadonly}) +
+        '</div>' +
+        '<div class="field">' +
+          '<label>تقييم الطالب الذاتي لفهمه (بكلامه)</label>' +
+          (sessReadonly
+            ? '<div class="input" style="background:var(--bg-2,#f4f6f8);">'+esc(sess.studentSelfAssess||'—')+'</div>'
+            : '<textarea class="input" data-field="studentSelfAssess" rows="2" placeholder="ماذا تعلمت اليوم؟ ما الذي لا يزال صعباً عليك؟">'+(sess.studentSelfAssess||'')+'</textarea>') +
         '</div>' +
         '<div class="block-title"><span class="dot"></span> شواهد الأسبوع (صور أوراق عمل، اختبارات، إنجاز الطالب...)</div>' +
         '<div class="evidence-grid">' + files +
@@ -8395,7 +8427,7 @@ function bindTeacherSession(){
       await DB.updateSubmission(TeacherSessionCache.sub.id, { payload: TeacherSessionCache.sub.payload });
       toast('تم حفظ الجلسة والشواهد بنجاح.');
       go('dashboard');
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 }
 
@@ -8502,7 +8534,7 @@ function bindTaskDetail(){
       }
       toast('تم حفظ المهمة وتمييزها كمكتملة.');
       go('dashboard');
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   const approveTaskBtn = document.querySelector('[data-action="approveTask"]');
   if (approveTaskBtn) approveTaskBtn.addEventListener('click', async function(){
@@ -8519,7 +8551,7 @@ function bindTaskDetail(){
       }
       toast('تم اعتماد وتقييم المهمة.');
       go('dashboard');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const returnTaskBtn = document.querySelector('[data-action="returnTask"]');
   if (returnTaskBtn) returnTaskBtn.addEventListener('click', async function(){
@@ -8534,7 +8566,7 @@ function bindTaskDetail(){
       }
       toast('تم إرجاع المهمة إلى المعلم للتعديل.');
       go('dashboard');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const coordReturnBtn = document.querySelector('[data-action="coordinatorReturnTask"]');
   if (coordReturnBtn) coordReturnBtn.addEventListener('click', async function(){
@@ -8550,7 +8582,7 @@ function bindTaskDetail(){
       }
       toast('تم إرجاع المهمة إلى المعلم مع الملاحظة.');
       go('dashboard');
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 }
 
@@ -9276,7 +9308,7 @@ function bindAdminUsers(){
         toast('تمت إضافة المستخدم بنجاح.');
       }
       AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   const userSortSel = document.getElementById('userSortSelect');
@@ -9371,7 +9403,7 @@ function bindAdminUsers(){
       for (let i=0;i<ids.length;i++){ await DB.updateUser(ids[i], { community_id: communityId }); }
       toast('تم إسناد '+ids.length+' مستخدمًا إلى المجتمع المحدد.');
       AdminUI.selectedIds = []; render(); bindAdminUsers();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const bulkDeleteBtn = document.querySelector('[data-action="bulkDeleteUsers"]');
   if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
@@ -9690,7 +9722,7 @@ function bindAdminStudents(){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟ سيُزال أيضًا من أي إسناد لمعلمين.')) return;
       try{ await DB.deleteStudent(el.getAttribute('data-id')); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
   const closeModal = function(){ AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[]; render(); bindAdminStudents(); };
@@ -9729,7 +9761,7 @@ function bindAdminStudents(){
       }
       AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[];
       render(); bindAdminStudents();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   const templateBtn = document.querySelector('[data-action="downloadAdminStudentTemplate"]');
@@ -9822,7 +9854,7 @@ function bindAdminStudents(){
       await Promise.all(ids.map(function(sid){ return DB.updateStudent(sid, { assigned_teacher_ids: [] }); }));
       toast('تم إلغاء الإسناد لـ '+ids.length+' طالب.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   const bulkDeleteBtn = document.querySelector('[data-action="bulkDeleteAdminStudents"]');
   if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
@@ -9833,7 +9865,7 @@ function bindAdminStudents(){
       await DB.bulkDeleteStudents(ids);
       toast('تم حذف '+ids.length+' طالبًا.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   const openAssignBtn = document.querySelector('[data-action="openAdminStudentAssign"]');
@@ -9860,7 +9892,7 @@ function bindAdminStudents(){
       toast('تم إسناد المعلمين المحددين لـ '+studentIds.length+' طالبًا.');
       AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
       render(); bindAdminStudents();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
 
   /* — نقل الطالب — */
@@ -9908,7 +9940,7 @@ function bindAdminStudents(){
       toast('تم نقل الطالب إلى '+newGrade+' / '+newSection+(doNotify && (Array.isArray(student.assigned_teacher_ids)&&student.assigned_teacher_ids.length) ? ' وتم إشعار المعلمين المسنَدين.' : '.'));
       AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null;
       render(); bindAdminStudents();
-    }catch(e){ toast(e.message); saveTransferBtn.disabled=false; saveTransferBtn.textContent='تأكيد النقل'; }
+    }catch(e){ toast(arabicError(e)); saveTransferBtn.disabled=false; saveTransferBtn.textContent='تأكيد النقل'; }
   });
 
   /* — إلغاء الإسناد — */
@@ -9921,7 +9953,7 @@ function bindAdminStudents(){
         await DB.updateStudent(sid, { assigned_teacher_ids: [] });
         toast('تم إلغاء إسناد الطالب '+name+'.');
         render(); bindAdminStudents();
-      }catch(e){ toast(e.message); }
+      }catch(e){ toast(arabicError(e)); }
     });
   });
 }
@@ -10005,7 +10037,7 @@ function bindAdminCommunities(){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا المجتمع المهني؟ سيبقى الأعضاء بدون مجتمع.')) return;
       try{ await DB.deleteCommunity(el.getAttribute('data-id')); invalidateCommCache(); toast('تم حذف المجتمع.'); render(); bindAdminCommunities(); }
-      catch(e){ toast(e.message); }
+      catch(e){ toast(arabicError(e)); }
     });
   });
   const closeBtn = document.querySelector('[data-action="closeCommModal"]');
@@ -10028,7 +10060,7 @@ function bindAdminCommunities(){
         toast('تمت إضافة المجتمع بنجاح.');
       }
       CommUI.modalOpen=false; CommUI.editingId=null; invalidateCommCache(); render(); bindAdminCommunities();
-    }catch(e){ toast(e.message); }
+    }catch(e){ toast(arabicError(e)); }
   });
   document.querySelectorAll('[data-action="addLeaderForCommunity"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -10319,7 +10351,12 @@ function renderGroupPlan(d, ro, students){
     cards +
     (ro?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>'+studentMultiPickButtonHtml('students')+'</div>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
-    inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'})
+    inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'}) +
+    '<div class="block-title"><span class="dot"></span> السؤال الرابع: دعم الطلاب المتقدمين (Enrichment)</div>' +
+    '<div style="background:color-mix(in srgb,var(--success) 8%,var(--surface));border:1px solid color-mix(in srgb,var(--success) 25%,transparent);border-radius:10px;padding:14px 16px;margin-bottom:16px;">' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">للطلاب الذين أتقنوا المادة مبكراً — ماذا نقدم لهم؟ (DuFour السؤال الرابع)</div>' +
+      inputField('استراتيجيات الإثراء للمتقدمين','enrichmentPlan', (d.enrichmentPlan||''), {type:'textarea', readonly:ro, placeholder:'مثال: مشاريع بحثية، تعليم الأقران، مسائل تحدٍّ إضافية...'}) +
+    '</div>'
   );
 }
 
@@ -10968,7 +11005,7 @@ async function persistEditor(targetStatus){
     }
     toast(targetStatus==='pending' ? 'تم إرسال النموذج إلى مدير المدرسة للاعتماد.' : 'تم حفظ المسودة بنجاح.');
     go('dashboard');
-  }catch(e){ toast(e.message); }
+  }catch(e){ toast(arabicError(e)); }
 }
 
 /* ---------------------- شاشة العرض (قراءة فقط) ---------------------- */
@@ -11150,7 +11187,7 @@ function bindReview(){
       }
       toast('تم اعتماد وتقييم النموذج بختم رسمي.');
       go('view', { id: ReviewCache.id });
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelector('[data-action="returnSub"]').addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
@@ -11165,7 +11202,7 @@ function bindReview(){
       }
       toast('تم إرجاع النموذج للمُعد للتعديل.');
       go('dashboard');
-    }catch(e){ toast(e.message); this.disabled = false; }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 }
 
@@ -11281,6 +11318,19 @@ async function pushNotifyPrincipal(school, title, body){
     const principals = await remoteFetch('profiles?role=eq.principal&school=eq.' + encodeURIComponent(school));
     (principals||[]).forEach(function(p){ pushNotify(p.id, title, body); });
   } catch(e){}
+}
+
+function arabicError(e){
+  var msg = (e && e.message) || String(e);
+  if (msg.includes('duplicate key') || msg.includes('already exists')) return 'هذا السجل موجود بالفعل.';
+  if (msg.includes('violates foreign key') || msg.includes('foreign key')) return 'لا يمكن الحذف: توجد بيانات مرتبطة بهذا السجل.';
+  if (msg.includes('not null') || msg.includes('null value')) return 'حقل إلزامي مفقود، يرجى التحقق من البيانات.';
+  if (msg.includes('permission denied') || msg.includes('insufficient privilege')) return 'ليس لديك صلاحية لتنفيذ هذا الإجراء.';
+  if (msg.includes('JWT') || msg.includes('token') || msg.includes('auth')) return 'انتهت جلستك، يرجى تسجيل الدخول مجدداً.';
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('Failed to fetch')) return 'خطأ في الاتصال بالشبكة، تحقق من اتصالك بالإنترنت.';
+  if (msg.includes('timeout')) return 'انتهت مهلة الطلب، يرجى المحاولة مجدداً.';
+  if (msg.includes('storage') || msg.includes('quota')) return 'مساحة التخزين ممتلئة.';
+  return msg;
 }
 </script>
 </body>
