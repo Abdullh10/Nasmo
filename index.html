@@ -2260,7 +2260,7 @@ const DB = {
     types = types || [];
     if (!school && State.user && State.user.role !== 'super_admin') throw new Error('لا يمكن حذف بيانات جميع المدارس إلا لحساب السوبر أدمن.');
     if (isRemote()){
-      const tableMap = { submissions:'submissions', notifications:'notifications', tasks:'tasks', goals:'plc_goals', indicator_status:'indicator_status', practice:'practice_shares' };
+      const tableMap = { submissions:'submissions', notifications:'notifications', tasks:'tasks', goals:'plc_goals', indicator_status:'indicator_status', practice:'practice_shares', counseling:'counseling_cases' };
       for (const t of types){
         const table = tableMap[t];
         if (!table) continue;
@@ -6353,6 +6353,7 @@ async function screenAdminSettings(){
           '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdTasks"> المهام</label>' +
           '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdGoals"> خطة التحسين الفصلية (الأهداف)</label>' +
           '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdIndicators"> حالة مؤشرات الدليل التنفيذي</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdCounseling"> الإحالات الإرشادية (counseling_cases)</label>' +
         '</div>' +
         '<button class="btn btn-danger" data-action="clearTestData">حذف البيانات المحدَّدة نهائيًا</button>' +
       '</div>' +
@@ -6368,6 +6369,7 @@ async function screenAdminSettings(){
           '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdAllTasks"> المهام</label>' +
           '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdAllGoals"> خطة التحسين الفصلية (الأهداف)</label>' +
           '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdAllIndicators"> حالة مؤشرات الدليل التنفيذي</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="cdAllCounseling"> الإحالات الإرشادية (counseling_cases)</label>' +
         '</div>' +
         '<button class="btn btn-danger" data-action="clearAllSchoolsData">حذف البيانات المحدَّدة من جميع المدارس نهائيًا</button>' +
       '</div>' +
@@ -6519,8 +6521,8 @@ function bindAdminSettings(){
   });
   const clearBtn = document.querySelector('[data-action="clearTestData"]');
   if (clearBtn) clearBtn.addEventListener('click', async function(){
-    const map = { submissions:'cdSubmissions', notifications:'cdNotifications', tasks:'cdTasks', goals:'cdGoals', indicator_status:'cdIndicators' };
-    const labels = { submissions:'النماذج المُرسلة', notifications:'التنبيهات والرسائل', tasks:'المهام', goals:'خطة التحسين الفصلية', indicator_status:'حالة مؤشرات الدليل التنفيذي' };
+    const map = { submissions:'cdSubmissions', notifications:'cdNotifications', tasks:'cdTasks', goals:'cdGoals', indicator_status:'cdIndicators', counseling:'cdCounseling' };
+    const labels = { submissions:'النماذج المُرسلة', notifications:'التنبيهات والرسائل', tasks:'المهام', goals:'خطة التحسين الفصلية', indicator_status:'حالة مؤشرات الدليل التنفيذي', counseling:'الإحالات الإرشادية' };
     const types = Object.keys(map).filter(function(t){ const el = document.getElementById(map[t]); return el && el.checked; });
     if (!types.length){ toast('يرجى تحديد نوع واحد على الأقل لحذفه.'); return; }
     const list = types.map(function(t){ return '- ' + labels[t]; }).join('\n');
@@ -6538,8 +6540,8 @@ function bindAdminSettings(){
   const clearAllBtn = document.querySelector('[data-action="clearAllSchoolsData"]');
   if (clearAllBtn) clearAllBtn.addEventListener('click', async function(){
     if (State.user.role !== 'super_admin'){ toast('هذا الإجراء مخصص لحساب السوبر أدمن فقط.'); return; }
-    const map = { submissions:'cdAllSubmissions', notifications:'cdAllNotifications', tasks:'cdAllTasks', goals:'cdAllGoals', indicator_status:'cdAllIndicators' };
-    const labels = { submissions:'النماذج المُرسلة', notifications:'التنبيهات والرسائل', tasks:'المهام', goals:'خطة التحسين الفصلية', indicator_status:'حالة مؤشرات الدليل التنفيذي' };
+    const map = { submissions:'cdAllSubmissions', notifications:'cdAllNotifications', tasks:'cdAllTasks', goals:'cdAllGoals', indicator_status:'cdAllIndicators', counseling:'cdAllCounseling' };
+    const labels = { submissions:'النماذج المُرسلة', notifications:'التنبيهات والرسائل', tasks:'المهام', goals:'خطة التحسين الفصلية', indicator_status:'حالة مؤشرات الدليل التنفيذي', counseling:'الإحالات الإرشادية' };
     const types = Object.keys(map).filter(function(t){ const el = document.getElementById(map[t]); return el && el.checked; });
     if (!types.length){ toast('يرجى تحديد نوع واحد على الأقل لحذفه.'); return; }
     const list = types.map(function(t){ return '- ' + labels[t]; }).join('\n');
