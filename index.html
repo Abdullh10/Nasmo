@@ -188,8 +188,8 @@ a{ color:var(--teal-dark); }
   border:1px solid var(--border); position:relative; overflow:hidden;
 }
 .login-card::before{
-  content:""; position:absolute; inset:0 0 auto 0; height:6px;
-  background:linear-gradient(90deg,var(--navy),var(--teal),var(--gold));
+  content:""; position:absolute; inset:0 0 auto 0; height:5px;
+  background:linear-gradient(90deg,var(--navy) 0%,var(--teal) 100%);
 }
 .brand{ display:flex; align-items:center; gap:16px; margin-bottom:8px; }
 .brand-mark{ width:92px; height:92px; flex:none; object-fit:contain; }
@@ -224,7 +224,7 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
 }
 .view-fab-btn:hover{ border-color:var(--teal); color:var(--teal); }
 .view-fab-btn.active{ border-color:var(--teal); background:var(--teal); color:#fff; }
-.login-h{ font-size:23px; margin:20px 0 5px; }
+.login-h{ font-size:23px; font-weight:800; margin:20px 0 5px; }
 .login-p{ color:var(--muted); font-size:14.5px; margin-bottom:22px; }
 .field{ margin-bottom:14px; }
 .field label{ display:block; font-size:13px; color:var(--navy-2); font-weight:700; margin-bottom:6px; }
@@ -237,8 +237,8 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
 @media(max-width:700px){ .stu-cascade{ grid-template-columns:1fr; } }
 .stu-cascade .field{ margin-bottom:0; }
 .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:8px; padding:11px 18px; font-weight:700; font-size:14px; transition:.15s; }
-.btn-primary{ background:var(--navy); color:#fff; }
-.btn-primary:hover{ background:var(--navy-2); }
+.btn-primary{ background:var(--navy); color:#fff; cursor:pointer; }
+.btn-primary:hover{ background:var(--navy-2); transform:translateY(-1px); box-shadow:0 6px 18px rgba(15,33,64,.22); }
 .btn-block{ width:100%; }
 .btn-gold{ background:var(--gold); color:#fff; }
 .btn-gold:hover{ background:#9c7209; }
@@ -250,6 +250,32 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
 .hint-box{ margin-top:18px; padding:12px 14px; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; font-size:12.5px; color:var(--muted); }
 .hint-box b{ color:var(--navy-2); }
 .credit-line{ margin-top:18px; text-align:center; font-size:12.5px; color:var(--muted); }
+
+/* --- login field icons & pass toggle --- */
+.center-screen{
+  background:
+    radial-gradient(ellipse at 78% 12%, rgba(14,124,123,.09) 0%, transparent 48%),
+    radial-gradient(ellipse at 12% 88%, rgba(15,33,64,.07) 0%, transparent 42%);
+}
+@keyframes loginIn{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:translateY(0); } }
+.login-card{ animation:loginIn .32s ease; }
+@media(prefers-reduced-motion:reduce){ .login-card{ animation:none; } }
+.login-input-wrap{ position:relative; }
+.login-field-icon{
+  position:absolute; top:50%; inset-inline-start:12px;
+  transform:translateY(-50%); width:16px; height:16px;
+  color:var(--muted); pointer-events:none;
+}
+.login-has-icon{ padding-inline-start:38px; }
+.login-pass-end{ padding-inline-end:40px; }
+.login-pass-toggle{
+  position:absolute; top:50%; inset-inline-end:9px;
+  transform:translateY(-50%);
+  background:none; border:none; cursor:pointer;
+  color:var(--muted); padding:4px; display:flex; align-items:center;
+  border-radius:4px; transition:.15s;
+}
+.login-pass-toggle:hover{ color:var(--navy); background:var(--surface-2); }
 .error-text{ color:var(--danger); font-size:13px; margin:-4px 0 10px; }
 
 /* ---------- top nav ---------- */
@@ -3323,8 +3349,8 @@ function screenLogin(){
         '<div class="login-h">تسجيل الدخول</div>' +
         '<div class="login-p">يرجى إدخال بيانات الحساب للوصول إلى لوحة التحكم.</div>' +
         '<div id="loginError" class="error-text" style="display:none;"></div>' +
-        '<div class="field"><label>اسم المستخدم</label><input class="input" id="loginUser" placeholder="مثال: Abdullh H"></div>' +
-        '<div class="field"><label>كلمة المرور</label><input class="input" id="loginPass" type="password" placeholder="••••••"></div>' +
+        '<div class="field"><label>اسم المستخدم</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><input class="input login-has-icon" id="loginUser" placeholder="مثال: Abdullh H"></div></div>' +
+        '<div class="field"><label>كلمة المرور</label><div class="login-input-wrap"><svg class="login-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input class="input login-has-icon login-pass-end" id="loginPass" type="password" placeholder="••••••"><button class="login-pass-toggle" id="loginPassToggle" type="button" tabindex="-1" title="إظهار/إخفاء كلمة المرور"><svg id="loginEyeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>' +
         ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
           '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
             '<option value="">اختر اسم المدرسة</option>' +
@@ -3400,6 +3426,17 @@ function showProfileModal(){
 function bindLogin(){
   const themeBtn = document.querySelector('[data-action="toggleTheme"]');
   if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+  const passToggle = document.getElementById('loginPassToggle');
+  if (passToggle){
+    var EYE = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    var EYE_OFF = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+    passToggle.addEventListener('click', function(){
+      var passInput = document.getElementById('loginPass');
+      var eyeIcon = document.getElementById('loginEyeIcon');
+      if (passInput.type === 'password'){ passInput.type = 'text'; eyeIcon.innerHTML = EYE_OFF; }
+      else { passInput.type = 'password'; eyeIcon.innerHTML = EYE; }
+    });
+  }
   const btn = document.querySelector('[data-action="doLogin"]');
   btn.addEventListener('click', async function(){
     const u = document.getElementById('loginUser').value.trim();
