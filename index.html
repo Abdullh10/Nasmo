@@ -2973,7 +2973,7 @@ function blankData(formType){
     case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], descriptionItems:[], descriptionOther:'', recommendationItems:[], recommendationOther:'', parentNote:'' };
     case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'' };
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
-    case 'plcMeetingMinutes': return { school:State.user.school, plc:'', date:today, time:'', meetingType:'اجتماع دوري', attendees:[ {name:'', spec:'', present:true} ], agenda:[''], summary:'', decisions:[ {decision:'', responsible:'', deadline:''} ] };
+    case 'plcMeetingMinutes': { const _plcComm = (State.communitiesCache||[]).find(function(c){ return c.id===State.user.community_id; }); return { school:State.user.school, plc:(_plcComm?_plcComm.name:''), date:today, time:'', meetingType:'اجتماع دوري', attendees:[{name:'',spec:'',present:true}], agenda:[''], summary:'', decisions:[{decision:'',responsible:'',deadline:''}] }; }
     case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
     case 'plcSelfEval': return { school:State.user.school, plc:'', semester:'', criteria:blankSelfEvalCriteria(), reflection:'' };
     case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
@@ -10448,6 +10448,41 @@ function renderGroupPlan(d, ro, students){
   );
 }
 
+const PLC_AGENDA_PRESETS = [
+  'مناقشة بيانات الأداء الأكاديمي للفصل الدراسي الحالي',
+  'عرض وتحليل نتائج الاختبارات التكوينية',
+  'مراجعة تقدم الطلاب نحو الأهداف المشتركة',
+  'متابعة تنفيذ الخطة العلاجية الجماعية',
+  'مناقشة استراتيجيات التدريس الفعّال',
+  'مشاركة ممارسات التدريس والدروس المستفادة',
+  'تحديد الطلاب المحتاجين لدعم إضافي',
+  'مناقشة ممارسات التقويم وتوثيق الإتقان',
+  'التخطيط للوحدة الدراسية القادمة',
+  'مناقشة إجراءات دعم الطلاب المتقدمين (الإثراء)',
+  'مراجعة التزام الفريق بالمناهج والتسلسل الدراسي',
+  'متابعة قرارات الاجتماع السابق',
+];
+const PLC_SUMMARY_PRESETS = [
+  'تمت مناقشة بيانات الأداء وتحديد الطلاب المحتاجين للدعم',
+  'اتفق الفريق على استراتيجيات تدريسية مشتركة لتحسين الاستيعاب',
+  'استعرض الفريق نتائج الاختبارات التكوينية وحدد نقاط الضعف',
+  'تمت مراجعة التقدم نحو الأهداف وتعديل خطة الدعم',
+  'ناقش الفريق ممارسات التقييم ووثّق مستويات الإتقان',
+  'شارك الأعضاء تجاربهم الناجحة واستراتيجياتهم الفعّالة',
+  'تمت مراجعة تقدم الطلاب ورسم الخطوات العلاجية القادمة',
+  'ناقش الفريق أعمال الطلاب والشواهد وتوصّل لتوصيات مشتركة',
+];
+const PLC_DECISION_PRESETS = [
+  'إعداد اختبار تكويني مشترك لقياس مستوى الإتقان',
+  'تطوير خطة علاجية للطلاب الذين لم يحققوا الإتقان',
+  'تطبيق استراتيجية تدريسية موحدة في الوحدة القادمة',
+  'توحيد أدوات التقويم ومعايير تقدير المستوى',
+  'مشاركة نماذج الأوراق والأدوات مع أعضاء الفريق',
+  'إحالة الطلاب المحتاجين للدعم إلى المرشد الطلابي',
+  'متابعة تقدم الطلاب وإعداد تقرير للاجتماع القادم',
+  'تنسيق جدول الدروس التوضيحية للفصل القادم',
+  'إعداد أنشطة إثرائية للطلاب المتقدمين',
+];
 const INDICATOR_DESCRIPTION_OPTIONS = [
   'مناقشة موضوع تربوي مرتبط بالممارسات التعليمية',
   'تبادل الخبرات والتجارب التعليمية بين المعلمين',
@@ -10696,6 +10731,16 @@ function renderModelLesson(d, ro, teachers){
 }
 
 function renderPlcMeeting(d, ro, teachers){
+  /* قائمة المجتمعات */
+  const schoolCommunities = (State.communitiesCache||[]).filter(function(c){ return c.school===(d.school||State.user.school); });
+  const communityField = ro
+    ? inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:true})
+    : '<div class="field"><label>مجتمع التعلم المهني</label><select class="input" data-field="plc"><option value="">— اختر المجتمع —</option>'+schoolCommunities.map(function(c){ return '<option value="'+esc(c.name)+'" '+(d.plc===c.name?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select></div>';
+
+  /* datalists للاقتراحات */
+  const agendaDatalist = ro ? '' : '<datalist id="plcAgendaList">'+PLC_AGENDA_PRESETS.map(function(p){ return '<option value="'+esc(p)+'">'; }).join('')+'</datalist>';
+  const decisionDatalist = ro ? '' : '<datalist id="plcDecisionList">'+PLC_DECISION_PRESETS.map(function(p){ return '<option value="'+esc(p)+'">'; }).join('')+'</datalist>';
+
   const attRows = d.attendees.map(function(a,i){
     return (
       '<tr><td>'+teacherSelectInlineHtml('attendees.'+i+'.name', a.name, teachers, ro)+'</td>' +
@@ -10706,20 +10751,32 @@ function renderPlcMeeting(d, ro, teachers){
     );
   }).join('');
   const agenda = d.agenda.map(function(a,i){
-    return '<div style="display:flex;gap:8px;margin-bottom:8px;"><span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span><input class="input" data-field="agenda.'+i+'" value="'+esc(a)+'" '+(ro?'disabled':'')+' style="flex:1;">'+(ro?'':'<button class="rmv" data-action="removeRow" data-list="agenda" data-idx="'+i+'">✕</button>')+'</div>';
+    return '<div style="display:flex;gap:8px;margin-bottom:8px;"><span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span><input class="input" data-field="agenda.'+i+'" value="'+esc(a)+'" '+(ro?'disabled':'list="plcAgendaList" placeholder="اختر من القائمة أو اكتب يدوياً"')+' style="flex:1;">'+(ro?'':'<button class="rmv" data-action="removeRow" data-list="agenda" data-idx="'+i+'">✕</button>')+'</div>';
   }).join('');
   const decisions = d.decisions.map(function(dec,i){
     return (
-      '<tr><td><input class="input" data-field="decisions.'+i+'.decision" value="'+esc(dec.decision)+'" '+(ro?'disabled':'')+'></td>' +
+      '<tr><td><input class="input" data-field="decisions.'+i+'.decision" value="'+esc(dec.decision)+'" '+(ro?'disabled':'list="plcDecisionList" placeholder="اختر من القائمة أو اكتب يدوياً"')+'></td>' +
       '<td><input class="input" data-field="decisions.'+i+'.responsible" value="'+esc(dec.responsible)+'" '+(ro?'disabled':'')+'></td>' +
       '<td>'+hijriDateInputHtml('data-field="decisions.'+i+'.deadline"', dec.deadline, ro)+'</td>' +
       (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="decisions" data-idx="'+i+'">✕</button></td>') +
       '</tr>'
     );
   }).join('');
+  /* قسم ملخص النقاش مع قائمة الاقتراحات */
+  const summarySection = ro
+    ? inputField('','summary', d.summary, {type:'textarea', readonly:true})
+    : '<div class="field">' +
+        '<label style="display:flex;justify-content:space-between;align-items:center;">ملخص النقاش <span style="font-weight:400;color:var(--muted);font-size:11.5px;">اختر اقتراحاً أو اكتب يدوياً</span></label>' +
+        '<select id="plcSummaryPreset" class="input" style="margin-bottom:8px;" data-action="fillFromPreset" data-target="summary">' +
+          '<option value="">— اقتراحات —</option>' +
+          PLC_SUMMARY_PRESETS.map(function(p){ return '<option value="'+esc(p)+'">'+esc(p)+'</option>'; }).join('') +
+        '</select>' +
+        '<textarea class="input" data-field="summary" rows="3" placeholder="أكمل الملخص هنا…">'+esc(d.summary)+'</textarea>' +
+      '</div>';
   return (
+    agendaDatalist + decisionDatalist +
     '<div class="field-grid cols-4">' +
-      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:ro}) +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + communityField +
       inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) + inputField('الوقت','time',d.time,{type:'time',readonly:ro}) +
     '</div>' +
     '<div class="field"><label>نوع اللقاء</label>'+radioGroup('meetingType', ['اجتماع دوري','حلقة نقاش','لقاء تدريبي','أخرى'], d.meetingType)+'</div>' +
@@ -10727,7 +10784,7 @@ function renderPlcMeeting(d, ro, teachers){
     '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:45%;">الاسم</th><th>التخصص</th><th style="width:80px;">حاضر</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+attRows+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="attendees">+ إضافة مشارك</button>') +
     '<div class="block-title"><span class="dot"></span> جدول الأعمال</div>' + agenda + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="agenda">+ إضافة بند</button>') +
-    '<div class="block-title"><span class="dot"></span> ملخص النقاش</div>' + inputField('','summary', d.summary, {type:'textarea', readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> ملخص النقاش</div>' + summarySection +
     '<div class="block-title"><span class="dot"></span> القرارات والمتابعات</div>' +
     '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:45%;">القرار</th><th style="width:30%;">المسؤول</th><th>الموعد</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+decisions+'</tbody></table></div>' +
     (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="decisions">+ إضافة قرار</button>')
@@ -10970,6 +11027,18 @@ function bindEditor(){
       arr.splice(idx,1);
       setPath(EditorState.data, list, arr);
       render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="fillFromPreset"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      if (!el.value) return;
+      var target = el.getAttribute('data-target');
+      var current = getPath(EditorState.data, target) || '';
+      var newVal = current ? current + '\n' + el.value : el.value;
+      setPath(EditorState.data, target, newVal);
+      var targetEl = document.querySelector('[data-field="'+target+'"]');
+      if (targetEl) targetEl.value = newVal;
+      el.value = '';
     });
   });
   document.querySelectorAll('[data-action="addDropdownItem"]').forEach(function(el){
