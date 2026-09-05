@@ -3528,6 +3528,7 @@ function dashTabsHtml(){
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
+      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
@@ -5007,6 +5008,15 @@ function bindPrincipalDemoLessons(){
   const statusSel = document.getElementById('pdlStatusFilter');
   if (statusSel) statusSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.statusFilter = this.value; await render(); bindPrincipalDemoLessons(); });
 }
+async function screenPrincipalGifted(){
+  const reports = await DB.listGiftedReports(State.user.school, { forPrincipal: true }).catch(function(){ return []; });
+  return (
+    '<h2 style="font-size:18px;margin-bottom:12px;">⭐ بلاغات رعاية الموهوبين</h2>' +
+    '<div style="color:var(--muted);font-size:13px;margin-bottom:16px;">البلاغات المرسلة إليك من المعلمين</div>' +
+    giftedReportsListHtml(reports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.')
+  );
+}
+
 function bindNotificationsPanel(){
   document.querySelectorAll('[data-action="pnotifFilter"]').forEach(function(el){
     el.addEventListener('click', async function(){ NotifPanelUI.filter = el.getAttribute('data-val'); await render(); bindNotificationsPanel(); });
@@ -6675,10 +6685,11 @@ function counselingPresetField(label, id, currentVal, presets, rows, placeholder
 }
 
 async function screenCounselorCases(){
-  const [cases, schoolUsers, schoolStudents] = await Promise.all([
+  const [cases, schoolUsers, schoolStudents, counselorGiftedReports] = await Promise.all([
     DB.listCounselingCases(State.user.school),
     DB.listUsers({ school: State.user.school }),
-    DB.listStudents({ school: State.user.school })
+    DB.listStudents({ school: State.user.school }),
+    DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; })
   ]);
   const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||u.role==='principal'; })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
@@ -6865,6 +6876,12 @@ async function screenCounselorCases(){
     );
   })() : '';
 
+  const giftedTab = CounselorUI.tab === 'gifted' ? (
+    '<div style="margin-top:4px;">' +
+      giftedReportsListHtml(counselorGiftedReports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.') +
+    '</div>'
+  ) : '';
+
   const casesTab = CounselorUI.tab === 'cases' ? (
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
       '<select id="caseStatusFilter" class="input" style="max-width:160px;">' +
@@ -6932,7 +6949,7 @@ async function screenCounselorCases(){
     '<div style="margin:12px 0;">' +
       '<button class="btn btn-primary" data-action="addCase">+ إضافة حالة</button>' +
     '</div>' +
-    staleAlert + upcomingHtml + casesTab + statsTab + profileHtml + caseModal
+    staleAlert + upcomingHtml + casesTab + giftedTab + statsTab + profileHtml + caseModal
   );
 }
 
@@ -7445,6 +7462,9 @@ async function screenDashboard(){
   }
   if (State.dashTab==='principalDemoLessons' && State.user.role==='principal'){
     return await screenPrincipalDemoLessons();
+  }
+  if (State.dashTab==='principalGifted' && State.user.role==='principal'){
+    return await screenPrincipalGifted();
   }
   if (State.dashTab==='principalNotif' && State.user.role==='principal'){
     return await screenNotificationsPanel();
@@ -8076,7 +8096,7 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents,
   );
 }
 async function screenTeacherTasks(){
-  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports] = await Promise.all([
+  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
     DB.listTasks({ school: State.user.school }),
     DB.listGoals({ school: State.user.school }),
@@ -8085,7 +8105,8 @@ async function screenTeacherTasks(){
     DB.listCounselingRecsForTeacher(State.user.school, State.user.full_name).catch(function(){ return []; }),
     (_teacherStudentProfile
       ? DB.listGiftedReports(State.user.school, _teacherStudentProfile).catch(function(){ return []; })
-      : Promise.resolve([]))
+      : Promise.resolve([])),
+    DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; })
   ]);
 
   /* — جلسات الخطة الفردية — */
@@ -8591,10 +8612,17 @@ async function screenTeacherTasks(){
     '<div class="tab-bar" style="margin-bottom:14px;">' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='main'?'active':'')+'" data-action="teacherDashTab" data-tab="main">لوحتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">أجندة الأسبوع</button>' +
+      '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ بلاغاتي</button>' +
       (_teacherStudentProfile ? '<button class="tab '+(TeacherFormsUI.dashTab==='profile'?'active':'')+'" data-action="teacherDashTab" data-tab="profile">ملف: '+esc(_teacherStudentProfile)+'</button>' : '') +
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
     (TeacherFormsUI.dashTab==='agenda' ? weekAgendaHtml : '') +
+    (TeacherFormsUI.dashTab==='myGifted' ?
+      '<div style="margin-top:4px;">' +
+        '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">⭐ بلاغاتي للموهوبين ('+myGiftedReports.length+')</div>' +
+        giftedReportsListHtml(myGiftedReports, 'لم تُرسل أي بلاغات موهوبين بعد.') +
+      '</div>'
+    : '') +
     (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '')
   );
 }
@@ -8747,7 +8775,8 @@ function bindTeacherTasks(){
   });
 
   /* رعاية الموهوبين — إرسال الإشعار */
-  const sendGiftedBtn = document.querySelector('[data-action="sendGiftedNotif"]');
+  const _sendGiftedRaw = document.querySelector('[data-action="sendGiftedNotif"]');
+  const sendGiftedBtn = _sendGiftedRaw ? (function(){ const c=_sendGiftedRaw.cloneNode(true); _sendGiftedRaw.parentNode.replaceChild(c,_sendGiftedRaw); return c; })() : null;
   if (sendGiftedBtn) sendGiftedBtn.addEventListener('click', async function(){
     const selEl = document.getElementById('giftedStudentSel');
     const studentName = (selEl ? selEl.value : '').trim();
