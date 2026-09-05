@@ -4711,7 +4711,9 @@ function goalReviewModalHtml(g){
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>تقييم الهدف: '+esc(g.title)+'</h3>' +
         (g.principal_status ? ('<p>'+principalReviewBadgeHtml(g)+'</p>') : '') +
-        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('glRating', g.principal_rating)+'</div>' +
+        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('glRating', g.principal_rating)+
+          '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7;">90–100: خطة مثالية قابلة للنشر · 75–89: جيدة مع ملاحظات طفيفة · 60–74: تحتاج تحسيناً في عنصر واحد · أقل من 60: ترجع للمراجعة الشاملة</div>' +
+        '</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="glNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(g.principal_note||'')+'</textarea><div style="font-size:11px;color:var(--muted);margin-top:4px;">* مطلوب عند الإرجاع</div></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-gold btn-block" data-action="approveGoal">✓ اعتماد وتقييم</button>' +
@@ -6713,6 +6715,29 @@ async function screenCounselorCases(){
     '</table></div></div>'
   ) : '';
 
+  var totalCases = cases.length;
+  var openCases = cases.filter(function(c){ return c.status !== 'closed'; }).length;
+  var closedThisMonth = cases.filter(function(c){
+    if (c.status !== 'closed') return false;
+    var d = new Date(c.updated_at||c.created_at);
+    var now = new Date();
+    return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+  }).length;
+  var kpiHtml = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">' +
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+      '<div style="font-size:24px;font-weight:800;color:var(--navy);">'+totalCases+'</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px;">إجمالي الحالات</div>' +
+    '</div>' +
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+      '<div style="font-size:24px;font-weight:800;color:var(--pending);">'+openCases+'</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px;">تحت المتابعة</div>' +
+    '</div>' +
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+      '<div style="font-size:24px;font-weight:800;color:var(--success);">'+closedThisMonth+'</div>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px;">أُغلقت هذا الشهر</div>' +
+    '</div>' +
+  '</div>';
+
   return (
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المرشد الطلابي</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:16px;">'+esc(State.user.school)+'</div>' +
@@ -6727,6 +6752,7 @@ async function screenCounselorCases(){
       '<button class="tab '+(CounselorUI.tab==='stats'?'active':'')+'" data-action="counselorTab" data-tab="stats">إحصائيات</button>' +
       (CounselorUI.studentProfile ? '<button class="tab '+(CounselorUI.tab==='profile'?'active':'')+'" data-action="counselorTab" data-tab="profile">ملف: '+esc(CounselorUI.studentProfile)+'</button>' : '') +
     '</div>' +
+    kpiHtml +
     '<div style="margin:12px 0;">' +
       '<button class="btn btn-primary" data-action="addCase">+ إضافة حالة</button>' +
     '</div>' +
