@@ -8512,7 +8512,8 @@ async function screenTeacherTasks(){
   );
 
   /* — نافذة رعاية الموهوبين — */
-  const studentOptions = myStudents.map(function(s){
+  const giftedDropdownStudents = myStudents.length ? myStudents : schoolStudents;
+  const studentOptions = giftedDropdownStudents.map(function(s){
     return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+' — '+esc(s.grade||s.student_grade||'')+(s.section||s.student_section?' / '+esc(s.section||s.student_section||''):'')+'</option>';
   }).join('');
   const GIFTED_INDICATORS = ['تفوق ملحوظ في المادة','سرعة استيعاب وتعلم','إبداع وأصالة في الأفكار','مبادرة وقيادة','فضول علمي مرتفع','مهارة تحليل وحل مشكلات','إنجازات في مسابقات','تميّز في الأنشطة اللاصفية'];
@@ -8521,10 +8522,8 @@ async function screenTeacherTasks(){
       '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">' +
         '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:var(--golden,#b8860b);">⭐</span> إشعار رعاية الموهوبين</h3>' +
         '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">وثّق موهبة الطالب وأرسل إشعاراً للجهات المعنية ليُحفظ في سجله الدائم.</p>' +
-        '<div class="field"><label>اسم الطالب</label>' +
-          (myStudents.length
-            ? '<select class="input" id="giftedStudentSel"><option value="">— اختر طالباً —</option>'+studentOptions+'</select>'
-            : '<input class="input" id="giftedStudentName" placeholder="اكتب اسم الطالب" maxlength="120">') +
+        '<div class="field"><label>اسم الطالب'+(myStudents.length ? '' : ' <span style="font-size:11px;color:var(--muted);">(طلاب المدرسة)</span>')+'</label>' +
+          '<select class="input" id="giftedStudentSel"><option value="">— اختر طالباً —</option>'+studentOptions+'</select>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
           '<div class="field" style="margin:0;"><label>نوع الموهبة</label>' +
@@ -8751,8 +8750,7 @@ function bindTeacherTasks(){
   const sendGiftedBtn = document.querySelector('[data-action="sendGiftedNotif"]');
   if (sendGiftedBtn) sendGiftedBtn.addEventListener('click', async function(){
     const selEl = document.getElementById('giftedStudentSel');
-    const nameEl = document.getElementById('giftedStudentName');
-    const studentName = (selEl ? selEl.value : (nameEl ? nameEl.value.trim() : '')).trim();
+    const studentName = (selEl ? selEl.value : '').trim();
     if (!studentName){ toast('يرجى اختيار اسم الطالب.'); return; }
     const giftedType = (document.getElementById('giftedType')||{}).value || 'أكاديمية';
     const performance = (document.getElementById('giftedPerformance')||{}).value || '';
