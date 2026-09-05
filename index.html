@@ -7817,6 +7817,7 @@ function bindCoordinatorMyStudents(){
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '' }; /* dashTab: 'main'|'agenda'|'profile' */
+let GiftedUI = { modalOpen: false };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
 let _teacherAllStudentsCache = [];
@@ -8411,6 +8412,7 @@ async function screenTeacherTasks(){
         '<button class="btn btn-ghost btn-sm" data-action="goExamAnalysis">📊 تحليل درجات الاختبار</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
         (State.user.community_id ? '<button class="btn btn-ghost btn-sm" data-action="teacherContactCoord">تواصل مع المنسق</button>' : '') +
+        '<button class="btn btn-ghost btn-sm" data-action="openGiftedModal" style="color:var(--golden,#b8860b);">⭐ رعاية الموهوبين</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="teacherContactPrincipal">تواصل مع المدير</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="teacherPrintReport">طباعة التقرير الدوري</button>' +
         '<button class="btn btn-primary" data-action="goPicker">+ إنشاء نموذج جديد</button>' +
@@ -8437,7 +8439,49 @@ async function screenTeacherTasks(){
     (sessCards ? ('<div class="block-title" style="margin-top:22px;"><span class="dot"></span> متابعات أسبوعية ضمن اتفاقيات الخطة الفردية ('+completedSessions+'/'+sessTasks.length+' مكتملة)</div>' + sessCards) : '')
   );
 
+  /* — نافذة رعاية الموهوبين — */
+  const studentOptions = myStudents.map(function(s){
+    return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+' — '+esc(s.grade||s.student_grade||'')+(s.section||s.student_section?' / '+esc(s.section||s.student_section||''):'')+'</option>';
+  }).join('');
+  const giftedModal = GiftedUI.modalOpen ? (
+    '<div class="modal-bg" data-action="closeGiftedModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">' +
+        '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:var(--golden,#b8860b);">⭐</span> إشعار رعاية الموهوبين</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">أدخل اسم الطالب الموهوب وملاحظاتك ثم اختر من ترسل الإشعار إليه.</p>' +
+        '<div class="field"><label>اسم الطالب</label>' +
+          (myStudents.length
+            ? '<select class="input" id="giftedStudentSel"><option value="">— اختر طالباً —</option>'+studentOptions+'</select>'
+            : '<input class="input" id="giftedStudentName" placeholder="اكتب اسم الطالب" maxlength="120">') +
+        '</div>' +
+        '<div class="field"><label>نوع الموهبة / الملاحظة</label>' +
+          '<select class="input" id="giftedType">' +
+            '<option value="أكاديمية">موهبة أكاديمية</option>' +
+            '<option value="علمية">موهبة علمية / بحثية</option>' +
+            '<option value="إبداعية">موهبة إبداعية / فنية</option>' +
+            '<option value="قيادية">مهارات قيادية</option>' +
+            '<option value="رياضية">موهبة رياضية</option>' +
+            '<option value="أخرى">أخرى</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="field"><label>الملاحظات التفصيلية</label>' +
+          '<textarea class="input" id="giftedNote" rows="4" placeholder="اذكر مؤشرات الموهبة، ومستوى الأداء، وأي توصيات..." style="resize:vertical;"></textarea>' +
+        '</div>' +
+        '<div class="field"><label>إرسال الإشعار إلى</label>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">' +
+            '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToPrincipal" checked> مدير المدرسة</label>' +
+            '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> المرشد الطلابي</label>' +
+          '</div>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="sendGiftedNotif" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">⭐ إرسال الإشعار</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closeGiftedModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
+
   return (
+    giftedModal +
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:12px;">'+esc(State.user.school)+'</div>' +
     kpiHtml +
@@ -8578,6 +8622,64 @@ function bindTeacherTasks(){
         await render(); bindTeacherTasks();
       }catch(e){ toast(arabicError(e)); }
     });
+  });
+
+  /* رعاية الموهوبين — فتح النافذة */
+  const openGiftedBtn = document.querySelector('[data-action="openGiftedModal"]');
+  if (openGiftedBtn) openGiftedBtn.addEventListener('click', async function(){
+    GiftedUI.modalOpen = true;
+    await render(); bindTeacherTasks();
+  });
+
+  /* رعاية الموهوبين — إغلاق النافذة */
+  const closeGiftedBtn = document.querySelector('[data-action="closeGiftedModal"]');
+  if (closeGiftedBtn) closeGiftedBtn.addEventListener('click', async function(){
+    GiftedUI.modalOpen = false;
+    await render(); bindTeacherTasks();
+  });
+  const closeGiftedBg = document.querySelector('[data-action="closeGiftedModalBg"]');
+  if (closeGiftedBg) closeGiftedBg.addEventListener('click', async function(){
+    GiftedUI.modalOpen = false;
+    await render(); bindTeacherTasks();
+  });
+
+  /* رعاية الموهوبين — إرسال الإشعار */
+  const sendGiftedBtn = document.querySelector('[data-action="sendGiftedNotif"]');
+  if (sendGiftedBtn) sendGiftedBtn.addEventListener('click', async function(){
+    const selEl = document.getElementById('giftedStudentSel');
+    const nameEl = document.getElementById('giftedStudentName');
+    const studentName = (selEl ? selEl.value : (nameEl ? nameEl.value.trim() : '')).trim();
+    if (!studentName){ toast('يرجى اختيار اسم الطالب.'); return; }
+    const giftedType = (document.getElementById('giftedType')||{}).value || 'أكاديمية';
+    const note = ((document.getElementById('giftedNote')||{}).value || '').trim();
+    const toPrincipal = document.getElementById('giftedToPrincipal') && document.getElementById('giftedToPrincipal').checked;
+    const toCounselor = document.getElementById('giftedToCounselor') && document.getElementById('giftedToCounselor').checked;
+    if (!toPrincipal && !toCounselor){ toast('يرجى اختيار جهة استلام الإشعار على الأقل.'); return; }
+    sendGiftedBtn.disabled = true;
+    try{
+      const notifTitle = '⭐ طالب موهوب: ' + studentName;
+      const notifBody = 'أبلغ المعلم '+esc(State.user.full_name)+' عن موهبة الطالب '+esc(studentName)+
+        '\nنوع الموهبة: '+esc(giftedType)+
+        (note ? '\nالملاحظات: '+note : '');
+      const targets = [];
+      if (toPrincipal){
+        const principals = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.principal') || [];
+        principals.forEach(function(p){ targets.push(p); });
+      }
+      if (toCounselor){
+        const counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor') || [];
+        counselors.forEach(function(c){ targets.push(c); });
+      }
+      if (!targets.length){ toast('لم يتم العثور على أي حساب للمدير أو المرشد في المدرسة.'); sendGiftedBtn.disabled = false; return; }
+      for (var i = 0; i < targets.length; i++){
+        await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:targets[i].id, type:'general', title:notifTitle, body:notifBody });
+        pushNotify(targets[i].id, notifTitle, 'من المعلم '+State.user.full_name).catch(function(){});
+      }
+      invalidateNotifCache();
+      GiftedUI.modalOpen = false;
+      toast('تم إرسال إشعار رعاية الموهوبين بنجاح.');
+      await render(); bindTeacherTasks();
+    }catch(e){ toast(arabicError(e)); sendGiftedBtn.disabled = false; }
   });
 
   /* طباعة التقرير الدوري */
