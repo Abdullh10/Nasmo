@@ -7082,35 +7082,79 @@ function teacherReferralsTabHtml(cases){
           '<div style="font-size:18px;color:var(--muted);transition:transform .2s;'+(expanded?'transform:rotate(90deg)':'')+'">›</div>' +
         '</div>' +
 
-        /* تفاصيل الإحالات – تظهر عند التوسيع */
+        /* تفاصيل الإحالات – تظهر عند التوسيع (مرتبة من الأقدم للأحدث) */
         (expanded ?
-          '<div style="border-top:1px solid color-mix(in srgb,var(--muted) 20%,transparent);padding:12px 16px;">' +
-            g.cases.map(function(c, idx){
+          '<div style="border-top:1.5px solid color-mix(in srgb,var(--muted) 18%,transparent);padding:16px;">' +
+            g.cases.slice().sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); })
+            .map(function(c, idx){
               var hasResp = c.rec_status==='pending';
-              return '<div style="background:var(--surface-2,#f4f6f8);border-radius:10px;padding:12px 14px;margin-bottom:8px;">' +
-                '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">' +
-                  '<div style="display:flex;align-items:center;gap:6px;">' +
-                    '<span style="font-size:12px;font-weight:700;color:var(--muted);">#'+(idx+1)+'</span>' +
-                    '<span style="font-size:12px;color:var(--muted);">'+fmtDate(c.created_at)+'</span>' +
-                    '<span style="font-size:12px;color:var(--muted);">· المرشد: '+esc(c.counselor_name||'—')+'</span>' +
-                    (hasResp ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 15%,transparent);color:var(--warning,#d97706);border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;">رد معلّق</span>' : '') +
-                  '</div>' +
-                  '<button class="btn btn-ghost btn-sm" data-action="printReferral" data-id="'+esc(c.id||'')+'" data-idx="'+idx+'" data-student="'+esc(g.student_name)+'">🖨 طباعة</button>' +
-                '</div>' +
-                (c.referral_reason
-                  ? '<div style="font-size:12.5px;white-space:pre-wrap;line-height:1.6;background:var(--surface);border-radius:8px;padding:8px 12px;margin-bottom:'+(hasResp?'8':'0')+'px;">'+esc(c.referral_reason)+'</div>'
-                  : '') +
-                (hasResp && c.rec_for_teacher
-                  ? '<div style="background:color-mix(in srgb,var(--warning,#d97706) 10%,var(--surface));border-right:3px solid var(--warning,#d97706);border-radius:8px;padding:10px 12px;margin-bottom:8px;">' +
-                      '<div style="font-size:11.5px;font-weight:700;color:var(--warning,#d97706);margin-bottom:4px;">رد المرشد الطلابي:</div>' +
-                      '<div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">'+esc(c.rec_for_teacher)+'</div>' +
+              var statusColor = hasResp ? 'var(--warning,#d97706)' : c.status==='closed' ? 'var(--muted)' : 'var(--accent,#2563eb)';
+              var statusText  = hasResp ? 'رد المرشد معلّق ●' : c.status==='closed' ? 'مغلقة' : 'قيد الإجراء';
+              return (
+                /* غلاف البطاقة الرسمية */
+                '<div style="border:1.5px solid color-mix(in srgb,'+statusColor+' 35%,transparent);border-radius:12px;overflow:hidden;margin-bottom:14px;">' +
+
+                  /* شريط العنوان */
+                  '<div style="background:color-mix(in srgb,'+statusColor+' 8%,var(--surface-2,#f4f6f8));padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+                    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+                      '<span style="font-size:13px;font-weight:800;color:var(--ink);">📄 إحالة #'+(idx+1)+'</span>' +
+                      '<span style="font-size:12px;color:var(--muted);">'+fmtDate(c.created_at)+'</span>' +
+                      '<span style="font-size:11.5px;font-weight:700;color:'+statusColor+';">'+statusText+'</span>' +
                     '</div>' +
-                    '<button class="btn btn-sm" data-action="ackReferralRec" data-id="'+esc(c.id||'')+'" style="background:var(--warning,#d97706);color:#fff;border:none;font-size:12px;">✓ تسلّمت الرد</button>'
-                  : '') +
-                (c.rec_return_note
-                  ? '<div style="margin-top:6px;font-size:12px;color:var(--muted);"><b>ملاحظة الإعادة:</b> '+esc(c.rec_return_note)+'</div>'
-                  : '') +
-              '</div>';
+                    '<button class="btn btn-ghost btn-sm" data-action="printReferral" data-id="'+esc(c.id||'')+'" data-idx="'+idx+'" data-student="'+esc(g.student_name)+'">🖨 طباعة</button>' +
+                  '</div>' +
+
+                  /* تفاصيل الإحالة */
+                  '<div style="padding:14px 16px;">' +
+
+                    /* معلومات مختصرة في صف */
+                    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px;">' +
+                      '<div style="background:var(--surface);border-radius:8px;padding:8px 12px;">' +
+                        '<div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">الطالب</div>' +
+                        '<div style="font-size:13px;font-weight:700;">'+esc(c.student_name||g.student_name)+'</div>' +
+                      '</div>' +
+                      (c.student_grade ? '<div style="background:var(--surface);border-radius:8px;padding:8px 12px;">' +
+                        '<div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">الصف / الشعبة</div>' +
+                        '<div style="font-size:13px;font-weight:700;">'+esc(c.student_grade||'')+(c.student_section?' / '+esc(c.student_section):'')+'</div>' +
+                      '</div>' : '') +
+                      '<div style="background:var(--surface);border-radius:8px;padding:8px 12px;">' +
+                        '<div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">المرشد المحال إليه</div>' +
+                        '<div style="font-size:13px;font-weight:700;">'+esc(c.counselor_name||'—')+'</div>' +
+                      '</div>' +
+                    '</div>' +
+
+                    /* نص الإحالة الرسمي */
+                    (c.referral_reason
+                      ? '<div style="margin-bottom:'+(hasResp&&c.rec_for_teacher?'14':'0')+'px;">' +
+                          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">نص الإحالة الرسمي</div>' +
+                          '<div style="background:var(--surface);border:1px solid color-mix(in srgb,var(--muted) 20%,transparent);border-radius:8px;padding:12px 14px;font-size:13px;white-space:pre-wrap;line-height:1.8;font-family:inherit;">'+esc(c.referral_reason)+'</div>' +
+                        '</div>'
+                      : '') +
+
+                    /* رد المرشد */
+                    (c.rec_for_teacher
+                      ? '<div style="background:color-mix(in srgb,var(--warning,#d97706) 8%,var(--surface));border:1.5px solid color-mix(in srgb,var(--warning,#d97706) 40%,transparent);border-radius:10px;padding:14px 16px;margin-bottom:'+(hasResp?'12':'0')+'px;">' +
+                          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+                            '<span style="font-size:16px;">📩</span>' +
+                            '<span style="font-size:12px;font-weight:800;color:var(--warning,#d97706);">رد المرشد الطلابي</span>' +
+                          '</div>' +
+                          '<div style="font-size:13.5px;white-space:pre-wrap;line-height:1.8;font-family:inherit;">'+esc(c.rec_for_teacher)+'</div>' +
+                        '</div>'
+                      : '') +
+
+                    /* زر التسلّم */
+                    (hasResp
+                      ? '<button class="btn btn-sm" data-action="ackReferralRec" data-id="'+esc(c.id||'')+'" style="background:var(--warning,#d97706);color:#fff;border:none;font-size:12.5px;padding:7px 16px;">✓ تسلّمت الرد</button>'
+                      : '') +
+
+                    /* ملاحظة الإعادة */
+                    (c.rec_return_note
+                      ? '<div style="margin-top:10px;font-size:12px;color:var(--muted);border-top:1px dashed color-mix(in srgb,var(--muted) 25%,transparent);padding-top:8px;"><b>ملاحظة الإعادة:</b> '+esc(c.rec_return_note)+'</div>'
+                      : '') +
+
+                  '</div>' +
+                '</div>'
+              );
             }).join('') +
           '</div>'
         : '') +
