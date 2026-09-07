@@ -2262,6 +2262,16 @@ const DB = {
     return list.filter(function(c){ return c.school===school && c.referred_by_name===teacherName; })
       .sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
   },
+  async acknowledgeRec(id){
+    if (isRemote()){
+      await remoteFetch('counseling_cases?id=eq.' + encodeURIComponent(id),
+        { method:'PATCH', body:{ rec_status: '' }, prefer:'return=minimal' });
+      return;
+    }
+    const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
+    const idx = list.findIndex(function(c){ return c.id===id; });
+    if (idx>=0){ list[idx].rec_status=''; localStorage.setItem(LS_COUNSELING, JSON.stringify(list)); }
+  },
   async createCounselingCase(obj){
     obj.created_at = nowIso(); obj.updated_at = nowIso();
     if (isRemote()){
@@ -6968,66 +6978,149 @@ async function screenCounselorCases(){
 }
 
 function teacherReferralsTabHtml(cases){
-  if (!cases || !cases.length){
-    return '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">لم تُسجَّل أي إحالات بعد.</div>';
-  }
-  // Sort: counselor responded & teacher pending ack first, then open/in_progress, then closed
-  const withResponse = cases.filter(function(c){ return c.rec_status==='pending'; });
-  const open = cases.filter(function(c){ return c.rec_status!=='pending' && c.status!=='closed'; });
-  const closed = cases.filter(function(c){ return c.rec_status!=='pending' && c.status==='closed'; });
-  const sorted = withResponse.concat(open, closed);
+  /* ---- إحصاءات سريعة ---- */
+  var allCases  = cases || [];
+  var pendingCount = allCases.filter(function(c){ return c.rec_status==='pending'; }).length;
+  var openCount    = allCases.filter(function(c){ return c.status!=='closed'; }).length;
 
-  var html = '<div style="margin-top:4px;">' +
-    '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">📋 إحالاتي للمرشد الطلابي ('+cases.length+')</div>';
+  /* ---- تصفية حسب الفلتر ---- */
+  var filter = (typeof _teacherReferralSort !== 'undefined' && _teacherReferralSort) || 'pending';
+  var filtered = allCases;
+  if (filter==='open')    filtered = allCases.filter(function(c){ return c.status!=='closed'; });
+  if (filter==='pending') filtered = allCases.slice(); /* الكل مع الردود أولاً */
 
-  if (withResponse.length){
-    html += '<div style="font-size:12px;font-weight:700;color:var(--warning,#d97706);margin-bottom:8px;">● ردود المرشد – تحتاج مراجعة ('+withResponse.length+')</div>';
-  }
+  /* ---- تجميع حسب الطالب ---- */
+  var groups = {};
+  filtered.forEach(function(c){
+    var key = (c.student_name||'—').trim();
+    if (!groups[key]) groups[key] = { student_name:key, grade:c.student_grade||'', section:c.student_section||'', cases:[] };
+    groups[key].cases.push(c);
+  });
+  var groupList = Object.values(groups);
 
-  sorted.forEach(function(c){
-    var hasResponse = c.rec_status==='pending';
-    var isClosed = c.status==='closed';
-    var borderColor = hasResponse ? 'var(--warning,#d97706)' : isClosed ? 'var(--muted)' : 'var(--accent,#2563eb)';
-    var bgColor = hasResponse
-      ? 'color-mix(in srgb,var(--warning,#d97706) 6%,var(--surface))'
-      : isClosed
-        ? 'color-mix(in srgb,var(--muted) 5%,var(--surface))'
-        : 'var(--surface)';
-    var statusLabel = isClosed
-      ? '<span style="background:color-mix(in srgb,var(--muted) 15%,transparent);color:var(--muted);border-radius:6px;padding:1px 8px;font-size:11px;">مغلقة</span>'
-      : hasResponse
-        ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 15%,transparent);color:var(--warning,#d97706);border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;">رد المرشد ✓</span>'
-        : '<span style="background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);color:var(--accent,#2563eb);border-radius:6px;padding:1px 8px;font-size:11px;">قيد الإجراء</span>';
-
-    html += '<div style="background:'+bgColor+';border:1px solid '+borderColor+';border-radius:12px;padding:14px 18px;margin-bottom:10px;">' +
-      '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' +
-        '<div style="flex:1;min-width:0;">' +
-          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">' +
-            '<span style="font-weight:800;font-size:14px;">'+esc(c.student_name||'—')+'</span>' +
-            (c.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(c.student_grade)+'</span>' : '') +
-            statusLabel +
-          '</div>' +
-          (c.referral_reason ? '<div style="font-size:12.5px;margin-bottom:6px;"><b>سبب الإحالة:</b> '+esc(c.referral_reason)+'</div>' : '') +
-          '<div style="font-size:12px;color:var(--muted);margin-bottom:'+(hasResponse?'8':'0')+'px;">المرشد: '+esc(c.counselor_name||'—')+'</div>' +
-          (hasResponse && c.rec_for_teacher
-            ? '<div style="background:color-mix(in srgb,var(--warning,#d97706) 10%,var(--surface-2,#f4f6f8));border-right:3px solid var(--warning,#d97706);border-radius:8px;padding:10px 12px;">' +
-                '<div style="font-size:11.5px;font-weight:700;color:var(--warning,#d97706);margin-bottom:4px;">رد المرشد الطلابي:</div>' +
-                '<div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">'+esc(c.rec_for_teacher)+'</div>' +
-              '</div>'
-            : '') +
-          (c.rec_return_note
-            ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);"><b>ملاحظة الإعادة:</b> '+esc(c.rec_return_note)+'</div>'
-            : '') +
-        '</div>' +
-        '<div style="text-align:start;flex-shrink:0;">' +
-          '<div style="font-size:11.5px;color:var(--muted);">'+fmtDate(c.created_at)+'</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
+  /* ---- ترتيب المجموعات ---- */
+  groupList.sort(function(a,b){
+    var aPending = a.cases.some(function(c){ return c.rec_status==='pending'; });
+    var bPending = b.cases.some(function(c){ return c.rec_status==='pending'; });
+    if (aPending !== bPending) return aPending ? -1 : 1;
+    if (filter==='name') return a.student_name.localeCompare(b.student_name, 'ar');
+    var aDate = Math.max.apply(null, a.cases.map(function(c){ return new Date(c.created_at||0).getTime(); }));
+    var bDate = Math.max.apply(null, b.cases.map(function(c){ return new Date(c.created_at||0).getTime(); }));
+    return bDate - aDate;
   });
 
-  html += '</div>';
-  return html;
+  if (!groupList.length){
+    return '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">لم تُسجَّل أي إحالات بعد.</div>';
+  }
+
+  /* ---- رأس الإحصاءات ---- */
+  var statsHtml = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
+    '<div style="flex:1;min-width:120px;background:color-mix(in srgb,var(--accent,#2563eb) 8%,var(--surface));border-radius:10px;padding:10px 14px;">' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">إجمالي الطلاب المُحالين</div>' +
+      '<div style="font-size:20px;font-weight:900;color:var(--accent,#2563eb);">'+Object.keys(groups).length+'</div>' +
+    '</div>' +
+    '<div style="flex:1;min-width:120px;background:color-mix(in srgb,var(--accent,#2563eb) 5%,var(--surface));border-radius:10px;padding:10px 14px;">' +
+      '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">إحالات مفتوحة</div>' +
+      '<div style="font-size:20px;font-weight:900;">'+openCount+'</div>' +
+    '</div>' +
+    (pendingCount ? '<div style="flex:1;min-width:120px;background:color-mix(in srgb,var(--warning,#d97706) 10%,var(--surface));border:1.5px solid color-mix(in srgb,var(--warning,#d97706) 30%,transparent);border-radius:10px;padding:10px 14px;">' +
+      '<div style="font-size:11px;color:var(--warning,#d97706);margin-bottom:2px;">● ردود معلّقة</div>' +
+      '<div style="font-size:20px;font-weight:900;color:var(--warning,#d97706);">'+pendingCount+'</div>' +
+    '</div>' : '') +
+  '</div>';
+
+  /* ---- شريط التصفية ---- */
+  function filterBtn(val, label){
+    var active = filter===val;
+    return '<button class="btn btn-sm" data-action="referralFilter" data-filter="'+val+'" style="'+(active?'background:var(--accent,#2563eb);color:#fff;border-color:var(--accent,#2563eb);':'')+'">'+label+'</button>';
+  }
+  var filterBar = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">' +
+    filterBtn('pending','الأحدث + ردود أولاً') +
+    filterBtn('open','غير المغلقة فقط') +
+    filterBtn('name','ترتيب أبجدي') +
+  '</div>';
+
+  /* ---- بطاقات الطلاب ---- */
+  var cardsHtml = '';
+  groupList.forEach(function(g){
+    var hasPending = g.cases.some(function(c){ return c.rec_status==='pending'; });
+    var allClosed  = g.cases.every(function(c){ return c.status==='closed'; });
+    var expanded   = (typeof _teacherReferralExpanded !== 'undefined') && _teacherReferralExpanded === g.student_name;
+
+    var borderColor = hasPending ? 'color-mix(in srgb,var(--warning,#d97706) 50%,transparent)'
+                    : allClosed  ? 'color-mix(in srgb,var(--muted) 30%,transparent)'
+                                 : 'color-mix(in srgb,var(--accent,#2563eb) 30%,transparent)';
+    var bgColor = hasPending ? 'color-mix(in srgb,var(--warning,#d97706) 5%,var(--surface))'
+               : allClosed  ? 'color-mix(in srgb,var(--muted) 4%,var(--surface))'
+                            : 'var(--surface)';
+
+    /* بادج الحالة */
+    var badge = hasPending
+      ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 18%,transparent);color:var(--warning,#d97706);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">● رد المرشد – يحتاج مراجعة</span>'
+      : allClosed
+        ? '<span style="background:color-mix(in srgb,var(--muted) 15%,transparent);color:var(--muted);border-radius:20px;padding:2px 10px;font-size:11.5px;">مغلقة</span>'
+        : '<span style="background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);color:var(--accent,#2563eb);border-radius:20px;padding:2px 10px;font-size:11.5px;">قيد الإجراء</span>';
+
+    var latestDate = g.cases.reduce(function(max,c){ return c.created_at > max ? c.created_at : max; }, '');
+
+    cardsHtml +=
+      '<div style="background:'+bgColor+';border:1.5px solid '+borderColor+';border-radius:12px;margin-bottom:10px;overflow:hidden;">' +
+        /* رأس البطاقة – قابل للنقر */
+        '<div data-action="toggleReferralFile" data-student="'+esc(g.student_name)+'" style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;">' +
+          '<div style="font-size:22px;line-height:1;">📁</div>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+              '<span style="font-weight:800;font-size:14.5px;">'+esc(g.student_name)+'</span>' +
+              (g.grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(g.grade)+(g.section?' / '+esc(g.section):'')+'</span>' : '') +
+              badge +
+            '</div>' +
+            '<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">' +
+              g.cases.length + (g.cases.length===1?' إحالة':' إحالات') +
+              ' · آخر تحديث: ' + fmtDate(latestDate) +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:18px;color:var(--muted);transition:transform .2s;'+(expanded?'transform:rotate(90deg)':'')+'">›</div>' +
+        '</div>' +
+
+        /* تفاصيل الإحالات – تظهر عند التوسيع */
+        (expanded ?
+          '<div style="border-top:1px solid color-mix(in srgb,var(--muted) 20%,transparent);padding:12px 16px;">' +
+            g.cases.map(function(c, idx){
+              var hasResp = c.rec_status==='pending';
+              return '<div style="background:var(--surface-2,#f4f6f8);border-radius:10px;padding:12px 14px;margin-bottom:8px;">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">' +
+                  '<div style="display:flex;align-items:center;gap:6px;">' +
+                    '<span style="font-size:12px;font-weight:700;color:var(--muted);">#'+(idx+1)+'</span>' +
+                    '<span style="font-size:12px;color:var(--muted);">'+fmtDate(c.created_at)+'</span>' +
+                    '<span style="font-size:12px;color:var(--muted);">· المرشد: '+esc(c.counselor_name||'—')+'</span>' +
+                    (hasResp ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 15%,transparent);color:var(--warning,#d97706);border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;">رد معلّق</span>' : '') +
+                  '</div>' +
+                  '<button class="btn btn-ghost btn-sm" data-action="printReferral" data-id="'+esc(c.id||'')+'" data-idx="'+idx+'" data-student="'+esc(g.student_name)+'">🖨 طباعة</button>' +
+                '</div>' +
+                (c.referral_reason
+                  ? '<div style="font-size:12.5px;white-space:pre-wrap;line-height:1.6;background:var(--surface);border-radius:8px;padding:8px 12px;margin-bottom:'+(hasResp?'8':'0')+'px;">'+esc(c.referral_reason)+'</div>'
+                  : '') +
+                (hasResp && c.rec_for_teacher
+                  ? '<div style="background:color-mix(in srgb,var(--warning,#d97706) 10%,var(--surface));border-right:3px solid var(--warning,#d97706);border-radius:8px;padding:10px 12px;margin-bottom:8px;">' +
+                      '<div style="font-size:11.5px;font-weight:700;color:var(--warning,#d97706);margin-bottom:4px;">رد المرشد الطلابي:</div>' +
+                      '<div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">'+esc(c.rec_for_teacher)+'</div>' +
+                    '</div>' +
+                    '<button class="btn btn-sm" data-action="ackReferralRec" data-id="'+esc(c.id||'')+'" style="background:var(--warning,#d97706);color:#fff;border:none;font-size:12px;">✓ تسلّمت الرد</button>'
+                  : '') +
+                (c.rec_return_note
+                  ? '<div style="margin-top:6px;font-size:12px;color:var(--muted);"><b>ملاحظة الإعادة:</b> '+esc(c.rec_return_note)+'</div>'
+                  : '') +
+              '</div>';
+            }).join('') +
+          '</div>'
+        : '') +
+      '</div>';
+  });
+
+  return '<div style="margin-top:4px;">' +
+    '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">📋 إحالاتي للمرشد الطلابي</div>' +
+    statsHtml + filterBar + cardsHtml +
+  '</div>';
 }
 
 function giftedReportsListHtml(reports, emptyMsg){
@@ -7996,6 +8089,9 @@ let GiftedUI = { modalOpen: false };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
 let _teacherAllStudentsCache = [];
+let _teacherReferralExpanded = null; /* اسم الطالب الذي فُتح ملف إحالاته */
+let _teacherReferralSort = 'pending'; /* 'pending'|'date'|'name' */
+let _teacherReferralCache = []; /* نسخة من myReferralCases لاستخدامها في الطباعة */
 
 function teacherNotesKey(studentName){
   return 'teacher_notes_'+(State.user?State.user.id:'x')+'_'+studentName;
@@ -8731,7 +8827,7 @@ async function screenTeacherTasks(){
         giftedReportsListHtml(myGiftedReports, 'لم تُرسل أي بلاغات موهوبين بعد.') +
       '</div>'
     : '') +
-    (TeacherFormsUI.dashTab==='myReferrals' ? teacherReferralsTabHtml(myReferralCases) : '') +
+    (TeacherFormsUI.dashTab==='myReferrals' ? (function(){ _teacherReferralCache=myReferralCases; return teacherReferralsTabHtml(myReferralCases); })() : '') +
     (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '')
   );
 }
@@ -8768,6 +8864,76 @@ function bindTeacherTasks(){
       _teacherStudentProfile = el.getAttribute('data-name');
       TeacherFormsUI.dashTab = 'profile';
       await render(); bindTeacherTasks();
+    });
+  });
+
+  /* فتح/إغلاق ملف إحالات طالب */
+  document.querySelectorAll('[data-action="toggleReferralFile"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var name = el.getAttribute('data-student');
+      _teacherReferralExpanded = (_teacherReferralExpanded === name) ? null : name;
+      render().then(bindTeacherTasks);
+    });
+  });
+
+  /* فلتر الإحالات */
+  document.querySelectorAll('[data-action="referralFilter"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      _teacherReferralSort = el.getAttribute('data-filter');
+      render().then(bindTeacherTasks);
+    });
+  });
+
+  /* تسلّمت الرد */
+  document.querySelectorAll('[data-action="ackReferralRec"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var id = el.getAttribute('data-id');
+      if (!id) return;
+      el.disabled = true; el.textContent = 'جاري…';
+      try{
+        await DB.acknowledgeRec(id);
+        toast('تم تسجيل استلامك لرد المرشد.');
+        await render(); bindTeacherTasks();
+      }catch(e){ toast('فشل: '+e.message); el.disabled=false; el.textContent='✓ تسلّمت الرد'; }
+    });
+  });
+
+  /* طباعة إحالة */
+  document.querySelectorAll('[data-action="printReferral"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var id      = el.getAttribute('data-id');
+      var student = el.getAttribute('data-student');
+      var idx     = parseInt(el.getAttribute('data-idx')||'0', 10);
+      var c = _teacherReferralCache.find(function(x){ return x.id===id; }) || {};
+      var win = window.open('', '_blank', 'width=750,height=1000');
+      if (!win) return;
+      var recBlock = (c.rec_for_teacher)
+        ? '<div style="margin-top:20px;border-top:1px dashed #aaa;padding-top:14px;">' +
+            '<div style="font-weight:bold;margin-bottom:6px;">رد المرشد الطلابي:</div>' +
+            '<div style="background:#fffbeb;border-right:4px solid #d97706;padding:10px 14px;white-space:pre-wrap;">'+esc(c.rec_for_teacher)+'</div>' +
+          '</div>'
+        : '';
+      win.document.write(
+        '<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>إحالة – '+esc(student)+'</title>' +
+        '<style>body{font-family:Arial,sans-serif;padding:40px;font-size:14px;line-height:1.9;direction:rtl;color:#111;}' +
+        'h2{text-align:center;margin-bottom:24px;font-size:18px;border-bottom:2px solid #333;padding-bottom:10px;}' +
+        '.row{display:flex;gap:8px;margin-bottom:10px;}' +
+        '.lbl{font-weight:bold;min-width:140px;}' +
+        '.pre{white-space:pre-wrap;background:#f5f5f5;border-radius:6px;padding:12px 16px;margin-top:10px;font-size:13px;}' +
+        '@media print{.noprint{display:none}}' +
+        '</style></head><body>' +
+        '<h2>نموذج إحالة للمرشد الطلابي</h2>' +
+        '<div class="row"><span class="lbl">اسم الطالب:</span><span>'+esc(c.student_name||student)+'</span></div>' +
+        (c.student_grade ? '<div class="row"><span class="lbl">الصف / الشعبة:</span><span>'+esc(c.student_grade||'')+(c.student_section?' / '+esc(c.student_section):'')+'</span></div>' : '') +
+        '<div class="row"><span class="lbl">المُحيل:</span><span>'+esc(c.referred_by_name||'—')+'</span></div>' +
+        '<div class="row"><span class="lbl">المرشد المحال إليه:</span><span>'+esc(c.counselor_name||'—')+'</span></div>' +
+        '<div class="row"><span class="lbl">تاريخ الإحالة:</span><span>'+fmtDate(c.created_at||'')+'</span></div>' +
+        (c.referral_reason ? '<div><div style="font-weight:bold;margin-bottom:4px;">نص الإحالة الرسمي:</div><div class="pre">'+esc(c.referral_reason)+'</div></div>' : '') +
+        recBlock +
+        '<div style="margin-top:30px;" class="noprint"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">🖨 طباعة</button></div>' +
+        '</body></html>'
+      );
+      win.document.close();
     });
   });
 
