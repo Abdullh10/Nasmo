@@ -2316,15 +2316,26 @@ const DB = {
     localStorage.setItem(LS_GIFTED, JSON.stringify(list));
     return obj;
   },
-  async listGiftedReports(school, studentName){
+  async listGiftedReports(school, opts){
+    /* opts: string (student name) | { reportedById } | { forCounselor:true } | { forPrincipal:true } | null */
+    var studentNameStr = (typeof opts === 'string') ? opts : null;
+    var reportedById   = (opts && typeof opts === 'object' && opts.reportedById)   ? opts.reportedById   : null;
+    var forCounselor   = (opts && typeof opts === 'object' && opts.forCounselor)   ? true : false;
+    var forPrincipal   = (opts && typeof opts === 'object' && opts.forPrincipal)   ? true : false;
     if (isRemote()){
       let url = 'gifted_reports?school=eq.' + encodeURIComponent(school) + '&order=created_at.desc';
-      if (studentName) url += '&student_name=eq.' + encodeURIComponent(studentName);
+      if (studentNameStr)  url += '&student_name=eq.'    + encodeURIComponent(studentNameStr);
+      if (reportedById)    url += '&reported_by_id=eq.'  + encodeURIComponent(reportedById);
+      if (forCounselor)    url += '&notified_counselor=eq.true';
+      if (forPrincipal)    url += '&notified_principal=eq.true';
       return await remoteFetch(url) || [];
     }
     const list = JSON.parse(localStorage.getItem(LS_GIFTED) || '[]');
     let filtered = list.filter(function(r){ return r.school===school; });
-    if (studentName) filtered = filtered.filter(function(r){ return r.student_name===studentName; });
+    if (studentNameStr) filtered = filtered.filter(function(r){ return r.student_name===studentNameStr; });
+    if (reportedById)   filtered = filtered.filter(function(r){ return r.reported_by_id===reportedById; });
+    if (forCounselor)   filtered = filtered.filter(function(r){ return r.notified_counselor; });
+    if (forPrincipal)   filtered = filtered.filter(function(r){ return r.notified_principal; });
     return filtered.sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
   },
   async clearData(types, school){
