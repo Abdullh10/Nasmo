@@ -3142,7 +3142,11 @@ function blankSelfEvalCriteria(){
   return obj;
 }
 function blankStudentRow(){ return { name:'', diag:'', skills:'', methods:[], evidence:[], progress:[], examScore:null, followups:[], baseline:'', targetGoal:'', targetDate:'' }; }
-function blankSession(){ return { teacher:'', teacher_id:null, subject:'', notes:'', notesItems:[], notesOther:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[], goalAchieved:'', masteryPct:'', studentPerf:'', nextStep:'', learningIntent:'', studentSelfAssess:'' }; }
+function blankSession(){
+  var tName = (State.user && State.user.role === 'teacher') ? State.user.full_name || '' : '';
+  var tId   = (State.user && State.user.role === 'teacher') ? State.user.id   || null : null;
+  return { teacher:tName, teacher_id:tId, subject:'', notes:'', notesItems:[], notesOther:'', weekEval:'', date:new Date().toISOString().slice(0,10), sig:null, evidenceFiles:[], goalAchieved:'', masteryPct:'', studentPerf:'', nextStep:'', learningIntent:'', studentSelfAssess:'' };
+}
 function blankBehaviorRow(){ return { name:'', behavior:'', causes:'', strategies:[], followUp:[], result:'' }; }
 
 function openEditor(formType, submission){
@@ -11737,6 +11741,18 @@ const INDIVIDUAL_NOTES_OPTIONS = [
   'التمارين المتكررة والبطاقات التدريبية',
   'التقييم الختامي الأسبوعي وتوثيق مستوى التحسن',
 ];
+const WEEKLY_EVAL_RESULTS = [
+  'تجاوز الطالب الهدف المحدد بامتياز',
+  'حقق الطالب الهدف المحدد بالكامل',
+  'حقق الطالب الهدف المحدد بشكل جيد',
+  'تقدم الطالب نحو الهدف بصورة ملحوظة',
+  'تقدم الطالب نحو الهدف بصورة جزئية',
+  'تقدم الطالب بشكل محدود ويحتاج إلى متابعة مكثفة',
+  'لم يتقدم الطالب ويستلزم مراجعة الخطة',
+  'تراجع مستوى الطالب عن الأسبوع الماضي',
+  'غاب الطالب ولم تُنفَّذ الجلسة',
+  'أخرى',
+];
 function checkboxGroupWithOther(name, options, selected, otherVal, ro){
   selected = selected || [];
   const isOtherSelected = selected.indexOf('أخرى') > -1;
@@ -11841,7 +11857,29 @@ function renderIndividualAgreement(d, ro, teachers, students){
         '</div>' +
         inputField('التاريخ','sessions.'+i+'.date',s.date,{type:'date',readonly:ro}) +
         '<div class="field"><label>الإجراءات/الأدوات المطبقة</label>' + dropdownPicker('sessions.'+i+'.notesItems', INDIVIDUAL_NOTES_OPTIONS, s.notesItems, s.notesOther, ro) + '</div>' +
-        inputField('نتيجة تقويم الأسبوع','sessions.'+i+'.notes',s.notes,{type:'textarea',readonly:ro,placeholder:'مثال: وتقويم الطالب بنهاية الأسبوع أظهر ...'}) +
+        (function(){
+          var presets = WEEKLY_EVAL_RESULTS.slice(0, -1);
+          var evalPreset = s.weekEval || (s.notes && presets.indexOf(s.notes) > -1 ? s.notes : (s.notes ? 'أخرى' : ''));
+          if (ro){
+            var evalDisplay = (evalPreset === 'أخرى') ? s.notes : evalPreset;
+            return evalDisplay
+              ? '<div class="field"><label>نتيجة تقويم الأسبوع</label><div class="input" style="background:var(--bg-2,#f4f6f8);">'+esc(evalDisplay)+'</div></div>'
+              : '';
+          }
+          var opts = WEEKLY_EVAL_RESULTS.map(function(r){
+            return '<option value="'+esc(r)+'"'+(evalPreset===r?' selected':'')+'>'+esc(r)+'</option>';
+          }).join('');
+          var showTa = evalPreset === 'أخرى';
+          return (
+            '<div class="field" data-weekeval-wrap>' +
+              '<label>نتيجة تقويم الأسبوع</label>' +
+              '<select class="input" data-field="sessions.'+i+'.weekEval" data-action="weekEvalChange" style="margin-top:4px;">' +
+                '<option value="">— اختر النتيجة —</option>' + opts +
+              '</select>' +
+              '<textarea class="input" data-field="sessions.'+i+'.notes" rows="2" style="margin-top:6px;'+(showTa?'':'display:none;')+'" placeholder="اكتب نتيجة التقويم بحرية…">'+esc(s.notes||'')+'</textarea>' +
+            '</div>'
+          );
+        })() +
         ((s.evidenceFiles && s.evidenceFiles.length) ? ('<div class="field"><label>شواهد المعلم</label><div class="evidence-grid">' + s.evidenceFiles.map(function(f){ return '<div class="evidence-thumb"><img src="'+esc(safeDataUrl(f))+'"></div>'; }).join('') + '</div></div>') : '') +
         '<div class="field"><label>توقيع المعلم</label>' + buildSignaturePad('sessions.'+i, s.sig, ro) + '</div>' +
       '</div>'
@@ -12206,6 +12244,15 @@ function bindEditor(){
         setPath(EditorState.data, target + '_id', (selOpt && selOpt.getAttribute('data-id')) || null);
       }
       render(); bindEditor();
+    });
+  });
+  document.querySelectorAll('[data-action="weekEvalChange"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      var wrap = el.closest('[data-weekeval-wrap]');
+      if (wrap){
+        var ta = wrap.querySelector('textarea');
+        if (ta) ta.style.display = (el.value === 'أخرى') ? '' : 'none';
+      }
     });
   });
   bindAllStudentSearches();
