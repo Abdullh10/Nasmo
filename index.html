@@ -2250,6 +2250,18 @@ const DB = {
     const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
     return list.filter(function(c){ return c.school===school && c.referred_by_name===teacherName && c.rec_status==='pending'; });
   },
+  async listMyReferralCases(school, teacherName){
+    if (isRemote()){
+      return await remoteFetch(
+        'counseling_cases?school=eq.' + encodeURIComponent(school) +
+        '&referred_by_name=eq.' + encodeURIComponent(teacherName) +
+        '&order=created_at.desc'
+      ) || [];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]');
+    return list.filter(function(c){ return c.school===school && c.referred_by_name===teacherName; })
+      .sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  },
   async createCounselingCase(obj){
     obj.created_at = nowIso(); obj.updated_at = nowIso();
     if (isRemote()){
@@ -6955,6 +6967,69 @@ async function screenCounselorCases(){
   );
 }
 
+function teacherReferralsTabHtml(cases){
+  if (!cases || !cases.length){
+    return '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">لم تُسجَّل أي إحالات بعد.</div>';
+  }
+  // Sort: counselor responded & teacher pending ack first, then open/in_progress, then closed
+  const withResponse = cases.filter(function(c){ return c.rec_status==='pending'; });
+  const open = cases.filter(function(c){ return c.rec_status!=='pending' && c.status!=='closed'; });
+  const closed = cases.filter(function(c){ return c.rec_status!=='pending' && c.status==='closed'; });
+  const sorted = withResponse.concat(open, closed);
+
+  var html = '<div style="margin-top:4px;">' +
+    '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">📋 إحالاتي للمرشد الطلابي ('+cases.length+')</div>';
+
+  if (withResponse.length){
+    html += '<div style="font-size:12px;font-weight:700;color:var(--warning,#d97706);margin-bottom:8px;">● ردود المرشد – تحتاج مراجعة ('+withResponse.length+')</div>';
+  }
+
+  sorted.forEach(function(c){
+    var hasResponse = c.rec_status==='pending';
+    var isClosed = c.status==='closed';
+    var borderColor = hasResponse ? 'var(--warning,#d97706)' : isClosed ? 'var(--muted)' : 'var(--accent,#2563eb)';
+    var bgColor = hasResponse
+      ? 'color-mix(in srgb,var(--warning,#d97706) 6%,var(--surface))'
+      : isClosed
+        ? 'color-mix(in srgb,var(--muted) 5%,var(--surface))'
+        : 'var(--surface)';
+    var statusLabel = isClosed
+      ? '<span style="background:color-mix(in srgb,var(--muted) 15%,transparent);color:var(--muted);border-radius:6px;padding:1px 8px;font-size:11px;">مغلقة</span>'
+      : hasResponse
+        ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 15%,transparent);color:var(--warning,#d97706);border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;">رد المرشد ✓</span>'
+        : '<span style="background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);color:var(--accent,#2563eb);border-radius:6px;padding:1px 8px;font-size:11px;">قيد الإجراء</span>';
+
+    html += '<div style="background:'+bgColor+';border:1px solid '+borderColor+';border-radius:12px;padding:14px 18px;margin-bottom:10px;">' +
+      '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">' +
+            '<span style="font-weight:800;font-size:14px;">'+esc(c.student_name||'—')+'</span>' +
+            (c.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(c.student_grade)+'</span>' : '') +
+            statusLabel +
+          '</div>' +
+          (c.referral_reason ? '<div style="font-size:12.5px;margin-bottom:6px;"><b>سبب الإحالة:</b> '+esc(c.referral_reason)+'</div>' : '') +
+          '<div style="font-size:12px;color:var(--muted);margin-bottom:'+(hasResponse?'8':'0')+'px;">المرشد: '+esc(c.counselor_name||'—')+'</div>' +
+          (hasResponse && c.rec_for_teacher
+            ? '<div style="background:color-mix(in srgb,var(--warning,#d97706) 10%,var(--surface-2,#f4f6f8));border-right:3px solid var(--warning,#d97706);border-radius:8px;padding:10px 12px;">' +
+                '<div style="font-size:11.5px;font-weight:700;color:var(--warning,#d97706);margin-bottom:4px;">رد المرشد الطلابي:</div>' +
+                '<div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">'+esc(c.rec_for_teacher)+'</div>' +
+              '</div>'
+            : '') +
+          (c.rec_return_note
+            ? '<div style="margin-top:8px;font-size:12px;color:var(--muted);"><b>ملاحظة الإعادة:</b> '+esc(c.rec_return_note)+'</div>'
+            : '') +
+        '</div>' +
+        '<div style="text-align:start;flex-shrink:0;">' +
+          '<div style="font-size:11.5px;color:var(--muted);">'+fmtDate(c.created_at)+'</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  html += '</div>';
+  return html;
+}
+
 function giftedReportsListHtml(reports, emptyMsg){
   if (!reports || !reports.length){
     return '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">'+(emptyMsg||'لا توجد بلاغات موهوبين.')+'</div>';
@@ -8127,7 +8202,7 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents,
   );
 }
 async function screenTeacherTasks(){
-  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports] = await Promise.all([
+  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
     DB.listTasks({ school: State.user.school }),
     DB.listGoals({ school: State.user.school }),
@@ -8137,7 +8212,8 @@ async function screenTeacherTasks(){
     (_teacherStudentProfile
       ? DB.listGiftedReports(State.user.school, _teacherStudentProfile).catch(function(){ return []; })
       : Promise.resolve([])),
-    DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; })
+    DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; }),
+    DB.listMyReferralCases(State.user.school, State.user.full_name).catch(function(){ return []; })
   ]);
 
   /* — جلسات الخطة الفردية — */
@@ -8644,6 +8720,7 @@ async function screenTeacherTasks(){
       '<button class="tab '+(TeacherFormsUI.dashTab==='main'?'active':'')+'" data-action="teacherDashTab" data-tab="main">لوحتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">أجندة الأسبوع</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ بلاغاتي</button>' +
+      '<button class="tab '+(TeacherFormsUI.dashTab==='myReferrals'?'active':'')+'" data-action="teacherDashTab" data-tab="myReferrals">📋 إحالاتي</button>' +
       (_teacherStudentProfile ? '<button class="tab '+(TeacherFormsUI.dashTab==='profile'?'active':'')+'" data-action="teacherDashTab" data-tab="profile">ملف: '+esc(_teacherStudentProfile)+'</button>' : '') +
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
@@ -8654,6 +8731,7 @@ async function screenTeacherTasks(){
         giftedReportsListHtml(myGiftedReports, 'لم تُرسل أي بلاغات موهوبين بعد.') +
       '</div>'
     : '') +
+    (TeacherFormsUI.dashTab==='myReferrals' ? teacherReferralsTabHtml(myReferralCases) : '') +
     (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '')
   );
 }
