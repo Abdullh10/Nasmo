@@ -8911,25 +8911,31 @@ function bindTeacherTasks(){
     });
   });
 
-  /* فتح/إغلاق ملف إحالات طالب */
-  document.querySelectorAll('[data-action="toggleReferralFile"]').forEach(function(el){
-    el.addEventListener('click', function(){
+  /* فتح/إغلاق ملف إحالات طالب – clone لمنع تكرار الـ handlers */
+  document.querySelectorAll('[data-action="toggleReferralFile"]').forEach(function(rawEl){
+    var el = rawEl.cloneNode(true);
+    rawEl.parentNode.replaceChild(el, rawEl);
+    el.addEventListener('click', async function(){
       var name = el.getAttribute('data-student');
       _teacherReferralExpanded = (_teacherReferralExpanded === name) ? null : name;
-      render().then(bindTeacherTasks);
+      await render();
     });
   });
 
-  /* فلتر الإحالات */
-  document.querySelectorAll('[data-action="referralFilter"]').forEach(function(el){
-    el.addEventListener('click', function(){
+  /* فلتر الإحالات – clone لمنع تكرار */
+  document.querySelectorAll('[data-action="referralFilter"]').forEach(function(rawEl){
+    var el = rawEl.cloneNode(true);
+    rawEl.parentNode.replaceChild(el, rawEl);
+    el.addEventListener('click', async function(){
       _teacherReferralSort = el.getAttribute('data-filter');
-      render().then(bindTeacherTasks);
+      await render();
     });
   });
 
-  /* تسلّمت الرد */
-  document.querySelectorAll('[data-action="ackReferralRec"]').forEach(function(el){
+  /* تسلّمت الرد – clone لمنع تكرار */
+  document.querySelectorAll('[data-action="ackReferralRec"]').forEach(function(rawEl){
+    var el = rawEl.cloneNode(true);
+    rawEl.parentNode.replaceChild(el, rawEl);
     el.addEventListener('click', async function(){
       var id = el.getAttribute('data-id');
       if (!id) return;
@@ -8937,7 +8943,7 @@ function bindTeacherTasks(){
       try{
         await DB.acknowledgeRec(id);
         toast('تم تسجيل استلامك لرد المرشد.');
-        await render(); bindTeacherTasks();
+        await render();
       }catch(e){ toast('فشل: '+e.message); el.disabled=false; el.textContent='✓ تسلّمت الرد'; }
     });
   });
