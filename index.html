@@ -8432,14 +8432,50 @@ async function sendStudentFileToCounselor(studentName){
   try{
     var counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor');
     if (!counselors || !counselors.length){ toast('لم يتم العثور على مرشد طلابي في هذه المدرسة.'); return; }
-    var c = counselors[0];
-    var notes = teacherGetNotesItems(studentName);
-    var notesText = notes.length ? notes.map(function(n,i){ return (i+1)+'. '+n.text; }).join('\n') : 'لا توجد ملاحظات';
-    var body = 'ملف الطالب: '+studentName+'\nالمعلم: '+(State.user.full_name||'')+'\n\nملاحظات المعلم:\n'+notesText;
-    await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.email, target_type:'user', target_id:c.id, type:'general', title:'ملف طالب: '+studentName, body:body });
-    pushNotify(c.id,'ملف طالب: '+studentName,(State.user.full_name||State.user.email)+' أرسل لك ملف الطالب '+studentName).catch(function(){});
-    toast('تم إرسال ملف الطالب إلى المرشد '+(c.full_name||'')+' بنجاح.');
-  }catch(e){ toast('فشل الإرسال: '+(e.message||e)); }
+    /* عرض نافذة اختيار المرشد */
+    var existing = document.getElementById('counselorPickerOverlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'counselorPickerOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9200;display:flex;align-items:center;justify-content:center;padding:16px;';
+    var listHtml = counselors.map(function(c){
+      return '<button data-counselor-id="'+esc(c.id)+'" data-counselor-name="'+esc(c.full_name||'')+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;background:var(--bg-2,#f4f6f8);border:1.5px solid var(--border,#e5e7eb);border-radius:10px;cursor:pointer;font-size:13.5px;font-family:inherit;margin-bottom:8px;text-align:right;">' +
+        '<span style="width:36px;height:36px;border-radius:50%;background:var(--primary,#1a56db);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;">'+esc((c.full_name||'م').charAt(0))+'</span>' +
+        '<span style="flex:1;font-weight:600;">'+esc(c.full_name||'—')+'</span>' +
+        '<span style="font-size:11.5px;color:var(--muted);">مرشد طلابي</span>' +
+      '</button>';
+    }).join('');
+    overlay.innerHTML = (
+      '<div style="background:var(--card,#fff);border-radius:14px;width:100%;max-width:400px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);direction:rtl;font-family:inherit;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border,#e5e7eb);">' +
+          '<h3 style="margin:0;font-size:15px;">اختر المرشد الطلابي</h3>' +
+          '<button id="counselorPickerClose" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">✕</button>' +
+        '</div>' +
+        '<div style="padding:14px 16px;">' +
+          '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">سيتم إرسال ملف الطالب <b>'+esc(studentName)+'</b> إلى المرشد المختار.</div>' +
+          listHtml +
+        '</div>' +
+      '</div>'
+    );
+    document.body.appendChild(overlay);
+    document.getElementById('counselorPickerClose').addEventListener('click', function(){ overlay.remove(); });
+    overlay.addEventListener('click', function(e){
+      if (e.target === overlay) overlay.remove();
+      var btn = e.target.closest('[data-counselor-id]');
+      if (!btn) return;
+      var cId = btn.getAttribute('data-counselor-id');
+      var cName = btn.getAttribute('data-counselor-name');
+      overlay.remove();
+      var notes = teacherGetNotesItems(studentName);
+      var notesText = notes.length ? notes.map(function(n,i){ return (i+1)+'. '+n.text; }).join('\n') : 'لا توجد ملاحظات';
+      var body = 'ملف الطالب: '+studentName+'\nالمعلم: '+(State.user.full_name||'')+'\n\nملاحظات المعلم:\n'+notesText;
+      DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.email, target_type:'user', target_id:cId, type:'general', title:'ملف طالب: '+studentName, body:body })
+        .then(function(){
+          pushNotify(cId,'ملف طالب: '+studentName,(State.user.full_name||State.user.email)+' أرسل لك ملف الطالب '+studentName).catch(function(){});
+          toast('تم إرسال ملف الطالب إلى المرشد '+cName+' بنجاح.');
+        }).catch(function(e){ toast('فشل الإرسال: '+(e.message||e)); });
+    });
+  }catch(e){ toast('فشل تحميل المرشدين: '+(e.message||e)); }
 }
 
 function teacherSessionProgressBar(done, total){
