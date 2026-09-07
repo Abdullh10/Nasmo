@@ -2272,6 +2272,40 @@ const DB = {
     const idx = list.findIndex(function(c){ return c.id===id; });
     if (idx>=0){ list[idx].rec_status=''; localStorage.setItem(LS_COUNSELING, JSON.stringify(list)); }
   },
+  async createObservation(obj){
+    obj.created_at = nowIso();
+    if (isRemote()){
+      await remoteFetch('classroom_observations', { method:'POST', body:obj, prefer:'return=minimal' });
+      return obj;
+    }
+    obj.id = uid();
+    const list = JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]');
+    list.push(obj); localStorage.setItem('dtd_obs_v1', JSON.stringify(list));
+    return obj;
+  },
+  async listMyObservations(school, teacherId){
+    if (isRemote()){
+      return await remoteFetch(
+        'classroom_observations?school=eq.' + encodeURIComponent(school) +
+        '&teacher_id=eq.' + encodeURIComponent(teacherId) +
+        '&order=created_at.desc'
+      ) || [];
+    }
+    const list = JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]');
+    return list.filter(function(o){ return o.school===school && o.teacher_id===teacherId; })
+      .sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  },
+  async listObservationsForCounselor(school){
+    if (isRemote()){
+      return await remoteFetch(
+        'classroom_observations?school=eq.' + encodeURIComponent(school) +
+        '&order=created_at.desc'
+      ) || [];
+    }
+    const list = JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]');
+    return list.filter(function(o){ return o.school===school; })
+      .sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  },
   async createCounselingCase(obj){
     obj.created_at = nowIso(); obj.updated_at = nowIso();
     if (isRemote()){
@@ -5457,6 +5491,14 @@ function openCounselorReferralModal(students){
             '<label style="font-size:12px;color:#555;font-weight:600;">اذكر السبب</label>' +
             '<textarea class="input" id="crmOtherText" rows="3" placeholder="اكتب سبب الإحالة…" style="resize:vertical;margin-top:4px;"></textarea>' +
           '</div>' +
+          /* الإجراءات السابقة للتحويل */
+          '<div class="field" style="margin-bottom:14px;">' +
+            '<label style="font-size:12px;color:var(--text);font-weight:600;">ما الإجراء الذي اتخذته قبل التحويل؟ <span style="color:var(--danger)">*</span></label>' +
+            '<div id="crmPreReferralWrap" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;">' +
+              ['التحدث مع الطالب بشكل فردي','التواصل مع ولي الأمر (هاتفياً)','التواصل مع ولي الأمر (كتابياً)','تعديل مكان جلوس الطالب','الإنذار الشفهي','الإنذار الكتابي','تحويل للوكيل / الإدارة','تقديم دعم أكاديمي إضافي داخل الفصل','إشراك الطالب في أنشطة جماعية','التنسيق مع بقية معلمي الطالب','تحديد أهداف سلوكية مع الطالب','الاستشارة غير الرسمية مع المرشد سابقاً','توثيق السلوك في سجل خاص','تحويل للرعاية الصحية المدرسية','تكليف الطالب بأدوار إيجابية داخل الفصل']
+                .map(function(a){ return '<label style="display:flex;align-items:flex-start;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="crm-pre-action" value="'+a+'" style="margin-top:2px;flex-shrink:0;">'+a+'</label>'; }).join('') +
+            '</div>' +
+          '</div>' +
           /* أزرار */
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">' +
             '<button class="btn btn-ghost" id="crmCancel">إلغاء</button>' +
@@ -5476,6 +5518,8 @@ function openCounselorReferralModal(students){
       const otherText = (document.getElementById('crmOtherText')||{}).value||'';
       const reason = selectedReason === 'أخرى' ? otherText.trim() : selectedReason;
       if (!reason){ toast('يرجى اختيار سبب الإحالة.'); return; }
+      const preActions = Array.from(document.querySelectorAll('.crm-pre-action:checked')).map(function(cb){ return cb.value; });
+      if (!preActions.length){ toast('يرجى تحديد إجراء واحد على الأقل اتخذته قبل التحويل.'); return; }
       const counselorId = document.getElementById('crmCounselorSel').value;
       const counselor = counselors.find(function(c){ return c.id===counselorId; });
       const btn = document.getElementById('crmSubmit');
@@ -5502,6 +5546,7 @@ function openCounselorReferralModal(students){
             student_section: students[i].section||'',
             referred_by_name: State.user.full_name,
             referral_reason: buildReferralText(students[i]),
+            pre_referral_actions: preActions,
             counselor_id: counselorId,
             counselor_name: counselor ? counselor.full_name : '',
             status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
@@ -5521,6 +5566,156 @@ function openCounselorReferralModal(students){
 function removeCounselorReferralModal(){
   const el = document.getElementById('crm-overlay');
   if(el) el.remove();
+}
+
+/* ====================== نموذج الملاحظة الصفية ====================== */
+const OBS_TYPES = [
+  { label:'انعزال اجتماعي وانسحاب من الأقران', severity:'follow_up' },
+  { label:'تراجع أكاديمي مفاجئ',              severity:'follow_up' },
+  { label:'ضيق عاطفي ظاهر',                   severity:'follow_up' },
+  { label:'غياب متكرر غير مبرر',              severity:'follow_up' },
+  { label:'سلوك عدواني طارئ',                 severity:'follow_up' },
+  { label:'تعرض للتنمر (ضحية)',               severity:'urgent' },
+  { label:'ممارسة التنمر على الآخرين',         severity:'urgent' },
+  { label:'قلق وتوتر ملاحظ',                  severity:'info' },
+  { label:'أعراض صحية جسدية ملاحظة',          severity:'info' },
+  { label:'صعوبات تعلم مشتبه بها',            severity:'info' },
+  { label:'ضعف حاد في المشاركة الصفية',       severity:'info' },
+  { label:'تغيير مفاجئ في السلوك العام',       severity:'follow_up' },
+  { label:'مشاكل في التواصل والتعبير',         severity:'info' },
+  { label:'مؤشرات إهمال أو سوء معاملة',       severity:'urgent' },
+  { label:'اضطراب في العلاقات مع الزملاء',     severity:'info' }
+];
+function openObservationModal(students){
+  /* students = [{name,grade,section}] */
+  const today = new Date().toISOString().slice(0,10);
+  const studentOpts = (students||[]).map(function(s){ return '<option value="'+esc(s.name)+'" data-grade="'+esc(s.grade||'')+'">'+esc(s.name)+(s.grade?' — '+s.grade:'')+'</option>'; }).join('');
+  const typeOpts = OBS_TYPES.map(function(t){ return '<option value="'+esc(t.label)+'" data-sev="'+t.severity+'">'+esc(t.label)+'</option>'; }).join('');
+  const div = document.createElement('div');
+  div.id = 'obs-overlay';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9100;display:flex;align-items:center;justify-content:center;padding:16px;';
+  div.innerHTML =
+    '<div style="background:var(--card,#fff);border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);">' +
+      '<div style="padding:18px 20px 0;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:16px;">' +
+        '<div style="font-size:16px;font-weight:800;color:var(--text);">🔍 تسجيل ملاحظة صفية</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:2px;">للحالات التي يلاحظها المعلم ولا تستوجب إحالة رسمية بعد</div>' +
+      '</div>' +
+      '<div style="padding:0 20px 20px;">' +
+        /* الطالب */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">الطالب <span style="color:var(--danger)">*</span></label>' +
+          '<select class="input" id="obsStudentSel" style="margin-top:4px;">' +
+            '<option value="">— اختر الطالب —</option>' + studentOpts +
+          '</select>' +
+        '</div>' +
+        /* الصف */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">الصف / الشعبة</label>' +
+          '<input class="input" id="obsGrade" style="margin-top:4px;" placeholder="مثال: الأول أ">' +
+        '</div>' +
+        /* نوع الملاحظة */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">نوع الملاحظة <span style="color:var(--danger)">*</span></label>' +
+          '<select class="input" id="obsTypeSel" style="margin-top:4px;">' +
+            '<option value="">— اختر نوع الملاحظة —</option>' + typeOpts +
+          '</select>' +
+        '</div>' +
+        /* الشدة */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">مستوى الأهمية</label>' +
+          '<div id="obsSevWrap" style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="obsSev" value="info" checked> ملاحظة عادية</label>' +
+            '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="obsSev" value="follow_up"> تحتاج متابعة</label>' +
+            '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer;"><input type="radio" name="obsSev" value="urgent"> عاجلة 🔴</label>' +
+          '</div>' +
+        '</div>' +
+        /* التفاصيل */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">تفاصيل الملاحظة</label>' +
+          '<textarea class="input" id="obsDesc" rows="3" style="margin-top:4px;resize:vertical;" placeholder="صِف ما لاحظته بشكل مختصر…"></textarea>' +
+        '</div>' +
+        /* إشعار من؟ */
+        '<div style="background:color-mix(in srgb,var(--primary,#2563eb) 8%,var(--surface,#f8fafc));border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12.5px;">' +
+          '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">سيتم إبلاغ:</div>' +
+          '<div>✅ المرشد الطلابي (دائماً)</div>' +
+          '<div id="obsUrgentNote" style="color:var(--danger,#dc2626);display:none;margin-top:3px;">🔴 المدير (لأن الملاحظة عاجلة)</div>' +
+        '</div>' +
+        /* أزرار */
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+          '<button class="btn btn-ghost" id="obsCancel">إلغاء</button>' +
+          '<button class="btn btn-gold" id="obsSubmit" style="min-width:120px;">حفظ الملاحظة</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(div);
+
+  /* تحديث الصف تلقائياً عند اختيار الطالب */
+  document.getElementById('obsStudentSel').addEventListener('change', function(){
+    const opt = this.options[this.selectedIndex];
+    document.getElementById('obsGrade').value = opt.getAttribute('data-grade')||'';
+  });
+  /* تحديث الشدة تلقائياً عند اختيار نوع الملاحظة */
+  document.getElementById('obsTypeSel').addEventListener('change', function(){
+    const opt = this.options[this.selectedIndex];
+    const sev = opt.getAttribute('data-sev')||'info';
+    const radio = document.querySelector('input[name="obsSev"][value="'+sev+'"]');
+    if (radio) radio.checked = true;
+    document.getElementById('obsUrgentNote').style.display = sev==='urgent' ? '' : 'none';
+  });
+  /* تحديث تنبيه عاجل عند تغيير الشدة يدوياً */
+  document.querySelectorAll('input[name="obsSev"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      document.getElementById('obsUrgentNote').style.display = r.value==='urgent' ? '' : 'none';
+    });
+  });
+
+  document.getElementById('obsCancel').addEventListener('click', function(){ div.remove(); });
+  div.addEventListener('click', function(e){ if(e.target===div) div.remove(); });
+
+  document.getElementById('obsSubmit').addEventListener('click', async function(){
+    const studentName = document.getElementById('obsStudentSel').value;
+    const obsType     = document.getElementById('obsTypeSel').value;
+    if (!studentName){ toast('يرجى اختيار الطالب.'); return; }
+    if (!obsType){ toast('يرجى اختيار نوع الملاحظة.'); return; }
+    const grade   = document.getElementById('obsGrade').value.trim();
+    const desc    = document.getElementById('obsDesc').value.trim();
+    const sev     = (document.querySelector('input[name="obsSev"]:checked')||{value:'info'}).value;
+    const btn = document.getElementById('obsSubmit');
+    btn.disabled = true; btn.textContent = 'جاري الحفظ…';
+    try{
+      await DB.createObservation({
+        school: State.user.school,
+        teacher_id: State.user.id,
+        teacher_name: State.user.full_name||'',
+        student_name: studentName,
+        student_grade: grade,
+        observation_type: obsType,
+        description: desc,
+        severity: sev,
+        status: 'open',
+        observation_date: today
+      });
+      /* إشعار المرشد */
+      try{
+        const counselors = await DB.listUsers({ school: State.user.school });
+        const counselor = (counselors||[]).find(function(u){ return u.role==='counselor'; });
+        if (counselor){
+          await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselor.id, type:'general', title:'ملاحظة صفية جديدة', body:'المعلم '+State.user.full_name+' سجّل ملاحظة بشأن '+studentName+': '+obsType });
+          pushNotify(counselor.id, 'ملاحظة صفية جديدة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
+        }
+        if (sev==='urgent'){
+          const principal = (counselors||[]).find(function(u){ return u.role==='principal'; });
+          if (principal){
+            await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:principal.id, type:'general', title:'⚠️ ملاحظة صفية عاجلة', body:'المعلم '+State.user.full_name+' رصد حالة عاجلة للطالب '+studentName+': '+obsType });
+            pushNotify(principal.id, '⚠️ ملاحظة صفية عاجلة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
+          }
+        }
+      }catch(ne){}
+      toast('تم حفظ الملاحظة وإبلاغ المرشد'+(sev==='urgent'?' والمدير':'')+'.');
+      div.remove();
+      await render();
+    }catch(e){ toast('فشل الحفظ: '+e.message); btn.disabled=false; btn.textContent='حفظ الملاحظة'; }
+  });
 }
 
 /* ---------------------- شاشة بيانات الطلاب (سجل الطلاب) ---------------------- */
@@ -6370,7 +6565,30 @@ async function screenAdminSettings(){
     '-- 8) أعمدة التوصية الإرشادية للمعلم المُحيل',
     "alter table counseling_cases add column if not exists rec_for_teacher text default '';",
     "alter table counseling_cases add column if not exists rec_status text default '';",
-    "alter table counseling_cases add column if not exists rec_return_note text default '';"
+    "alter table counseling_cases add column if not exists rec_return_note text default '';",
+    '',
+    '-- 9) الإجراء السابق للتحويل في إحالات المعلم',
+    "alter table counseling_cases add column if not exists pre_referral_actions text[] default '{}';",
+    '',
+    '-- 10) جدول الملاحظات الصفية',
+    'create table if not exists classroom_observations (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  school text not null,',
+    '  teacher_id uuid,',
+    '  teacher_name text default \'\',',
+    '  student_name text not null default \'\',',
+    '  student_grade text default \'\',',
+    '  observation_type text not null default \'\',',
+    '  description text default \'\',',
+    '  severity text check (severity in (\'info\',\'follow_up\',\'urgent\')) default \'info\',',
+    '  status text check (status in (\'open\',\'reviewed\',\'closed\')) default \'open\',',
+    '  observation_date date default now(),',
+    '  created_at timestamptz default now()',
+    ');',
+    'alter table classroom_observations enable row level security;',
+    'create policy "classroom_observations_all" on classroom_observations for all',
+    '  using (school = my_school() or my_role() = \'admin\')',
+    '  with check (school = my_school() or my_role() = \'admin\');'
   ].join('\n');
   return (
     '<div class="program-card">' +
@@ -7134,6 +7352,15 @@ function teacherReferralsTabHtml(cases){
                       '</div>' +
                     '</div>' +
 
+                    /* إجراءات المعلم قبل التحويل */
+                    (c.pre_referral_actions && c.pre_referral_actions.length
+                      ? '<div style="margin-bottom:12px;">' +
+                          '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">ما اتخذه المعلم قبل التحويل</div>' +
+                          '<div style="display:flex;flex-wrap:wrap;gap:5px;">' +
+                            c.pre_referral_actions.map(function(a){ return '<span style="background:color-mix(in srgb,var(--primary,#2563eb) 12%,transparent);color:var(--primary,#2563eb);border:1px solid color-mix(in srgb,var(--primary,#2563eb) 35%,transparent);border-radius:20px;padding:3px 10px;font-size:11.5px;font-weight:600;">'+esc(a)+'</span>'; }).join('') +
+                          '</div>' +
+                        '</div>'
+                      : '') +
                     /* نص الإحالة الرسمي */
                     (c.referral_reason
                       ? '<div style="margin-bottom:'+(hasResp&&c.rec_for_teacher?'14':'0')+'px;">' +
@@ -8147,6 +8374,7 @@ let _teacherAllStudentsCache = [];
 let _teacherReferralExpanded = null; /* اسم الطالب الذي فُتح ملف إحالاته */
 let _teacherReferralSort = 'pending'; /* 'pending'|'date'|'name' */
 let _teacherReferralCache = []; /* نسخة من myReferralCases لاستخدامها في الطباعة */
+let _myObservationsCache = []; /* ملاحظاتي الصفية */
 
 function teacherNotesKey(studentName){
   return 'teacher_notes_'+(State.user?State.user.id:'x')+'_'+studentName;
@@ -8353,7 +8581,7 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents,
   );
 }
 async function screenTeacherTasks(){
-  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases] = await Promise.all([
+  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations] = await Promise.all([
     DB.listSubmissions({ school: State.user.school }),
     DB.listTasks({ school: State.user.school }),
     DB.listGoals({ school: State.user.school }),
@@ -8364,8 +8592,10 @@ async function screenTeacherTasks(){
       ? DB.listGiftedReports(State.user.school, _teacherStudentProfile).catch(function(){ return []; })
       : Promise.resolve([])),
     DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; }),
-    DB.listMyReferralCases(State.user.school, State.user.full_name).catch(function(){ return []; })
+    DB.listMyReferralCases(State.user.school, State.user.full_name).catch(function(){ return []; }),
+    DB.listMyObservations(State.user.school, State.user.id).catch(function(){ return []; })
   ]);
+  _myObservationsCache = myObservations;
 
   /* — جلسات الخطة الفردية — */
   const sessTasks = [];
@@ -8764,6 +8994,7 @@ async function screenTeacherTasks(){
         '<button class="btn btn-ghost btn-sm" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
         (State.user.community_id ? '<button class="btn btn-ghost btn-sm" data-action="teacherContactCoord">تواصل مع المنسق</button>' : '') +
         '<button class="btn btn-ghost btn-sm" data-action="openGiftedModal" style="color:var(--golden,#b8860b);">⭐ رعاية الموهوبين</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="openObsModal" style="color:var(--primary,#2563eb);">🔍 ملاحظة صفية</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="teacherContactPrincipal">تواصل مع المدير</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="teacherPrintReport">طباعة التقرير الدوري</button>' +
         '<button class="btn btn-primary" data-action="goPicker">+ إنشاء نموذج جديد</button>' +
@@ -8872,6 +9103,7 @@ async function screenTeacherTasks(){
       '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">أجندة الأسبوع</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ بلاغاتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myReferrals'?'active':'')+'" data-action="teacherDashTab" data-tab="myReferrals">📋 إحالاتي</button>' +
+      '<button class="tab '+(TeacherFormsUI.dashTab==='myObservations'?'active':'')+'" data-action="teacherDashTab" data-tab="myObservations">🔍 ملاحظاتي</button>' +
       (_teacherStudentProfile ? '<button class="tab '+(TeacherFormsUI.dashTab==='profile'?'active':'')+'" data-action="teacherDashTab" data-tab="profile">ملف: '+esc(_teacherStudentProfile)+'</button>' : '') +
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
@@ -8883,6 +9115,33 @@ async function screenTeacherTasks(){
       '</div>'
     : '') +
     (TeacherFormsUI.dashTab==='myReferrals' ? (function(){ _teacherReferralCache=myReferralCases; return teacherReferralsTabHtml(myReferralCases); })() : '') +
+    (TeacherFormsUI.dashTab==='myObservations' ? (function(){
+      var SEV_LABEL = { info:'ملاحظة عادية', follow_up:'تحتاج متابعة', urgent:'عاجلة 🔴' };
+      var SEV_COLOR = { info:'var(--muted,#6b7280)', follow_up:'var(--warning,#d97706)', urgent:'var(--danger,#dc2626)' };
+      var obsHtml = myObservations.length === 0
+        ? '<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px;">لم تُسجَّل ملاحظات صفية بعد.</div>'
+        : myObservations.map(function(o){
+            var sev = o.severity||'info';
+            return '<div style="background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
+                '<div>' +
+                  '<div style="font-weight:700;font-size:14px;color:var(--text);">'+esc(o.student_name)+(o.student_grade?' — '+esc(o.student_grade):'')+'</div>' +
+                  '<div style="font-size:12.5px;color:var(--muted);margin-top:2px;">'+esc(o.observation_type)+'</div>' +
+                '</div>' +
+                '<span style="font-size:11.5px;font-weight:700;color:'+SEV_COLOR[sev]+';white-space:nowrap;">'+SEV_LABEL[sev]+'</span>' +
+              '</div>' +
+              (o.description ? '<div style="font-size:13px;color:var(--text);margin-top:8px;white-space:pre-wrap;line-height:1.6;">'+esc(o.description)+'</div>' : '') +
+              '<div style="font-size:11px;color:var(--muted);margin-top:8px;">'+(o.observation_date||fmtDate(o.created_at))+'</div>' +
+            '</div>';
+          }).join('');
+      return '<div style="margin-top:4px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">' +
+          '<div style="font-weight:700;font-size:15px;">🔍 ملاحظاتي الصفية ('+myObservations.length+')</div>' +
+          '<button class="btn btn-primary btn-sm" data-action="openObsModal">+ ملاحظة جديدة</button>' +
+        '</div>' +
+        obsHtml +
+      '</div>';
+    })() : '') +
     (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '')
   );
 }
@@ -8989,6 +9248,7 @@ function bindTeacherTasks(){
         '<div class="row"><span class="lbl">المُحيل:</span><span>'+esc(c.referred_by_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">المرشد المحال إليه:</span><span>'+esc(c.counselor_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">تاريخ الإحالة:</span><span>'+fmtDate(c.created_at||'')+'</span></div>' +
+        (c.pre_referral_actions && c.pre_referral_actions.length ? '<div style="margin-bottom:8px;"><div style="font-weight:bold;margin-bottom:4px;">الإجراءات المتخذة قبل التحويل:</div><div>'+c.pre_referral_actions.map(function(a){ return '• '+a; }).join('<br>')+'</div></div>' : '') +
         (c.referral_reason ? '<div><div style="font-weight:bold;margin-bottom:4px;">نص الإحالة الرسمي:</div><div class="pre">'+esc(c.referral_reason)+'</div></div>' : '') +
         recBlock +
         '<div style="margin-top:30px;" class="noprint"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">🖨 طباعة</button></div>' +
@@ -9088,6 +9348,16 @@ function bindTeacherTasks(){
         toast('تم إرجاع التوصية للمرشد.');
         await render(); bindTeacherTasks();
       }catch(e){ toast(arabicError(e)); }
+    });
+  });
+
+  /* الملاحظات الصفية — فتح النافذة */
+  document.querySelectorAll('[data-action="openObsModal"]').forEach(function(rawEl){
+    var el = rawEl.cloneNode(true);
+    rawEl.parentNode.replaceChild(el, rawEl);
+    el.addEventListener('click', function(){
+      var students = (_teacherAllStudentsCache||[]).map(function(s){ return { name: s.full_name||s.name||'', grade: s.grade||'', section: s.section||'' }; });
+      openObservationModal(students);
     });
   });
 
