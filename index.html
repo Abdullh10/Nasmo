@@ -2273,12 +2273,12 @@ const DB = {
     if (idx>=0){ list[idx].rec_status=''; localStorage.setItem(LS_COUNSELING, JSON.stringify(list)); }
   },
   async createObservation(obj){
+    obj.id = uid();
     obj.created_at = nowIso();
     if (isRemote()){
       await remoteFetch('classroom_observations', { method:'POST', body:obj, prefer:'return=minimal' });
       return obj;
     }
-    obj.id = uid();
     const list = JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]');
     list.push(obj); localStorage.setItem('dtd_obs_v1', JSON.stringify(list));
     return obj;
@@ -5419,12 +5419,13 @@ const REFERRAL_REASONS = [
   'مشاجرة مع زميل',
   'إهمال الواجبات المدرسية',
   'الغياب المتكرر',
-  'العقوق والعناد مع المعلم',
+  'عدم الامتثال لتعليمات المعلم والعناد المتكرر',
   'استخدام الجوال داخل الفصل',
   'الغش في الاختبارات',
   'التنمر على الزملاء',
+  'التنمر الإلكتروني والإيذاء الرقمي',
   'الانسحاب الاجتماعي والانعزال',
-  'التدخين',
+  'التدخين أو استخدام الفاپ أو مواد مثيرة للقلق',
   'أخرى'
 ];
 function openCounselorReferralModal(students){
@@ -5584,10 +5585,16 @@ const OBS_TYPES = [
   { label:'تغيير مفاجئ في السلوك العام',       severity:'follow_up' },
   { label:'مشاكل في التواصل والتعبير',         severity:'info' },
   { label:'مؤشرات إهمال أو سوء معاملة',       severity:'urgent' },
-  { label:'اضطراب في العلاقات مع الزملاء',     severity:'info' }
+  { label:'اضطراب في العلاقات مع الزملاء',     severity:'info' },
+  { label:'حديث الطالب عن إيذاء نفسه أو التلميح بذلك', severity:'urgent' },
+  { label:'خوف واضح من شخص بعينه داخل المدرسة أو خارجها', severity:'urgent' }
 ];
 function openObservationModal(students){
   /* students = [{name,grade,section}] */
+  if (!students || students.length === 0){
+    toast('لا يوجد طلاب مرتبطون بحسابك حالياً. يرجى مراجعة المشرف لإضافة الطلاب.');
+    return;
+  }
   const today = new Date().toISOString().slice(0,10);
   const studentOpts = (students||[]).map(function(s){ return '<option value="'+esc(s.name)+'" data-grade="'+esc(s.grade||'')+'">'+esc(s.name)+(s.grade?' — '+s.grade:'')+'</option>'; }).join('');
   const typeOpts = OBS_TYPES.map(function(t){ return '<option value="'+esc(t.label)+'" data-sev="'+t.severity+'">'+esc(t.label)+'</option>'; }).join('');
@@ -5710,10 +5717,10 @@ function openObservationModal(students){
             pushNotify(principal.id, '⚠️ ملاحظة صفية عاجلة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
           }
         }
-      }catch(ne){}
+      }catch(ne){ console.warn('[obs notify]', ne.message); }
       toast('تم حفظ الملاحظة وإبلاغ المرشد'+(sev==='urgent'?' والمدير':'')+'.');
       div.remove();
-      await render();
+      await render(); bindTeacherTasks();
     }catch(e){ toast('فشل الحفظ: '+e.message); btn.disabled=false; btn.textContent='حفظ الملاحظة'; }
   });
 }
@@ -7353,7 +7360,7 @@ function teacherReferralsTabHtml(cases){
                     '</div>' +
 
                     /* إجراءات المعلم قبل التحويل */
-                    (c.pre_referral_actions && c.pre_referral_actions.length
+                    (Array.isArray(c.pre_referral_actions) && c.pre_referral_actions.length
                       ? '<div style="margin-bottom:12px;">' +
                           '<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">ما اتخذه المعلم قبل التحويل</div>' +
                           '<div style="display:flex;flex-wrap:wrap;gap:5px;">' +
@@ -9046,6 +9053,7 @@ async function screenTeacherTasks(){
               '<option value="لغوية وأدبية">لغوية وأدبية</option>' +
               '<option value="قيادية">قيادية</option>' +
               '<option value="رياضية">رياضية</option>' +
+              '<option value="دينية وقرآنية">دينية وقرآنية</option>' +
               '<option value="أخرى">أخرى</option>' +
             '</select>' +
           '</div>' +
@@ -9098,19 +9106,19 @@ async function screenTeacherTasks(){
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:12px;">'+esc(State.user.school)+'</div>' +
     kpiHtml +
-    '<div class="tab-bar" style="margin-bottom:14px;">' +
+    '<div class="tab-bar" style="margin-bottom:14px;overflow-x:auto;white-space:nowrap;">' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='main'?'active':'')+'" data-action="teacherDashTab" data-tab="main">لوحتي</button>' +
-      '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">أجندة الأسبوع</button>' +
-      '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ بلاغاتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myReferrals'?'active':'')+'" data-action="teacherDashTab" data-tab="myReferrals">📋 إحالاتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myObservations'?'active':'')+'" data-action="teacherDashTab" data-tab="myObservations">🔍 ملاحظاتي</button>' +
+      '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">📅 جدول متابعتي</button>' +
+      '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ ترشيحاتي</button>' +
       (_teacherStudentProfile ? '<button class="tab '+(TeacherFormsUI.dashTab==='profile'?'active':'')+'" data-action="teacherDashTab" data-tab="profile">ملف: '+esc(_teacherStudentProfile)+'</button>' : '') +
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
     (TeacherFormsUI.dashTab==='agenda' ? weekAgendaHtml : '') +
     (TeacherFormsUI.dashTab==='myGifted' ?
       '<div style="margin-top:4px;">' +
-        '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">⭐ بلاغاتي للموهوبين ('+myGiftedReports.length+')</div>' +
+        '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">⭐ ترشيحاتي للموهوبين ('+myGiftedReports.length+')</div>' +
         giftedReportsListHtml(myGiftedReports, 'لم تُرسل أي بلاغات موهوبين بعد.') +
       '</div>'
     : '') +
@@ -9188,7 +9196,7 @@ function bindTeacherTasks(){
     el.addEventListener('click', async function(){
       var name = el.getAttribute('data-student');
       _teacherReferralExpanded = (_teacherReferralExpanded === name) ? null : name;
-      await render();
+      await render(); bindTeacherTasks();
     });
   });
 
@@ -9198,7 +9206,7 @@ function bindTeacherTasks(){
     rawEl.parentNode.replaceChild(el, rawEl);
     el.addEventListener('click', async function(){
       _teacherReferralSort = el.getAttribute('data-filter');
-      await render();
+      await render(); bindTeacherTasks();
     });
   });
 
@@ -9213,7 +9221,7 @@ function bindTeacherTasks(){
       try{
         await DB.acknowledgeRec(id);
         toast('تم تسجيل استلامك لرد المرشد.');
-        await render();
+        await render(); bindTeacherTasks();
       }catch(e){ toast('فشل: '+e.message); el.disabled=false; el.textContent='✓ تسلّمت الرد'; }
     });
   });
@@ -9248,7 +9256,7 @@ function bindTeacherTasks(){
         '<div class="row"><span class="lbl">المُحيل:</span><span>'+esc(c.referred_by_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">المرشد المحال إليه:</span><span>'+esc(c.counselor_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">تاريخ الإحالة:</span><span>'+fmtDate(c.created_at||'')+'</span></div>' +
-        (c.pre_referral_actions && c.pre_referral_actions.length ? '<div style="margin-bottom:8px;"><div style="font-weight:bold;margin-bottom:4px;">الإجراءات المتخذة قبل التحويل:</div><div>'+c.pre_referral_actions.map(function(a){ return '• '+a; }).join('<br>')+'</div></div>' : '') +
+        (Array.isArray(c.pre_referral_actions) && c.pre_referral_actions.length ? '<div style="margin-bottom:8px;"><div style="font-weight:bold;margin-bottom:4px;">الإجراءات المتخذة قبل التحويل:</div><div>'+c.pre_referral_actions.map(function(a){ return '• '+a; }).join('<br>')+'</div></div>' : '') +
         (c.referral_reason ? '<div><div style="font-weight:bold;margin-bottom:4px;">نص الإحالة الرسمي:</div><div class="pre">'+esc(c.referral_reason)+'</div></div>' : '') +
         recBlock +
         '<div style="margin-top:30px;" class="noprint"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">🖨 طباعة</button></div>' +
