@@ -12144,6 +12144,10 @@ async function screenEditor(){
 
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
+const GP_GRADE_OPTS = ['الصف الأول','الصف الثاني','الصف الثالث','الصف الرابع','الصف الخامس','الصف السادس','الصف السابع','الصف الثامن','الصف التاسع','الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
+const GP_SECTION_OPTS = ['أ','ب','ج','د','هـ','و','ز','ح','ط','ي'];
+const GP_SUBJECT_OPTS = ['التربية الإسلامية','اللغة العربية','الرياضيات','العلوم','الاجتماعيات والوطنية','اللغة الإنجليزية','الحاسب الآلي والتقنية','التربية البدنية','التربية الفنية','التربية الأسرية','الفيزياء','الكيمياء','الأحياء','التاريخ','الجغرافيا'];
+
 function renderGroupPlan(d, ro, students){
   const cards = d.students.map(function(s, i){
     const followupRows = (s.followups||[]).map(function(f, j){
@@ -12151,7 +12155,7 @@ function renderGroupPlan(d, ro, students){
         '<tr>' +
           '<td>'+hijriDateInputHtml('data-field="students.'+i+'.followups.'+j+'.date"', f.date, ro)+'</td>' +
           '<td><input class="input" data-field="students.'+i+'.followups.'+j+'.note" value="'+esc(f.note)+'" '+(ro?'disabled':'')+' placeholder="ملاحظة التقدم هذا الأسبوع"></td>' +
-          '<td><input class="input" type="number" min="0" max="40" style="width:74px;" data-field="students.'+i+'.followups.'+j+'.score" value="'+esc(f.score)+'" '+(ro?'disabled':'')+'></td>' +
+          '<td><input class="input" type="number" min="0" style="width:74px;" data-field="students.'+i+'.followups.'+j+'.score" value="'+esc(f.score)+'" '+(ro?'disabled':'')+'></td>' +
           (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="students.'+i+'.followups" data-idx="'+j+'">✕</button></td>') +
         '</tr>'
       );
@@ -12161,7 +12165,7 @@ function renderGroupPlan(d, ro, students){
         '<div class="session-head"><span class="ttl">طالب ('+(i+1)+')</span>' + (ro?'':'<button class="rmv" data-action="removeRow" data-list="students" data-idx="'+i+'">✕ إزالة</button>') + '</div>' +
         studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro) +
         '<div class="field-grid cols-2">' +
-          inputField('درجة اختبار نهاية الفصل (من 40)','students.'+i+'.examScore',s.examScore,{type:'number',readonly:ro}) +
+          inputField('درجة اختبار نهاية الفصل','students.'+i+'.examScore',s.examScore,{type:'number',readonly:ro}) +
           inputField('الدرجة الأساسية (Baseline)','students.'+i+'.baseline',s.baseline,{type:'number',readonly:ro}) +
         '</div>' +
         '<div class="field-grid cols-2">' +
@@ -12184,13 +12188,30 @@ function renderGroupPlan(d, ro, students){
       '</div>'
     );
   }).join('');
+  var _selField = function(label, name, value, opts, ro2){
+    if (ro2) return inputField(label, name, value, {readonly:true});
+    return '<div class="field"><label>'+esc(label)+'</label><select class="input" data-field="'+name+'"><option value="">— اختر —</option>'+opts.map(function(o){ return '<option value="'+esc(o)+'" '+(value===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
+  };
+  var batchCard = ro ? '' : (
+    '<div class="session-card" style="background:color-mix(in srgb,var(--primary) 5%,var(--surface));border:1px solid color-mix(in srgb,var(--primary) 22%,transparent);margin-bottom:16px;">' +
+      '<div class="session-head"><span class="ttl" style="color:var(--primary);">⚡ تعبئة جماعية — تُطبَّق على جميع الطلاب</span></div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">اختر الأساليب والشواهد ومؤشرات التقدم ثم اضغط «تطبيق» لتعبئتها تلقائياً على كل طالب.</div>' +
+      '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('_batchMethods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], d._batchMethods||[])+'</div>' +
+      '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('_batchEvidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], d._batchEvidence||[])+'</div>' +
+      '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('_batchProgress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], d._batchProgress||[])+'</div>' +
+      '<button class="btn btn-primary" data-action="applyBatchGroupPlan" style="margin-top:6px;width:100%;">✔ تطبيق على جميع الطلاب</button>' +
+    '</div>'
+  );
   return (
     '<div class="field-grid cols-4">' +
-      inputField('المدرسة','school',d.school,{readonly:ro}) + inputField('الصف','grade',d.grade,{readonly:ro}) +
-      inputField('الشعبة','section',d.section,{readonly:ro}) + inputField('المادة','subject',d.subject,{readonly:ro}) +
+      inputField('المدرسة','school',d.school,{readonly:ro}) +
+      _selField('الصف','grade',d.grade,GP_GRADE_OPTS,ro) +
+      _selField('الشعبة','section',d.section,GP_SECTION_OPTS,ro) +
+      _selField('المادة','subject',d.subject,GP_SUBJECT_OPTS,ro) +
     '</div>' +
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
+    batchCard +
     cards +
     (ro?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>'+studentMultiPickButtonHtml('students')+'</div>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
@@ -12905,6 +12926,20 @@ function bindEditor(){
     });
     EditorState.data[list] = (EditorState.data[list]||[]).concat(newRows);
     closeStudentPick();
+  });
+
+  var applyBatchBtn = document.querySelector('[data-action="applyBatchGroupPlan"]');
+  if (applyBatchBtn) applyBatchBtn.addEventListener('click', function(){
+    var bm = EditorState.data._batchMethods || [];
+    var be = EditorState.data._batchEvidence || [];
+    var bp = EditorState.data._batchProgress || [];
+    if (!bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
+    (EditorState.data.students || []).forEach(function(s){
+      if (bm.length) s.methods = bm.slice();
+      if (be.length) s.evidence = be.slice();
+      if (bp.length) s.progress = bp.slice();
+    });
+    render(); bindEditor();
   });
 
   var _backBtn = document.querySelector('[data-action="back"]');
