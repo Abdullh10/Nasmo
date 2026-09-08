@@ -7166,6 +7166,7 @@ function bindAdminSettings(){
   });
   const clearSvcBtn = document.querySelector('[data-action="clearSvcKey"]');
   if (clearSvcBtn) clearSvcBtn.addEventListener('click', function(){
+    if (!confirm('هل أنت متأكد من مسح مفتاح الخدمة؟ ستعود عمليات إنشاء الحسابات إلى وضع signUp البطيء حتى تُعيد إدخاله.')) return;
     localStorage.removeItem('nasmo_svc_key');
     toast('تم مسح مفتاح الخدمة.');
     render();
@@ -10742,7 +10743,10 @@ function bindSuperAdmin(){
   const closeSettings = function(){ SuperAdminUI.settingsOpen=false; render(); bindDashboard(); };
   document.querySelectorAll('[data-action="closeSuperSettings"]').forEach(function(el){ el.addEventListener('click', closeSettings); });
   const spClearBtn = document.querySelector('[data-action="spClearSvcKey"]');
-  if (spClearBtn) spClearBtn.addEventListener('click', function(){ localStorage.removeItem('nasmo_svc_key'); toast('تم مسح مفتاح الخدمة.'); SuperAdminUI.settingsOpen=false; render(); bindDashboard(); });
+  if (spClearBtn) spClearBtn.addEventListener('click', function(){
+    if (!confirm('هل أنت متأكد من مسح مفتاح الخدمة؟ ستعود عمليات إنشاء الحسابات إلى وضع signUp البطيء حتى تُعيد إدخاله.')) return;
+    localStorage.removeItem('nasmo_svc_key'); toast('تم مسح مفتاح الخدمة.'); SuperAdminUI.settingsOpen=false; render(); bindDashboard();
+  });
   const saveSettingsBtn = document.querySelector('[data-action="saveSuperSettings"]');
   if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', async function(){
     const fullName = (document.getElementById('spName')||{}).value||'';
