@@ -2431,28 +2431,37 @@ const DB = {
       const backupRange = { range: '0-49999' };
       const sf = State.user.role === 'super_admin' ? '' : '&school=eq.' + encodeURIComponent(State.user.school);
       const bq = function(base){ return sf ? (base.includes('?') ? base + sf : base + '?' + sf.slice(1)) : base; };
-      const [profiles, communities, submissions, notifications, tasks, goals, appSettings, indicatorStatus, siteSettings] = await Promise.all([
-        remoteFetch(bq('profiles?order=created_at.desc'),      backupRange),
-        remoteFetch(bq('communities?order=created_at.asc'),    backupRange),
-        remoteFetch(bq('submissions?order=created_at.desc'),   backupRange),
-        remoteFetch(bq('notifications?order=created_at.desc'), backupRange),
-        remoteFetch(bq('tasks?order=created_at.desc'),         backupRange),
-        remoteFetch(bq('plc_goals?order=created_at.desc'),     backupRange),
-        remoteFetch(bq('app_settings'),                        backupRange),
-        remoteFetch(bq('indicator_status'),                    backupRange),
-        remoteFetch('site_settings',                           backupRange)
+      const [profiles, communities, submissions, notifications, tasks, goals, appSettings, indicatorStatus, siteSettings,
+             practiceShares, students, visitSchedules, counselingCases, classroomObs, giftedReports] = await Promise.all([
+        remoteFetch(bq('profiles?order=created_at.desc'),              backupRange),
+        remoteFetch(bq('communities?order=created_at.asc'),            backupRange),
+        remoteFetch(bq('submissions?order=created_at.desc'),           backupRange),
+        remoteFetch(bq('notifications?order=created_at.desc'),         backupRange),
+        remoteFetch(bq('tasks?order=created_at.desc'),                 backupRange),
+        remoteFetch(bq('plc_goals?order=created_at.desc'),             backupRange),
+        remoteFetch(bq('app_settings'),                                backupRange),
+        remoteFetch(bq('indicator_status'),                            backupRange),
+        remoteFetch('site_settings',                                   backupRange),
+        remoteFetch(bq('practice_shares?order=created_at.desc'),       backupRange),
+        remoteFetch(bq('students?order=created_at.desc'),              backupRange),
+        remoteFetch(bq('visit_schedules?order=created_at.desc'),       backupRange),
+        remoteFetch(bq('counseling_cases?order=created_at.desc'),      backupRange),
+        remoteFetch(bq('classroom_observations?order=created_at.desc'),backupRange),
+        remoteFetch(bq('gifted_reports?order=created_at.desc'),        backupRange)
       ]);
       return {
-        version: 1, exported_at: nowIso(),
+        version: 2, exported_at: nowIso(),
         data: {
           profiles: profiles||[], communities: communities||[], submissions: submissions||[],
           notifications: notifications||[], tasks: tasks||[], goals: goals||[], app_settings: appSettings||[], indicator_status: indicatorStatus||[],
-          site_settings: siteSettings||[]
+          site_settings: siteSettings||[],
+          practice_shares: practiceShares||[], students: students||[], visit_schedules: visitSchedules||[],
+          counseling_cases: counselingCases||[], classroom_observations: classroomObs||[], gifted_reports: giftedReports||[]
         }
       };
     }
     return {
-      version: 1, exported_at: nowIso(),
+      version: 2, exported_at: nowIso(),
       data: {
         profiles: JSON.parse(localStorage.getItem(LS_USERS) || '[]'),
         communities: JSON.parse(localStorage.getItem(LS_COMMUNITIES) || '[]'),
@@ -2462,13 +2471,19 @@ const DB = {
         goals: JSON.parse(localStorage.getItem(LS_GOALS) || '[]'),
         app_settings: JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'),
         indicator_status: JSON.parse(localStorage.getItem(LS_INDSTATUS) || '{}'),
-        site_settings: JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}')
+        site_settings: JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}'),
+        practice_shares: JSON.parse(localStorage.getItem(LS_PRACTICE) || '[]'),
+        students: JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]'),
+        visit_schedules: JSON.parse(localStorage.getItem(LS_VISIT_SCHEDULES) || '[]'),
+        counseling_cases: JSON.parse(localStorage.getItem(LS_COUNSELING) || '[]'),
+        classroom_observations: JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]'),
+        gifted_reports: JSON.parse(localStorage.getItem(LS_GIFTED) || '[]')
       }
     };
   },
   async restoreFullBackup(backup){
     const data = (backup && backup.data) || {};
-    const report = { profiles:0, communities:0, submissions:0, notifications:0, tasks:0, goals:0, app_settings:0, indicator_status:0, site_settings:0, errors: [] };
+    const report = { profiles:0, communities:0, submissions:0, notifications:0, tasks:0, goals:0, app_settings:0, indicator_status:0, site_settings:0, practice_shares:0, students:0, visit_schedules:0, counseling_cases:0, classroom_observations:0, gifted_reports:0, errors: [] };
     if (isRemote()){
       const byId = async function(table, key, rows){
         for (const row of (rows||[])){
@@ -2482,6 +2497,12 @@ const DB = {
       await byId('notifications', 'notifications', data.notifications);
       await byId('tasks', 'tasks', data.tasks);
       await byId('plc_goals', 'goals', data.goals);
+      await byId('practice_shares', 'practice_shares', data.practice_shares);
+      await byId('students', 'students', data.students);
+      await byId('visit_schedules', 'visit_schedules', data.visit_schedules);
+      await byId('counseling_cases', 'counseling_cases', data.counseling_cases);
+      await byId('classroom_observations', 'classroom_observations', data.classroom_observations);
+      await byId('gifted_reports', 'gifted_reports', data.gifted_reports);
       for (const row of (data.app_settings||[])){
         const r = await upsertByMatch('app_settings', 'school=eq.' + encodeURIComponent(row.school), row);
         if (r.ok) report.app_settings++; else report.errors.push('app_settings:' + row.school + ' ' + (r.error||''));
@@ -2506,6 +2527,12 @@ const DB = {
     if (data.app_settings){ localStorage.setItem(LS_SETTINGS, JSON.stringify(data.app_settings)); report.app_settings = Object.keys(data.app_settings).length; }
     if (data.indicator_status){ localStorage.setItem(LS_INDSTATUS, JSON.stringify(data.indicator_status)); report.indicator_status = Object.keys(data.indicator_status).length; }
     if (data.site_settings){ localStorage.setItem(LS_SITE_SETTINGS, JSON.stringify(data.site_settings)); report.site_settings = 1; }
+    if (data.practice_shares){ localStorage.setItem(LS_PRACTICE, JSON.stringify(data.practice_shares)); report.practice_shares = data.practice_shares.length; }
+    if (data.students){ localStorage.setItem(LS_STUDENTS, JSON.stringify(data.students)); report.students = data.students.length; }
+    if (data.visit_schedules){ localStorage.setItem(LS_VISIT_SCHEDULES, JSON.stringify(data.visit_schedules)); report.visit_schedules = data.visit_schedules.length; }
+    if (data.counseling_cases){ localStorage.setItem(LS_COUNSELING, JSON.stringify(data.counseling_cases)); report.counseling_cases = data.counseling_cases.length; }
+    if (data.classroom_observations){ localStorage.setItem('dtd_obs_v1', JSON.stringify(data.classroom_observations)); report.classroom_observations = data.classroom_observations.length; }
+    if (data.gifted_reports){ localStorage.setItem(LS_GIFTED, JSON.stringify(data.gifted_reports)); report.gifted_reports = data.gifted_reports.length; }
     return report;
   }
 };
@@ -7179,7 +7206,8 @@ function bindAdminSettings(){
           toast('تم الاسترجاع مع بعض الأخطاء ('+report.errors.length+'). راجع الكونسول للتفاصيل.');
           console.warn('Backup restore errors:', report.errors);
         } else {
-          toast('تم استرجاع النسخة الاحتياطية بنجاح.');
+          var total = (report.profiles||0)+(report.communities||0)+(report.submissions||0)+(report.tasks||0)+(report.goals||0)+(report.practice_shares||0)+(report.students||0)+(report.visit_schedules||0)+(report.counseling_cases||0)+(report.classroom_observations||0)+(report.gifted_reports||0);
+          toast('تم استرجاع النسخة الاحتياطية بنجاح ('+total+' سجل).');
         }
         render();
       }catch(e){ toast('تعذّر استرجاع النسخة الاحتياطية: ' + e.message); }
