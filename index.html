@@ -12144,9 +12144,10 @@ async function screenEditor(){
 
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
-const GP_GRADE_OPTS = ['الصف الأول','الصف الثاني','الصف الثالث','الصف الرابع','الصف الخامس','الصف السادس','الصف السابع','الصف الثامن','الصف التاسع','الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
-const GP_SECTION_OPTS = ['أ','ب','ج','د','هـ','و','ز','ح','ط','ي'];
-const GP_SUBJECT_OPTS = ['التربية الإسلامية','اللغة العربية','الرياضيات','العلوم','الاجتماعيات والوطنية','اللغة الإنجليزية','الحاسب الآلي والتقنية','التربية البدنية','التربية الفنية','التربية الأسرية','الفيزياء','الكيمياء','الأحياء','التاريخ','الجغرافيا'];
+const GP_GRADE_OPTS = ['الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
+const GP_DIAG_OPTS = ['نتائج اختبار نهاية الفصل','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','تحليل أوراق العمل الصفية','ملاحظة المعلم المباشرة','نتائج الاختبار القبلي التشخيصي','مؤشرات الحضور والمشاركة','بيانات التقويم المستمر'];
+const GP_SKILLS_OPTS = ['القراءة والاستيعاب','الحساب الذهني والعمليات الأساسية','الكتابة والإملاء','حل المسائل والتفكير الرياضي','التعبير الكتابي والشفهي','المفردات والتراكيب اللغوية','المهارات العلمية والتجريبية','الفهم القرائي وتحليل النص','مهارات الاستنتاج والتحليل'];
+const GP_TEACHER_OPINION_OPTS = ['بعد تطبيق الأساليب المقترحة لوحظ تحسن ملموس في أداء الطلاب','تحسن الطلاب في معظم المهارات المستهدفة بعد التدخل العلاجي','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي في بعض المهارات','حقق الطلاب الهدف المستهدف قبل الموعد المحدد','استجاب الطلاب بشكل إيجابي للأساليب التعاونية المستخدمة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب المستخدمة','أخرى'];
 
 function renderGroupPlan(d, ro, students){
   const cards = d.students.map(function(s, i){
@@ -12173,8 +12174,12 @@ function renderGroupPlan(d, ro, students){
           inputField('التاريخ المستهدف للتحقق','students.'+i+'.targetDate',s.targetDate,{type:'date',readonly:ro}) +
         '</div>' +
         '<div class="field-grid cols-2">' +
-          inputField('شواهد التشخيص','students.'+i+'.diag',s.diag,{type:'textarea',readonly:ro}) +
-          inputField('المهارات المستهدفة','students.'+i+'.skills',s.skills,{type:'textarea',readonly:ro}) +
+          (ro
+            ? inputField('شواهد التشخيص','students.'+i+'.diag',s.diag,{readonly:true})
+            : '<div class="field"><label>شواهد التشخيص</label><select class="input" data-field="students.'+i+'.diag"><option value="">— اختر —</option>'+GP_DIAG_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+(s.diag===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>') +
+          (ro
+            ? inputField('المهارات المستهدفة','students.'+i+'.skills',s.skills,{readonly:true})
+            : '<div class="field"><label>المهارات المستهدفة</label><select class="input" data-field="students.'+i+'.skills"><option value="">— اختر —</option>'+GP_SKILLS_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+(s.skills===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>') +
         '</div>' +
         '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</div>' +
         '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], s.evidence)+'</div>' +
@@ -12192,22 +12197,38 @@ function renderGroupPlan(d, ro, students){
     if (ro2) return inputField(label, name, value, {readonly:true});
     return '<div class="field"><label>'+esc(label)+'</label><select class="input" data-field="'+name+'"><option value="">— اختر —</option>'+opts.map(function(o){ return '<option value="'+esc(o)+'" '+(value===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>';
   };
+  var isOpinionOther = d.teacherOpinion && GP_TEACHER_OPINION_OPTS.indexOf(d.teacherOpinion) === -1;
+  var opinionSelectVal = isOpinionOther ? 'أخرى' : (d.teacherOpinion || '');
   var batchCard = ro ? '' : (
     '<div class="session-card" style="background:color-mix(in srgb,var(--primary) 5%,var(--surface));border:1px solid color-mix(in srgb,var(--primary) 22%,transparent);margin-bottom:16px;">' +
       '<div class="session-head"><span class="ttl" style="color:var(--primary);">⚡ تعبئة جماعية — تُطبَّق على جميع الطلاب</span></div>' +
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">اختر الأساليب والشواهد ومؤشرات التقدم ثم اضغط «تطبيق» لتعبئتها تلقائياً على كل طالب.</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">اختر القيم المشتركة ثم اضغط «تطبيق» لتعبئتها تلقائياً على كل طالب.</div>' +
+      '<div class="field-grid cols-2">' +
+        '<div class="field"><label>شواهد التشخيص</label><select class="input" data-field="_batchDiag"><option value="">— اختر —</option>'+GP_DIAG_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchDiag||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
+        '<div class="field"><label>المهارات المستهدفة</label><select class="input" data-field="_batchSkills"><option value="">— اختر —</option>'+GP_SKILLS_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchSkills||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
+      '</div>' +
       '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('_batchMethods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], d._batchMethods||[])+'</div>' +
       '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('_batchEvidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], d._batchEvidence||[])+'</div>' +
       '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('_batchProgress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], d._batchProgress||[])+'</div>' +
       '<button class="btn btn-primary" data-action="applyBatchGroupPlan" style="margin-top:6px;width:100%;">✔ تطبيق على جميع الطلاب</button>' +
     '</div>'
   );
+  var teacherOpinionHtml = ro
+    ? inputField('','teacherOpinion', d.teacherOpinion, {readonly:true})
+    : (
+      '<div class="field"><label>رأي المعلم في فاعلية الخطة</label>' +
+        '<select class="input" id="gpTeacherOpinionSel" data-action="gpOpinionSel">' +
+          '<option value="">— اختر —</option>' +
+          GP_TEACHER_OPINION_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+(opinionSelectVal===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('') +
+        '</select>' +
+        '<textarea class="input" data-field="teacherOpinion" style="margin-top:8px;'+(opinionSelectVal!=='أخرى'?'display:none;':'')+'" placeholder="اكتب رأيك بحرية...">'+esc(isOpinionOther ? d.teacherOpinion : '')+'</textarea>' +
+      '</div>'
+    );
   return (
-    '<div class="field-grid cols-4">' +
+    '<div class="field-grid cols-3">' +
       inputField('المدرسة','school',d.school,{readonly:ro}) +
       _selField('الصف','grade',d.grade,GP_GRADE_OPTS,ro) +
-      _selField('الشعبة','section',d.section,GP_SECTION_OPTS,ro) +
-      _selField('المادة','subject',d.subject,GP_SUBJECT_OPTS,ro) +
+      inputField('المادة','subject',d.subject,{readonly:ro,placeholder:'اكتب اسم المادة'}) +
     '</div>' +
     inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
@@ -12215,12 +12236,7 @@ function renderGroupPlan(d, ro, students){
     cards +
     (ro?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>'+studentMultiPickButtonHtml('students')+'</div>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
-    inputField('','teacherOpinion', d.teacherOpinion, {type:'textarea', readonly:ro, placeholder:'مثال: بناءً على نتائج الاختبار، تم تحديد الطلاب أعلاه ضمن فئة الدعم، وبعد تنفيذ الأساليب المقترحة تبيّن أن...'}) +
-    '<div class="block-title"><span class="dot"></span> السؤال الرابع: دعم الطلاب المتقدمين (Enrichment)</div>' +
-    '<div style="background:color-mix(in srgb,var(--success) 8%,var(--surface));border:1px solid color-mix(in srgb,var(--success) 25%,transparent);border-radius:10px;padding:14px 16px;margin-bottom:16px;">' +
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">للطلاب الذين أتقنوا المادة مبكراً — ماذا نقدم لهم؟ (DuFour السؤال الرابع)</div>' +
-      inputField('استراتيجيات الإثراء للمتقدمين','enrichmentPlan', (d.enrichmentPlan||''), {type:'textarea', readonly:ro, placeholder:'مثال: مشاريع بحثية، تعليم الأقران، مسائل تحدٍّ إضافية...'}) +
-    '</div>'
+    teacherOpinionHtml
   );
 }
 
@@ -12930,16 +12946,33 @@ function bindEditor(){
 
   var applyBatchBtn = document.querySelector('[data-action="applyBatchGroupPlan"]');
   if (applyBatchBtn) applyBatchBtn.addEventListener('click', function(){
+    var bd = EditorState.data._batchDiag || '';
+    var bsk = EditorState.data._batchSkills || '';
     var bm = EditorState.data._batchMethods || [];
     var be = EditorState.data._batchEvidence || [];
     var bp = EditorState.data._batchProgress || [];
-    if (!bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
+    if (!bd && !bsk && !bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
     (EditorState.data.students || []).forEach(function(s){
+      if (bd) s.diag = bd;
+      if (bsk) s.skills = bsk;
       if (bm.length) s.methods = bm.slice();
       if (be.length) s.evidence = be.slice();
       if (bp.length) s.progress = bp.slice();
     });
     render(); bindEditor();
+  });
+  document.querySelectorAll('[data-action="gpOpinionSel"]').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var ta = sel.parentElement && sel.parentElement.querySelector('textarea');
+      if (!ta) return;
+      if (sel.value === 'أخرى'){
+        ta.style.display = '';
+        setPath(EditorState.data, 'teacherOpinion', ta.value);
+      } else {
+        ta.style.display = 'none';
+        setPath(EditorState.data, 'teacherOpinion', sel.value);
+      }
+    });
   });
 
   var _backBtn = document.querySelector('[data-action="back"]');
