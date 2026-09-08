@@ -559,6 +559,11 @@ html[data-theme="dark"] .sig-box canvas{ background:#f0f4f8; }
   .exam-print-header{ display:block !important; }
   .program-card,.session-card,.kpi-card,.task-card,table.list tr{ page-break-inside:avoid; break-inside:avoid; }
   .section-head{ page-break-after:avoid; break-after:avoid; }
+  /* أرشيف النماذج: اظهر الجدول كاملاً عند الطباعة */
+  #arc-table{ width:100%;font-size:11px; }
+  #arc-table td:last-child{ display:none; } /* أخفِ عمود الأزرار */
+  #arc-table th:last-child{ display:none; }
+  #arc-count{ display:block !important; }
 }
 .footer-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; }
 .creds-print-page{ background:#fff; padding:8px; }
@@ -3629,6 +3634,7 @@ function dashTabsHtml(){
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
+      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalArchive'?'active':'')+'" data-action="dashTab" data-tab="principalArchive">📁 أرشيف النماذج</button>' : '') +
       (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
   );
@@ -4907,6 +4913,176 @@ function bindCoordinatorGoals(){
 /* ----- لوحة مدير المدرسة: مراجعة المهام المكتملة وخطط التحسين واعتمادها وتقييمها ----- */
 let PrincipalReviewUI = { goalReviewId:null };
 let ReviewUI = { filter: 'all' };
+/* ═══════════════════════════════════════════════════════
+   أرشيف النماذج المعتمدة — حساب المدير
+   ═══════════════════════════════════════════════════════ */
+async function screenPrincipalArchive(){
+  const communities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const allSubs = await DB.listSubmissions({ school: State.user.school });
+  const approved = allSubs.filter(function(s){ return s.status==='approved'; })
+    .sort(function(a,b){ return new Date(b.approved_at||b.updated_at) - new Date(a.approved_at||a.updated_at); });
+
+  /* مجاميع إجمالية */
+  const totalApproved = approved.length;
+  const byType = {};
+  approved.forEach(function(s){ byType[s.form_type] = (byType[s.form_type]||0)+1; });
+  const topTypes = Object.keys(byType).sort(function(a,b){ return byType[b]-byType[a]; }).slice(0,4);
+
+  const kpiRow = (
+    '<div class="kpi-grid" style="margin-bottom:20px;">' +
+      '<div class="kpi-card accent-success"><div class="v">'+totalApproved+'</div><div class="l">إجمالي المعتمدة</div></div>' +
+      topTypes.map(function(ft){
+        const def = formDef(ft);
+        return '<div class="kpi-card"><div class="v">'+byType[ft]+'</div><div class="l" style="font-size:11px;">'+(def?def.title.slice(0,18)+(def.title.length>18?'…':''):ft)+'</div></div>';
+      }).join('') +
+    '</div>'
+  );
+
+  /* فلاتر */
+  const commOpts = '<option value="">كل المجتمعات</option>' +
+    communities.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
+  const typeOpts = '<option value="">كل أنواع النماذج</option>' +
+    FORM_DEFS.map(function(f){ return '<option value="'+esc(f.id)+'">'+esc(f.no+'. '+f.title)+'</option>'; }).join('');
+
+  const filters = (
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;align-items:flex-end;" class="no-print">' +
+      '<div style="flex:1;min-width:180px;">' +
+        '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">نوع النموذج</label>' +
+        '<select class="input" id="arc-type">'+typeOpts+'</select>' +
+      '</div>' +
+      '<div style="flex:1;min-width:160px;">' +
+        '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">المجتمع المهني</label>' +
+        '<select class="input" id="arc-comm">'+commOpts+'</select>' +
+      '</div>' +
+      '<div style="flex:1;min-width:160px;">' +
+        '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">اسم المعلم / المنسق</label>' +
+        '<input class="input" id="arc-name" placeholder="ابحث بالاسم…">' +
+      '</div>' +
+      '<div style="min-width:130px;">' +
+        '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">من تاريخ</label>' +
+        '<input class="input" id="arc-from" type="date">' +
+      '</div>' +
+      '<div style="min-width:130px;">' +
+        '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">إلى تاريخ</label>' +
+        '<input class="input" id="arc-to" type="date">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:flex-end;">' +
+        '<button class="btn btn-ghost btn-sm" id="arc-reset">إعادة تعيين</button>' +
+        '<button class="btn btn-primary btn-sm" id="arc-print" style="white-space:nowrap;">🖨️ طباعة الجدول</button>' +
+      '</div>' +
+    '</div>'
+  );
+
+  /* جدول النماذج */
+  const rows = approved.map(function(s){
+    const def = formDef(s.form_type);
+    const comm = communities.find(function(c){ return c.id===s.community_id; });
+    const approvedDate = s.approved_at ? fmtDate(s.approved_at) : (s.updated_at ? fmtDate(s.updated_at) : '—');
+    const rating = s.principal_rating != null ? (
+      '<span style="font-weight:700;color:var(--success);">'+s.principal_rating+'/100</span>'
+    ) : '<span style="color:var(--muted);">—</span>';
+    return (
+      '<tr data-type="'+esc(s.form_type)+'" data-comm="'+esc(s.community_id||'')+'" data-name="'+esc((s.created_by_name||'').toLowerCase())+'" data-date="'+(s.approved_at||s.updated_at||'').slice(0,10)+'">' +
+        '<td>' +
+          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(def?esc(def.color):'var(--muted)')+';margin-inline-end:6px;vertical-align:middle;"></span>' +
+          '<b>'+(def?esc(def.no+'. '+def.title):esc(s.form_type))+'</b>' +
+        '</td>' +
+        '<td>'+esc(s.created_by_name||'—')+'</td>' +
+        '<td>'+esc(comm?comm.name:'—')+'</td>' +
+        '<td style="font-variant-numeric:tabular-nums;white-space:nowrap;">'+approvedDate+'</td>' +
+        '<td>'+rating+'</td>' +
+        '<td class="row-actions">' +
+          '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض وطباعة</button>' +
+        '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  const table = (
+    '<div id="arc-count" style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">يُعرض '+approved.length+' نموذج معتمد</div>' +
+    '<div class="table-wrap"><div class="table-scroll"><table class="list" id="arc-table">' +
+      '<thead><tr>' +
+        '<th>النموذج</th>' +
+        '<th>المُعد</th>' +
+        '<th>المجتمع المهني</th>' +
+        '<th>تاريخ الاعتماد</th>' +
+        '<th>التقييم</th>' +
+        '<th></th>' +
+      '</tr></thead>' +
+      '<tbody id="arc-tbody">' + (rows || '<tr class="empty-row"><td colspan="6">لا توجد نماذج معتمدة بعد.</td></tr>') + '</tbody>' +
+    '</table></div></div>'
+  );
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>📁 أرشيف النماذج المعتمدة</h2></div>' +
+    kpiRow +
+    filters +
+    table
+  );
+}
+
+function bindPrincipalArchive(){
+  /* الدوال المساعدة */
+  function _applyFilters(){
+    var typeVal  = (document.getElementById('arc-type')||{}).value||'';
+    var commVal  = (document.getElementById('arc-comm')||{}).value||'';
+    var nameVal  = ((document.getElementById('arc-name')||{}).value||'').trim().toLowerCase();
+    var fromVal  = (document.getElementById('arc-from')||{}).value||'';
+    var toVal    = (document.getElementById('arc-to')||{}).value||'';
+    var count = 0;
+    var tbody = document.getElementById('arc-tbody');
+    if (!tbody) return;
+    tbody.querySelectorAll('tr[data-type]').forEach(function(row){
+      var show = true;
+      if (typeVal && row.getAttribute('data-type') !== typeVal) show = false;
+      if (commVal && row.getAttribute('data-comm') !== commVal) show = false;
+      if (nameVal && !row.getAttribute('data-name').includes(nameVal)) show = false;
+      var rowDate = row.getAttribute('data-date')||'';
+      if (fromVal && rowDate && rowDate < fromVal) show = false;
+      if (toVal   && rowDate && rowDate > toVal)   show = false;
+      row.hidden = !show;
+      if (show) count++;
+    });
+    var countEl = document.getElementById('arc-count');
+    if (countEl) countEl.textContent = 'يُعرض '+count+' نموذج معتمد';
+  }
+
+  ['arc-type','arc-comm'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', _applyFilters);
+  });
+  ['arc-name'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', _applyFilters);
+  });
+  ['arc-from','arc-to'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', _applyFilters);
+  });
+
+  var resetBtn = document.getElementById('arc-reset');
+  if (resetBtn) resetBtn.addEventListener('click', function(){
+    ['arc-type','arc-comm'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['arc-name'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['arc-from','arc-to'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    _applyFilters();
+  });
+
+  /* طباعة الجدول المرئي */
+  var printBtn = document.getElementById('arc-print');
+  if (printBtn) printBtn.addEventListener('click', function(){
+    window.print();
+  });
+
+  /* زر عرض النموذج */
+  document.querySelectorAll('#arc-tbody [data-action="openView"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); });
+  });
+}
+
 async function screenPrincipalReview(){
   const communities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
   const tasks = (await DB.listTasks({ school: State.user.school })).filter(function(t){ return t.status==='done'; });
@@ -8118,6 +8294,9 @@ async function screenDashboard(){
   if (State.dashTab==='teamStats' && State.user.role==='coordinator'){
     return await screenCoordinatorTeamStats();
   }
+  if (State.dashTab==='principalArchive' && State.user.role==='principal'){
+    return await screenPrincipalArchive();
+  }
   if (State.dashTab==='principalReview' && State.user.role==='principal'){
     return await screenPrincipalReview();
   }
@@ -8291,6 +8470,7 @@ function bindDashboard(){
   else if (State.dashTab==='demoLesson' && State.user.role==='coordinator') bindCoordinatorDemoLessons();
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') bindCoordinatorTeamStats();
+  else if (State.dashTab==='principalArchive' && State.user.role==='principal') bindPrincipalArchive();
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
   else if (State.dashTab==='principalDemoLessons' && State.user.role==='principal') bindPrincipalDemoLessons();
   else if (State.dashTab==='principalGifted' && State.user.role==='principal') bindPrincipalGifted();
