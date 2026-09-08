@@ -6733,7 +6733,7 @@ function examAnalysisResultModal(){
   const plansHtml = r.plans.map(function(p){
     return (
       '<div class="task-card" style="margin-bottom:8px;">'+
-        '<div class="meta"><b>الصف '+esc(p.grade||'—')+' — الشعبة '+esc(p.section||'—')+'</b>'+
+        '<div class="meta"><b>'+esc(p.grade||'—')+'</b>'+
           '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب دون المستوى '+(p.created?'(خطة جديدة)':'(تمت إضافتهم)')+'</span></div>'+
         '<button class="btn btn-ghost btn-sm" data-action="openExamSortedPlan" data-id="'+p.id+'">متابعة الخطة العلاجية والمتابعة الأسبوعية</button>'+
       '</div>'
@@ -6753,10 +6753,11 @@ function examAnalysisResultModal(){
 async function runExamAutoSort(){
   const rows = (ExamAnalysisUI.rows||[]).filter(function(r){ return r.score!=null && r.score < examPassScore(); });
   if (!rows.length){ toast('لا يوجد طلاب أقل من النصف لرصدهم.'); return; }
+  // Group by grade only — all sections in one plan per grade
   const groups = {};
   rows.forEach(function(r){
-    const key = (r.grade||'')+'|||'+(r.section||'');
-    groups[key] = groups[key] || { grade:r.grade, section:r.section, students: [] };
+    const key = (r.grade||'') || '__all__';
+    if (!groups[key]) groups[key] = { grade:r.grade||'', students:[] };
     groups[key].students.push(r);
   });
   const allExisting = (await DB.listSubmissions({ school: State.user.school })).filter(function(s){
@@ -6769,9 +6770,10 @@ async function runExamAutoSort(){
   const skipped = [];
   for (const key in groups){
     const g = groups[key];
-    const alreadySubmitted = submitted.find(function(s){ return (s.payload.grade||'')===(g.grade||'') && (s.payload.section||'')===(g.section||''); });
-    if (alreadySubmitted){ skipped.push(g.grade+(g.section?' '+g.section:'')); continue; }
-    let sub = existing.find(function(s){ return (s.payload.grade||'')===(g.grade||'') && (s.payload.section||'')===(g.section||''); });
+    // Match by grade + empty section (grade-level plan)
+    const alreadySubmitted = submitted.find(function(s){ return (s.payload.grade||'')===(g.grade) && !(s.payload.section||''); });
+    if (alreadySubmitted){ skipped.push(g.grade||'غير محدد'); continue; }
+    let sub = existing.find(function(s){ return (s.payload.grade||'')===(g.grade) && !(s.payload.section||''); });
     let created = false;
     let addedHere = 0;
     if (sub){
@@ -6785,13 +6787,13 @@ async function runExamAutoSort(){
       sub = Object.assign({}, sub, { payload: payload });
     } else {
       const payload = blankData('groupPlan');
-      payload.grade = g.grade; payload.section = g.section;
+      payload.grade = g.grade; payload.section = '';
       payload.students = g.students.map(function(r){ const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; return row; });
       sub = await DB.createSubmission({ form_type:'groupPlan', school: State.user.school, created_by: State.user.id, created_by_name: State.user.full_name, payload: payload, status:'draft' });
       created = true; addedHere = g.students.length;
     }
     totalAdded += addedHere;
-    plans.push({ id: sub.id, grade: g.grade, section: g.section, count: g.students.length, created: created });
+    plans.push({ id: sub.id, grade: g.grade, count: g.students.length, created: created });
   }
   if (skipped.length){ toast('توجد خطة علاجية مرسلة بالفعل للفصول: '+skipped.join('، ')+'. تم تخطيها.'); }
   if (!plans.length){ render(); bindExamAnalysis(); return; }
