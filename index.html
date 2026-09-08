@@ -9520,6 +9520,7 @@ async function screenTeacherTasks(){
         '<td class="row-actions">' +
           (s.status==='draft'||s.status==='returned'
             ? '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">إكمال التعبئة</button>'
+              + (s.status==='draft' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteDraft" data-id="'+s.id+'" style="color:var(--danger);">حذف</button>' : '')
             : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>') +
         '</td>' +
       '</tr>'
