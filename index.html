@@ -6691,8 +6691,8 @@ async function screenExamAnalysis(){
     '</div>'+
     (rows.length?(
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;" class="no-print">'+
-        '<input class="input" id="examSubjectInput" placeholder="اسم المادة" value="'+esc(ExamAnalysisUI.subject)+'" style="max-width:160px;">'+
-        '<input class="input" id="examTermInput" placeholder="الفصل الدراسي" value="'+esc(ExamAnalysisUI.term)+'" style="max-width:160px;">'+
+        '<input class="input" id="examSubjectInput" placeholder="اسم المادة" value="'+esc(ExamAnalysisUI.subject||'')+'" style="max-width:160px;">'+
+        '<input class="input" id="examTermInput" placeholder="الفصل الدراسي" value="'+esc(ExamAnalysisUI.term||'')+'" style="max-width:160px;">'+
         '<button class="btn btn-ghost btn-sm" data-action="saveExamAnalysis">💾 حفظ التحليل</button>'+
         '<button class="btn btn-ghost btn-sm" data-action="printExamReport">🖨 طباعة التقرير</button>'+
       '</div>'+
@@ -6855,9 +6855,9 @@ function bindExamAnalysis(){
     if (isXlsx){ reader.readAsArrayBuffer(file); } else { reader.readAsText(file, 'UTF-8'); }
   });
   const subjectInput = document.getElementById('examSubjectInput');
-  if (subjectInput){ subjectInput.value = ExamAnalysisUI.subject; subjectInput.addEventListener('input', function(){ ExamAnalysisUI.subject = this.value; }); }
+  if (subjectInput){ subjectInput.value = ExamAnalysisUI.subject||''; subjectInput.addEventListener('input', function(){ ExamAnalysisUI.subject = this.value; }); }
   const termInput = document.getElementById('examTermInput');
-  if (termInput){ termInput.value = ExamAnalysisUI.term; termInput.addEventListener('input', function(){ ExamAnalysisUI.term = this.value; }); }
+  if (termInput){ termInput.value = ExamAnalysisUI.term||''; termInput.addEventListener('input', function(){ ExamAnalysisUI.term = this.value; }); }
   const saveBtn = document.querySelector('[data-action="saveExamAnalysis"]');
   if (saveBtn) saveBtn.addEventListener('click', saveExamAnalysis);
   const printBtn = document.querySelector('[data-action="printExamReport"]');
