@@ -12148,6 +12148,7 @@ const GP_GRADE_OPTS = ['الأول ثانوي','الثاني ثانوي','الث
 const GP_DIAG_OPTS = ['نتائج الاختبار القبلي التشخيصي','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','نتائج اختبار نهاية الفصل','تحليل أوراق العمل الصفية','تحليل أخطاء الطلاب الشائعة','ملاحظة المعلم المباشرة في الفصل','بيانات التقويم المستمر','مؤشرات الحضور والمشاركة الصفية','تقارير المرشد الطلابي'];
 const GP_SKILLS_OPTS = ['الفهم القرائي وتحليل النص','التعبير الكتابي الوظيفي والإبداعي','التعبير الشفهي والعرض والمناقشة','المفردات والتراكيب اللغوية','حل المسائل والتفكير الرياضي','مهارات الاستنتاج والتحليل والتقويم','مهارات التفكير الناقد والإبداعي','المهارات العلمية والتجريبية','تطبيق المفاهيم والنظريات','مهارات البحث والاستقصاء وجمع المعلومات'];
 const GP_TEACHER_OPINION_OPTS = ['تحسّن الطلاب بشكل ملحوظ في المهارات المستهدفة بعد التدخل العلاجي','حقق معظم الطلاب الهدف المستهدف ضمن الجدول الزمني المحدد','استجاب الطلاب بشكل إيجابي للأساليب العلاجية المستخدمة','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي ومتابعة مستمرة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب وتكثيف الدعم','تحسّن الأداء بصورة محدودة وتستلزم الحالة تدخلاً أكثر تخصصاً','أخرى'];
+const GP_TARGET_GOAL_OPTS = ['رفع مستوى الطالب إلى ما فوق حد الإتقان (50% فأكثر)','رفع درجة الطالب بنسبة 20% عن درجته الحالية','رفع درجة الطالب بنسبة 30% عن درجته الحالية','رفع درجة الطالب بنسبة 40% عن درجته الحالية','تحقيق نسبة 60% من الدرجة الكلية','تحقيق نسبة 70% من الدرجة الكلية (مستوى جيد)','إتقان المهارات الأساسية وتجاوز حد الإتقان','الانتقال من مستوى دون المتوسط إلى المتوسط','الانتقال من المستوى المتوسط إلى الجيد'];
 
 function renderGroupPlan(d, ro, students){
   const cards = d.students.map(function(s, i){
@@ -12167,12 +12168,11 @@ function renderGroupPlan(d, ro, students){
         studentSelectInlineHtml('students.'+i+'.name', s.name, students, ro) +
         '<div class="field-grid cols-2">' +
           inputField('درجة اختبار نهاية الفصل','students.'+i+'.examScore',s.examScore,{type:'number',readonly:ro}) +
-          inputField('الدرجة الأساسية (Baseline)','students.'+i+'.baseline',s.baseline,{type:'number',readonly:ro}) +
-        '</div>' +
-        '<div class="field-grid cols-2">' +
-          inputField('الهدف المستهدف','students.'+i+'.targetGoal',s.targetGoal,{readonly:ro,placeholder:'مثال: رفع الدرجة إلى 30/40'}) +
           inputField('التاريخ المستهدف للتحقق','students.'+i+'.targetDate',s.targetDate,{type:'date',readonly:ro}) +
         '</div>' +
+        (ro
+          ? inputField('الهدف المستهدف','students.'+i+'.targetGoal',s.targetGoal,{readonly:true})
+          : '<div class="field"><label>الهدف المستهدف</label><select class="input" data-field="students.'+i+'.targetGoal"><option value="">— اختر —</option>'+GP_TARGET_GOAL_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+(s.targetGoal===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>') +
         '<div class="field-grid cols-2">' +
           (ro
             ? inputField('شواهد التشخيص','students.'+i+'.diag',s.diag,{readonly:true})
@@ -12207,6 +12207,7 @@ function renderGroupPlan(d, ro, students){
         '<div class="field"><label>شواهد التشخيص</label><select class="input" data-field="_batchDiag"><option value="">— اختر —</option>'+GP_DIAG_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchDiag||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
         '<div class="field"><label>المهارات المستهدفة</label><select class="input" data-field="_batchSkills"><option value="">— اختر —</option>'+GP_SKILLS_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchSkills||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
       '</div>' +
+      '<div class="field"><label>الهدف المستهدف</label><select class="input" data-field="_batchTargetGoal"><option value="">— اختر —</option>'+GP_TARGET_GOAL_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchTargetGoal||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
       '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('_batchMethods', ['التعلم المباشر (الشرح والتوضيح)','التعلم التعاوني','التعلم الذاتي','حل المشكلات','المناقشة والحوار الصفي','التعلم القائم على المشاريع'], d._batchMethods||[])+'</div>' +
       '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('_batchEvidence', ['أوراق العمل','المهام الأدائية','الواجبات المنزلية','الأنشطة الصفية','نتائج الاختبارات','ملف إنجاز الطالب (Portfolio)','تقارير البحث والاستقصاء'], d._batchEvidence||[])+'</div>' +
       '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('_batchProgress', ['التقويم المستمر','الملاحظة الصفية المباشرة','اختبار قبلي وبعدي','نتائج اختبارات الفترة','الاختبارات التكوينية الدورية'], d._batchProgress||[])+'</div>' +
@@ -12948,13 +12949,15 @@ function bindEditor(){
   if (applyBatchBtn) applyBatchBtn.addEventListener('click', function(){
     var bd = EditorState.data._batchDiag || '';
     var bsk = EditorState.data._batchSkills || '';
+    var btg = EditorState.data._batchTargetGoal || '';
     var bm = EditorState.data._batchMethods || [];
     var be = EditorState.data._batchEvidence || [];
     var bp = EditorState.data._batchProgress || [];
-    if (!bd && !bsk && !bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
+    if (!bd && !bsk && !btg && !bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
     (EditorState.data.students || []).forEach(function(s){
       if (bd) s.diag = bd;
       if (bsk) s.skills = bsk;
+      if (btg) s.targetGoal = btg;
       if (bm.length) s.methods = bm.slice();
       if (be.length) s.evidence = be.slice();
       if (bp.length) s.progress = bp.slice();
