@@ -1142,7 +1142,7 @@ async function _remoteFetchExec(path, opts){
     if (res.status === 401 && AUTH.refreshToken){
       if (await refreshAuthToken()){ res = await doFetch(); }
       else { clearTimeout(timer); logout(); throw new Error('انتهت جلستك. يرجى تسجيل الدخول مجددًا.'); }
-    }
+    } else if (res.status === 401){ clearTimeout(timer); logout(); throw new Error('انتهت جلستك. يرجى تسجيل الدخول مجددًا.'); }
     if (!res.ok){
       let errDetail = '';
       try{ const j = await res.json(); errDetail = j.message || j.hint || j.details || ''; }catch(e2){}
@@ -2797,6 +2797,7 @@ function logout(){
 function go(screen, params){ State.screen = screen; State.params = params || {}; render(); window.scrollTo(0,0); }
 
 function toast(msg){
+  if (document.querySelectorAll('.toast').length >= 4) return;
   const t = document.createElement('div'); t.className='toast'; t.textContent = msg;
   document.body.appendChild(t); setTimeout(function(){ t.remove(); }, 2600);
 }
@@ -3893,7 +3894,11 @@ function bindPrincipalCommunities(){
         '</div>'
       );
       document.body.appendChild(overlay);
-      overlay.querySelector('#_ccCancel').addEventListener('click', function(){ document.body.removeChild(overlay); });
+      function _ccClose(){ document.body.removeChild(overlay); document.removeEventListener('keydown', _ccKey); }
+      function _ccKey(e){ if (e.key==='Escape') _ccClose(); }
+      document.addEventListener('keydown', _ccKey);
+      overlay.addEventListener('click', function(e){ if (e.target===overlay) _ccClose(); });
+      overlay.querySelector('#_ccCancel').addEventListener('click', _ccClose);
       overlay.querySelector('#_ccSend').addEventListener('click', async function(){
         var msg = (overlay.querySelector('#_ccMsg')||{}).value||'';
         if (!msg.trim()){ toast('يرجى كتابة الرسالة قبل الإرسال.'); return; }
@@ -3901,7 +3906,7 @@ function bindPrincipalCommunities(){
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.name||State.user.email, target_type:'user', target_id:leaderId, type:'general', title:'رسالة من مدير المدرسة', body:msg.trim() });
           invalidateNotifCache();
           toast('تم إرسال الرسالة إلى المنسق.');
-          document.body.removeChild(overlay);
+          _ccClose();
         }catch(e){ toast(arabicError(e)); }
       });
     });
@@ -4010,11 +4015,11 @@ async function screenCommunityReport(communityId){
         '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الحالة</th></tr></thead><tbody>' +
           (goalsRows || '<tr><td colspan="5" style="text-align:center;color:var(--muted);">لا توجد أهداف مسجَّلة لهذا الفصل.</td></tr>') +
         '</tbody></table></div>' +
-        (latestSelfEval ? (
+        (latestSelfEval && latestSelfEval.payload ? (
           '<div class="block-title"><span class="dot"></span> أحدث تقييم ذاتي لمجتمع التعلم المهني (بتاريخ '+fmtDate(latestSelfEval.updated_at)+')</div>' +
           renderPlcSelfEval(latestSelfEval.payload, true)
         ) : '') +
-        (latestPeerObs ? (
+        (latestPeerObs && latestPeerObs.payload ? (
           '<div class="block-title"><span class="dot"></span> أحدث زيارة صفية تبادلية (بتاريخ '+fmtDate(latestPeerObs.updated_at)+')</div>' +
           renderPeerObservation(latestPeerObs.payload, true)
         ) : '') +
@@ -4025,7 +4030,8 @@ async function screenCommunityReport(communityId){
 function bindCommunityReport(){
   var backBtn = document.querySelector('[data-action="back"]');
   if (backBtn) backBtn.addEventListener('click', function(){ State.dashTab = 'communitiesEval'; go('dashboard'); });
-  document.querySelector('[data-action="printForm"]').addEventListener('click', function(){ window.print(); });
+  var printFBtn = document.querySelector('[data-action="printForm"]');
+  if (printFBtn) printFBtn.addEventListener('click', function(){ window.print(); });
   const exportBtn = document.querySelector('[data-action="exportPdf"]');
   if (exportBtn) exportBtn.addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
 }
@@ -4365,20 +4371,21 @@ async function screenCoordinatorVisits(){
 }
 function bindCoordinatorVisits(){
   const newBtn = document.querySelector('[data-action="newVisitSchedule"]');
-  if (newBtn) newBtn.addEventListener('click', async function(){ VisitsUI.draft = { rows:[blankVisitRow()] }; await render(); bindCoordinatorVisits(); });
+  function _saveVisitDraft(){ try { localStorage.setItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id, JSON.stringify(VisitsUI.draft)); } catch(e){} }
+  if (newBtn) newBtn.addEventListener('click', async function(){ VisitsUI.draft = { rows:[blankVisitRow()] }; _saveVisitDraft(); await render(); bindCoordinatorVisits(); });
   const cancelBtn = document.querySelector('[data-action="cancelVisitDraft"]');
   if (cancelBtn) cancelBtn.addEventListener('click', async function(){
     if (!confirm('هل تريد إلغاء هذا الجدول؟ ستفقد كل الصفوف التي أدخلتها.')) return;
     VisitsUI.draft = null; await render(); bindCoordinatorVisits();
   });
   const addBtn = document.querySelector('[data-action="addVisitRow"]');
-  if (addBtn) addBtn.addEventListener('click', async function(){ VisitsUI.draft.rows.push(blankVisitRow()); await render(); bindCoordinatorVisits(); });
+  if (addBtn) addBtn.addEventListener('click', async function(){ VisitsUI.draft.rows.push(blankVisitRow()); _saveVisitDraft(); await render(); bindCoordinatorVisits(); });
   document.querySelectorAll('[data-action="removeVisitRow"]').forEach(function(el){
     el.addEventListener('click', async function(){
       const idx = +el.getAttribute('data-idx');
       VisitsUI.draft.rows.splice(idx, 1);
       if (!VisitsUI.draft.rows.length) VisitsUI.draft.rows.push(blankVisitRow());
-      await render(); bindCoordinatorVisits();
+      _saveVisitDraft(); await render(); bindCoordinatorVisits();
     });
   });
   document.querySelectorAll('[data-action="visitFieldChange"]').forEach(function(el){
@@ -5149,6 +5156,7 @@ async function screenPrincipalGifted(){
     giftedReportsListHtml(reports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.')
   );
 }
+function bindPrincipalGifted(){ /* no interactive elements beyond global tab/action bindings */ }
 
 function bindNotificationsPanel(){
   document.querySelectorAll('[data-action="pnotifFilter"]').forEach(function(el){
