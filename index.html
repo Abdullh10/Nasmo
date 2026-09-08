@@ -4993,9 +4993,11 @@ async function screenPrincipalArchive(){
         '<label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;">إلى تاريخ</label>' +
         '<input class="input" id="arc-to" type="date">' +
       '</div>' +
-      '<div style="display:flex;gap:8px;align-items:flex-end;">' +
+      '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" id="arc-reset">إعادة تعيين</button>' +
         '<button class="btn btn-primary btn-sm" id="arc-print" style="white-space:nowrap;">🖨️ طباعة الجدول</button>' +
+        '<button class="btn btn-gold btn-sm" id="arc-bulk-print" style="white-space:nowrap;">🖨️ طباعة المحدد</button>' +
+        '<span id="arc-sel-count" style="font-size:12px;color:var(--muted);align-self:center;white-space:nowrap;">٠ محدد</span>' +
       '</div>' +
     '</div>'
   );
@@ -5010,6 +5012,7 @@ async function screenPrincipalArchive(){
     ) : '<span style="color:var(--muted);">—</span>';
     return (
       '<tr data-type="'+esc(s.form_type)+'" data-comm="'+esc(s.community_id||'')+'" data-name="'+esc((s.created_by_name||'').toLowerCase())+'" data-date="'+(s.approved_at||s.updated_at||'').slice(0,10)+'">' +
+        '<td class="no-print" style="text-align:center;"><input type="checkbox" class="arc-chk" data-id="'+esc(s.id)+'" style="width:16px;height:16px;cursor:pointer;"></td>' +
         '<td>' +
           '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+(def?esc(def.color):'var(--muted)')+';margin-inline-end:6px;vertical-align:middle;"></span>' +
           '<b>'+(def?esc(def.no+'. '+def.title):esc(s.form_type))+'</b>' +
@@ -5029,6 +5032,7 @@ async function screenPrincipalArchive(){
     '<div id="arc-count" style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">يُعرض '+approved.length+' نموذج معتمد</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list" id="arc-table">' +
       '<thead><tr>' +
+        '<th class="no-print" style="width:36px;text-align:center;"><input type="checkbox" id="arc-chk-all" title="تحديد الكل" style="width:16px;height:16px;cursor:pointer;"></th>' +
         '<th>النموذج</th>' +
         '<th>المُعد</th>' +
         '<th>المجتمع المهني</th>' +
@@ -5036,7 +5040,7 @@ async function screenPrincipalArchive(){
         '<th>التقييم</th>' +
         '<th></th>' +
       '</tr></thead>' +
-      '<tbody id="arc-tbody">' + (rows || '<tr class="empty-row"><td colspan="6">لا توجد نماذج معتمدة بعد.</td></tr>') + '</tbody>' +
+      '<tbody id="arc-tbody">' + (rows || '<tr class="empty-row"><td colspan="7">لا توجد نماذج معتمدة بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>'
   );
 
@@ -5100,7 +5104,46 @@ function bindPrincipalArchive(){
 
   /* طباعة الجدول المرئي */
   var printBtn = document.getElementById('arc-print');
-  if (printBtn) printBtn.addEventListener('click', function(){
+  if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
+
+  /* تحديد الكل */
+  var chkAll = document.getElementById('arc-chk-all');
+  function _updateSelCount(){
+    var n = document.querySelectorAll('#arc-tbody .arc-chk:checked').length;
+    var el = document.getElementById('arc-sel-count');
+    if (el) el.textContent = n ? n+' محدد' : '٠ محدد';
+  }
+  if (chkAll){
+    chkAll.addEventListener('change', function(){
+      var checked = this.checked;
+      document.querySelectorAll('#arc-tbody .arc-chk').forEach(function(chk){
+        if (!chk.closest('tr').hidden) chk.checked = checked;
+      });
+      _updateSelCount();
+    });
+  }
+  document.querySelectorAll('#arc-tbody .arc-chk').forEach(function(chk){
+    chk.addEventListener('change', function(){
+      _updateSelCount();
+      if (!this.checked && chkAll) chkAll.checked = false;
+    });
+  });
+
+  /* طباعة المحدد فقط */
+  var bulkPrintBtn = document.getElementById('arc-bulk-print');
+  if (bulkPrintBtn) bulkPrintBtn.addEventListener('click', function(){
+    var checked = Array.from(document.querySelectorAll('#arc-tbody .arc-chk:checked'));
+    if (!checked.length){ toast('لم تحدد أي نموذج للطباعة.'); return; }
+    var checkedIds = checked.map(function(chk){ return chk.getAttribute('data-id'); });
+    var tbody = document.getElementById('arc-tbody');
+    var allRows = Array.from(tbody.querySelectorAll('tr[data-type]'));
+    var prevHidden = allRows.map(function(r){ return r.hidden; });
+    allRows.forEach(function(row){
+      var chk = row.querySelector('.arc-chk');
+      row.hidden = !chk || !checkedIds.includes(chk.getAttribute('data-id'));
+    });
+    function restore(){ allRows.forEach(function(r,i){ r.hidden = prevHidden[i]; }); }
+    window.addEventListener('afterprint', function _r(){ restore(); window.removeEventListener('afterprint', _r); });
     window.print();
   });
 
