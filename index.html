@@ -6478,7 +6478,7 @@ function bindStudentRoster(){
 }
 
 /* ----- شاشة المعلم: تحليل درجات اختبار نهاية الفصل والفرز الآلي للخطة العلاجية الجماعية ----- */
-let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'' };
+let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
 function examSavedKey(){ return 'exam_analyses_'+(State.user?State.user.id:'anon'); }
 function loadExamSaved(){ try{ return JSON.parse(localStorage.getItem(examSavedKey())||'[]'); }catch(e){ return []; } }
 function saveExamAnalysis(){
@@ -6622,6 +6622,16 @@ function parseExamRows(rows){
     return { name, grade, section, score: (score!=null && !isNaN(score)) ? score : null };
   }).filter(function(r){ return r.name; });
 }
+function parseExamPasteText(text){
+  if (!text || !text.trim()) return [];
+  const lines = text.split(/\r?\n/).filter(function(l){ return l.trim(); });
+  const rows = lines.map(function(line){
+    const cells = line.indexOf('\t') !== -1 ? line.split('\t') : line.split(',');
+    return cells.map(function(c){ return c.trim(); });
+  });
+  const start = (rows.length && isExamImportHeaderRow(rows[0][0])) ? 1 : 0;
+  return parseExamRows(rows.slice(start));
+}
 async function screenExamAnalysis(){
   const rows = ExamAnalysisUI.rows || [];
   const maxScore = ExamAnalysisUI.maxScore;
@@ -6649,6 +6659,7 @@ async function screenExamAnalysis(){
   }).join('');
   const failCount = rows.filter(function(r){ return r.score!=null && r.score < passScore; }).length;
   const resultModal = ExamAnalysisUI.resultModal ? examAnalysisResultModal() : '';
+  const pasteModal = ExamAnalysisUI.pasteModalOpen ? examPasteModal() : '';
   const maxScoreOpts = [15,20,25,30,40,50,60,80,100].map(function(n){ return '<option value="'+n+'"'+(maxScore===n?' selected':'')+'>'+n+'</option>'; }).join('');
   const printHeader = rows.length?(
     '<div class="exam-print-header" style="display:none;">'+
@@ -6674,6 +6685,7 @@ async function screenExamAnalysis(){
         '<span style="font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;">درجة النجاح: '+passScore+' من '+maxScore+'</span>'+
         '<button class="btn btn-ghost btn-sm" data-action="downloadExamTemplate">تنزيل نموذج Excel</button>'+
         '<button class="btn btn-ghost btn-sm" data-action="triggerExamImport">رفع ملف الدرجات</button>'+
+        '<button class="btn btn-ghost btn-sm" data-action="openExamPasteModal">📋 لصق الدرجات</button>'+
         '<input type="file" id="examImportInput" accept=".csv,.xlsx,.xls" style="display:none;">'+
       '</div>'+
     '</div>'+
@@ -6696,7 +6708,24 @@ async function screenExamAnalysis(){
       '</div>'
     ):'<p style="color:var(--muted);font-size:13px;margin-top:12px;">لم يتم رفع ملف درجات بعد — اختر الدرجة الكلية ثم نزّل النموذج وارفعه.</p>')+
     examSavedHtml()+
-    resultModal
+    resultModal+
+    pasteModal
+  );
+}
+function examPasteModal(){
+  return (
+    '<div class="modal-bg" data-action="closeExamPasteModalBg">'+
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">'+
+        '<h3>لصق أسماء الطلاب ودرجاتهم</h3>'+
+        '<p style="color:var(--muted);font-size:13px;margin:-4px 0 14px;">انسخ الأسماء والدرجات من Excel أو أي جدول ثم الصقها هنا.<br>'+
+        'يُدعم: <b>الاسم ← الدرجة</b> (عمودان) أو <b>الاسم ← الصف ← الشعبة ← الدرجة</b> (أربعة أعمدة) — مفصولة بـ Tab أو فاصلة.</p>'+
+        '<textarea id="examPasteArea" class="input" style="width:100%;height:200px;font-family:monospace;font-size:13px;resize:vertical;" placeholder="الاسم&#9;الدرجة&#10;محمد عبدالله&#9;38&#10;سارة أحمد&#9;25"></textarea>'+
+        '<div class="modal-actions" style="margin-top:12px;">'+
+          '<button class="btn btn-primary" data-action="parseExamPaste">استيراد الدرجات</button>'+
+          '<button class="btn btn-ghost" data-action="closeExamPasteModal">إلغاء</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>'
   );
 }
 function examAnalysisResultModal(){
@@ -6861,6 +6890,26 @@ function bindExamAnalysis(){
       ExamAnalysisUI = { rows:null, resultModal:null };
       openEditor(s.form_type, s);
     });
+  });
+  const openPasteBtn = document.querySelector('[data-action="openExamPasteModal"]');
+  if (openPasteBtn) openPasteBtn.addEventListener('click', function(){
+    ExamAnalysisUI.pasteModalOpen = true; render(); bindExamAnalysis();
+  });
+  const closePasteModal = function(){ ExamAnalysisUI.pasteModalOpen = false; render(); bindExamAnalysis(); };
+  const closePasteBg = document.querySelector('[data-action="closeExamPasteModalBg"]');
+  if (closePasteBg) closePasteBg.addEventListener('click', closePasteModal);
+  const closePasteBtn = document.querySelector('[data-action="closeExamPasteModal"]');
+  if (closePasteBtn) closePasteBtn.addEventListener('click', closePasteModal);
+  const parsePasteBtn = document.querySelector('[data-action="parseExamPaste"]');
+  if (parsePasteBtn) parsePasteBtn.addEventListener('click', function(){
+    const area = document.getElementById('examPasteArea');
+    const text = area ? area.value : '';
+    const parsed = parseExamPasteText(text);
+    if (!parsed.length){ toast('لا توجد بيانات صالحة في النص الملصق.'); return; }
+    ExamAnalysisUI.rows = parsed;
+    ExamAnalysisUI.resultModal = null;
+    ExamAnalysisUI.pasteModalOpen = false;
+    render(); bindExamAnalysis();
   });
 }
 
