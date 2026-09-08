@@ -5734,15 +5734,20 @@ const OBS_TYPES = [
   { label:'حديث الطالب عن إيذاء نفسه أو التلميح بذلك', severity:'urgent' },
   { label:'خوف واضح من شخص بعينه داخل المدرسة أو خارجها', severity:'urgent' }
 ];
-function openObservationModal(students){
+async function openObservationModal(students){
   /* students = [{name,grade,section}] */
   if (!students || students.length === 0){
     toast('لا يوجد طلاب مرتبطون بحسابك حالياً. يرجى مراجعة المشرف لإضافة الطلاب.');
     return;
   }
   const today = new Date().toISOString().slice(0,10);
+  /* جلب المرشدين الطلابيين مسبقاً */
+  let _obsCounselors = [];
+  try { _obsCounselors = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='counselor'; }); } catch(e){}
   const studentOpts = (students||[]).map(function(s){ return '<option value="'+esc(s.name)+'" data-grade="'+esc(s.grade||'')+'">'+esc(s.name)+(s.grade?' — '+s.grade:'')+'</option>'; }).join('');
   const typeOpts = OBS_TYPES.map(function(t){ return '<option value="'+esc(t.label)+'" data-sev="'+t.severity+'">'+esc(t.label)+'</option>'; }).join('');
+  const counselorOpts = _obsCounselors.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.full_name)+'</option>'; }).join('');
+  const showCounselorSel = _obsCounselors.length > 1;
   const div = document.createElement('div');
   div.id = 'obs-overlay';
   div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9100;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -5786,10 +5791,19 @@ function openObservationModal(students){
           '<label style="font-size:12px;font-weight:600;color:var(--text);">تفاصيل الملاحظة</label>' +
           '<textarea class="input" id="obsDesc" rows="3" style="margin-top:4px;resize:vertical;" placeholder="صِف ما لاحظته بشكل مختصر…"></textarea>' +
         '</div>' +
+        /* اختيار المرشد */
+        (showCounselorSel ? (
+          '<div class="field" style="margin-bottom:14px;">' +
+            '<label style="font-size:12px;font-weight:600;color:var(--text);">المرشد الطلابي المُبلَّغ <span style="color:var(--danger)">*</span></label>' +
+            '<select class="input" id="obsCounselorSel" style="margin-top:4px;">' +
+              '<option value="">— اختر المرشد الطلابي —</option>' + counselorOpts +
+            '</select>' +
+          '</div>'
+        ) : '') +
         /* إشعار من؟ */
         '<div style="background:color-mix(in srgb,var(--primary,#2563eb) 8%,var(--surface,#f8fafc));border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12.5px;">' +
           '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">سيتم إبلاغ:</div>' +
-          '<div>✅ المرشد الطلابي (دائماً)</div>' +
+          '<div>✅ المرشد الطلابي '+(showCounselorSel ? '(المحدد)' : '(دائماً)')+'</div>' +
           '<div id="obsUrgentNote" style="color:var(--danger,#dc2626);display:none;margin-top:3px;">🔴 المدير (لأن الملاحظة عاجلة)</div>' +
         '</div>' +
         /* أزرار */
@@ -5829,6 +5843,7 @@ function openObservationModal(students){
     const obsType     = document.getElementById('obsTypeSel').value;
     if (!studentName){ toast('يرجى اختيار الطالب.'); return; }
     if (!obsType){ toast('يرجى اختيار نوع الملاحظة.'); return; }
+    if (showCounselorSel && !(document.getElementById('obsCounselorSel')||{}).value){ toast('يرجى اختيار المرشد الطلابي.'); return; }
     const grade   = document.getElementById('obsGrade').value.trim();
     const desc    = document.getElementById('obsDesc').value.trim();
     const sev     = (document.querySelector('input[name="obsSev"]:checked')||{value:'info'}).value;
@@ -5849,14 +5864,22 @@ function openObservationModal(students){
       });
       /* إشعار المرشد */
       try{
-        const counselors = await DB.listUsers({ school: State.user.school });
-        const counselor = (counselors||[]).find(function(u){ return u.role==='counselor'; });
+        /* تحديد المرشد: من القائمة المنسدلة أو الوحيد تلقائياً */
+        var selCounselorId = showCounselorSel
+          ? (document.getElementById('obsCounselorSel')||{}).value || ''
+          : (_obsCounselors[0] ? _obsCounselors[0].id : '');
+        if (!selCounselorId && showCounselorSel){
+          toast('يرجى اختيار المرشد الطلابي قبل الحفظ.');
+          btn.disabled=false; btn.textContent='حفظ الملاحظة'; return;
+        }
+        const counselor = _obsCounselors.find(function(c){ return c.id===selCounselorId; }) || _obsCounselors[0];
         if (counselor){
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselor.id, type:'general', title:'ملاحظة صفية جديدة', body:'المعلم '+State.user.full_name+' سجّل ملاحظة بشأن '+studentName+': '+obsType });
           pushNotify(counselor.id, 'ملاحظة صفية جديدة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
         }
         if (sev==='urgent'){
-          const principal = (counselors||[]).find(function(u){ return u.role==='principal'; });
+          const allUsers = await DB.listUsers({ school: State.user.school });
+          const principal = (allUsers||[]).find(function(u){ return u.role==='principal'; });
           if (principal){
             await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:principal.id, type:'general', title:'⚠️ ملاحظة صفية عاجلة', body:'المعلم '+State.user.full_name+' رصد حالة عاجلة للطالب '+studentName+': '+obsType });
             pushNotify(principal.id, '⚠️ ملاحظة صفية عاجلة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
@@ -9670,9 +9693,9 @@ function bindTeacherTasks(){
   document.querySelectorAll('[data-action="openObsModal"]').forEach(function(rawEl){
     var el = rawEl.cloneNode(true);
     rawEl.parentNode.replaceChild(el, rawEl);
-    el.addEventListener('click', function(){
+    el.addEventListener('click', async function(){
       var students = (_teacherAllStudentsCache||[]).map(function(s){ return { name: s.full_name||s.name||'', grade: s.grade||'', section: s.section||'' }; });
-      openObservationModal(students);
+      await openObservationModal(students);
     });
   });
 
