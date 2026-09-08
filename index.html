@@ -12145,9 +12145,9 @@ async function screenEditor(){
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
 const GP_GRADE_OPTS = ['الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
-const GP_DIAG_OPTS = ['نتائج اختبار نهاية الفصل','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','تحليل أوراق العمل الصفية','ملاحظة المعلم المباشرة','نتائج الاختبار القبلي التشخيصي','مؤشرات الحضور والمشاركة','بيانات التقويم المستمر'];
-const GP_SKILLS_OPTS = ['القراءة والاستيعاب','الحساب الذهني والعمليات الأساسية','الكتابة والإملاء','حل المسائل والتفكير الرياضي','التعبير الكتابي والشفهي','المفردات والتراكيب اللغوية','المهارات العلمية والتجريبية','الفهم القرائي وتحليل النص','مهارات الاستنتاج والتحليل'];
-const GP_TEACHER_OPINION_OPTS = ['بعد تطبيق الأساليب المقترحة لوحظ تحسن ملموس في أداء الطلاب','تحسن الطلاب في معظم المهارات المستهدفة بعد التدخل العلاجي','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي في بعض المهارات','حقق الطلاب الهدف المستهدف قبل الموعد المحدد','استجاب الطلاب بشكل إيجابي للأساليب التعاونية المستخدمة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب المستخدمة','أخرى'];
+const GP_DIAG_OPTS = ['نتائج الاختبار القبلي التشخيصي','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','نتائج اختبار نهاية الفصل','تحليل أوراق العمل الصفية','تحليل أخطاء الطلاب الشائعة','ملاحظة المعلم المباشرة في الفصل','بيانات التقويم المستمر','مؤشرات الحضور والمشاركة الصفية','تقارير المرشد الطلابي'];
+const GP_SKILLS_OPTS = ['الفهم القرائي وتحليل النص','التعبير الكتابي الوظيفي والإبداعي','التعبير الشفهي والعرض والمناقشة','المفردات والتراكيب اللغوية','حل المسائل والتفكير الرياضي','مهارات الاستنتاج والتحليل والتقويم','مهارات التفكير الناقد والإبداعي','المهارات العلمية والتجريبية','تطبيق المفاهيم والنظريات','مهارات البحث والاستقصاء وجمع المعلومات'];
+const GP_TEACHER_OPINION_OPTS = ['تحسّن الطلاب بشكل ملحوظ في المهارات المستهدفة بعد التدخل العلاجي','حقق معظم الطلاب الهدف المستهدف ضمن الجدول الزمني المحدد','استجاب الطلاب بشكل إيجابي للأساليب العلاجية المستخدمة','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي ومتابعة مستمرة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب وتكثيف الدعم','تحسّن الأداء بصورة محدودة وتستلزم الحالة تدخلاً أكثر تخصصاً','أخرى'];
 
 function renderGroupPlan(d, ro, students){
   const cards = d.students.map(function(s, i){
@@ -12181,9 +12181,9 @@ function renderGroupPlan(d, ro, students){
             ? inputField('المهارات المستهدفة','students.'+i+'.skills',s.skills,{readonly:true})
             : '<div class="field"><label>المهارات المستهدفة</label><select class="input" data-field="students.'+i+'.skills"><option value="">— اختر —</option>'+GP_SKILLS_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+(s.skills===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>') +
         '</div>' +
-        '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], s.methods)+'</div>' +
-        '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], s.evidence)+'</div>' +
-        '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('students.'+i+'.progress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], s.progress)+'</div>' +
+        '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('students.'+i+'.methods', ['التعلم المباشر (الشرح والتوضيح)','التعلم التعاوني','التعلم الذاتي','حل المشكلات','المناقشة والحوار الصفي','التعلم القائم على المشاريع'], s.methods)+'</div>' +
+        '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('students.'+i+'.evidence', ['أوراق العمل','المهام الأدائية','الواجبات المنزلية','الأنشطة الصفية','نتائج الاختبارات','ملف إنجاز الطالب (Portfolio)','تقارير البحث والاستقصاء'], s.evidence)+'</div>' +
+        '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('students.'+i+'.progress', ['التقويم المستمر','الملاحظة الصفية المباشرة','اختبار قبلي وبعدي','نتائج اختبارات الفترة','الاختبارات التكوينية الدورية'], s.progress)+'</div>' +
         '<div class="field"><label>المتابعة الأسبوعية لتقدم الطالب</label>' +
           '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:160px;">التاريخ</th><th>ملاحظة التقدم</th><th style="width:80px;">الدرجة</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+
             (followupRows || '<tr class="empty-row"><td colspan="'+(ro?3:4)+'">لا توجد متابعات أسبوعية مسجَّلة بعد.</td></tr>') +
@@ -12207,9 +12207,9 @@ function renderGroupPlan(d, ro, students){
         '<div class="field"><label>شواهد التشخيص</label><select class="input" data-field="_batchDiag"><option value="">— اختر —</option>'+GP_DIAG_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchDiag||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
         '<div class="field"><label>المهارات المستهدفة</label><select class="input" data-field="_batchSkills"><option value="">— اختر —</option>'+GP_SKILLS_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchSkills||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
       '</div>' +
-      '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('_batchMethods', ['التعلم المباشر الجمعي','التعلم الذاتي المفرد','التعلم التعاوني','النشاط واللعب'], d._batchMethods||[])+'</div>' +
-      '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('_batchEvidence', ['أوراق العمل','المهام الأدائية','تكليفات منزلية','أنشطة صفية','الاختبارات','أعمال الطالب'], d._batchEvidence||[])+'</div>' +
-      '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('_batchProgress', ['تقويم مستمر','الملاحظة المباشرة','نتائج الفترات','أداة قياس (اختبار الفترة)'], d._batchProgress||[])+'</div>' +
+      '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('_batchMethods', ['التعلم المباشر (الشرح والتوضيح)','التعلم التعاوني','التعلم الذاتي','حل المشكلات','المناقشة والحوار الصفي','التعلم القائم على المشاريع'], d._batchMethods||[])+'</div>' +
+      '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('_batchEvidence', ['أوراق العمل','المهام الأدائية','الواجبات المنزلية','الأنشطة الصفية','نتائج الاختبارات','ملف إنجاز الطالب (Portfolio)','تقارير البحث والاستقصاء'], d._batchEvidence||[])+'</div>' +
+      '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('_batchProgress', ['التقويم المستمر','الملاحظة الصفية المباشرة','اختبار قبلي وبعدي','نتائج اختبارات الفترة','الاختبارات التكوينية الدورية'], d._batchProgress||[])+'</div>' +
       '<button class="btn btn-primary" data-action="applyBatchGroupPlan" style="margin-top:6px;width:100%;">✔ تطبيق على جميع الطلاب</button>' +
     '</div>'
   );
