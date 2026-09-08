@@ -35,6 +35,8 @@
   --primary-light: color-mix(in srgb, var(--navy) 15%, transparent);
   --ink: var(--text);
   --accent: var(--primary, #2563eb);
+  --teal-bg: color-mix(in srgb, var(--teal) 12%, transparent);
+  --navy-bg: color-mix(in srgb, var(--navy) 10%, transparent);
 }
 html[data-theme="dark"]{
   --navy:#4E9FD8; --navy-2:#72B9EB; --navy-3:#3ABCD5;
@@ -239,11 +241,13 @@ html[data-view="desktop"] .brand-title{ font-size:19px; }
 @media(max-width:700px){ .stu-cascade{ grid-template-columns:1fr; } }
 .stu-cascade .field{ margin-bottom:0; }
 .btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; border-radius:8px; padding:11px 18px; font-weight:700; font-size:14px; transition:.15s; }
+.btn:focus-visible,.tab:focus-visible,.icon-btn:focus-visible,.view-fab-btn:focus-visible,.hcal-day:focus-visible,.hcal-nav:focus-visible{ outline:2.5px solid var(--teal); outline-offset:2px; }
+.form-card:focus-visible{ outline:2.5px solid var(--teal); outline-offset:3px; box-shadow:0 0 0 5px rgba(14,124,123,.12); }
 .btn-primary{ background:var(--navy); color:#fff; cursor:pointer; }
 .btn-primary:hover{ background:var(--navy-2); transform:translateY(-1px); box-shadow:0 6px 18px rgba(15,33,64,.22); }
 .btn-block{ width:100%; }
 .btn-gold{ background:var(--gold); color:#fff; }
-.btn-gold:hover{ background:#9c7209; }
+.btn-gold:hover{ filter:brightness(0.85); }
 .btn-ghost{ background:transparent; color:var(--navy); border:1.5px solid var(--border); }
 .btn-ghost:hover{ background:var(--surface-2); }
 .btn-danger{ background:var(--surface); color:var(--danger); border:1.5px solid #f0c4c4; }
@@ -318,9 +322,9 @@ html[data-theme="dark"] .icon-btn:hover{ background:rgba(255,255,255,.12); }
 .notif-item .nmeta{ color:var(--muted); font-size:11px; margin-top:5px; }
 .notif-empty{ padding:24px 14px; text-align:center; color:var(--muted); font-size:13px; }
 .notif-type-tag{ display:inline-block; font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:10px; margin-bottom:5px; }
-.notif-type-meeting{ background:#E8F0FB; color:var(--navy-3); }
+.notif-type-meeting{ background:var(--navy-bg); color:var(--navy-3); }
 .notif-type-submission{ background:var(--pending-bg); color:var(--pending); }
-.notif-type-demo{ background:#F1E9FB; color:#6B2FB8; }
+.notif-type-demo{ background:var(--teal-bg); color:var(--teal-dark); }
 .notif-type-general{ background:var(--surface-2); color:var(--muted); }
 
 .shell{ max-width:1180px; margin:0 auto; padding:24px 20px 60px; }
@@ -333,14 +337,18 @@ html[data-theme="dark"] .icon-btn:hover{ background:rgba(255,255,255,.12); }
 .kpi-card.accent-pending .v{ color:var(--pending); }
 .kpi-card.accent-success .v{ color:var(--success); }
 .kpi-card.accent-danger .v{ color:var(--danger); }
+.kpi-card.accent-success{ border-inline-start:3px solid var(--success); }
+.kpi-card.accent-pending{ border-inline-start:3px solid var(--pending); }
+.kpi-card.accent-danger{ border-inline-start:3px solid var(--danger); }
 
 @media (max-width:760px){ .kpi-grid{ grid-template-columns:repeat(2,1fr);} }
+@media (max-width:380px){ .kpi-grid{ grid-template-columns:1fr; } .kpi-card .v{ font-size:22px; } }
 
 /* ---------- section header ---------- */
 .section-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:30px 0 14px; flex-wrap:wrap; }
 .section-head h2{ font-size:17px; }
 .tabs{ display:flex; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-.tab{ padding:7px 14px; border-radius:6px; font-size:13px; font-weight:700; color:var(--muted); background:transparent; border:none; flex-shrink:0; white-space:nowrap; }
+.tab{ padding:7px 14px; border-radius:6px; font-size:13px; font-weight:700; color:var(--muted); background:transparent; border:none; flex-shrink:0; white-space:nowrap; transition:.15s; }
 .tab.active{ background:var(--navy); color:#fff; }
 details summary::-webkit-details-marker{ display:none; }
 details summary::marker{ display:none; }
@@ -399,9 +407,9 @@ table.list tr:hover td{ background:var(--surface-2); }
 .block-title .dot{ width:7px; height:7px; border-radius:50%; background:var(--gold); }
 
 .checkbox-group{ display:flex; flex-wrap:wrap; gap:8px; }
-.chk{ display:flex; align-items:center; gap:6px; background:var(--surface-2); border:1.3px solid var(--border); border-radius:20px; padding:6px 13px; font-size:12.5px; cursor:pointer; user-select:none; }
+.chk{ display:flex; align-items:center; gap:6px; background:var(--surface-2); border:1.3px solid var(--border); border-radius:20px; padding:6px 13px; font-size:12.5px; cursor:pointer; user-select:none; transition:.15s border-color,.15s background,.15s color; }
 .chk input{ accent-color:var(--teal); }
-.chk.checked{ background:#EAF6F5; border-color:var(--teal); color:var(--teal-dark); font-weight:700; }
+.chk.checked{ background:var(--teal-bg); border-color:var(--teal); color:var(--teal-dark); font-weight:700; }
 
 /* ---------- dropdown picker ---------- */
 .dropdown-picker{ display:flex; flex-direction:column; gap:0; }
@@ -436,6 +444,7 @@ textarea.input{ resize:vertical; min-height:64px; }
 
 .sig-box{ border:1.5px dashed var(--border); border-radius:10px; padding:10px; background:var(--surface-2); }
 .sig-box canvas{ width:100%; height:120px; background:#fff; border-radius:7px; touch-action:none; border:1px solid var(--border); }
+html[data-theme="dark"] .sig-box canvas{ background:#f0f4f8; }
 .sig-actions{ display:flex; justify-content:space-between; margin-top:8px; align-items:center; }
 .sig-name{ font-size:12px; color:var(--muted); }
 .sig-img{ max-height:70px; }
@@ -548,6 +557,8 @@ textarea.input{ resize:vertical; min-height:64px; }
   .form-sheet{ box-shadow:none; border:none; padding:0; }
   .sheet-wrap{ max-width:none; }
   .exam-print-header{ display:block !important; }
+  .program-card,.session-card,.kpi-card,.task-card,table.list tr{ page-break-inside:avoid; break-inside:avoid; }
+  .section-head{ page-break-after:avoid; break-after:avoid; }
 }
 .footer-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; }
 .creds-print-page{ background:#fff; padding:8px; }
@@ -3234,6 +3245,8 @@ async function render(){
   }
   let html;
   try{
+    const _shell = app.querySelector('.shell');
+    if (_shell) _shell.style.opacity = '0.5';
     switch(State.screen){
       case 'login': { const sp = document.getElementById('init-spinner'); if (sp) sp.remove(); app.innerHTML = screenLogin(); bindLogin(); break; }
       case 'dashboard': html = await screenDashboard(); if (token !== _renderToken) return; renderShell(app, html); bindDashboard(); break;
@@ -5052,6 +5065,7 @@ async function screenNotificationsPanel(){
             '<div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">' +
               (unread?'<button class="btn btn-ghost btn-sm" data-action="pnotifMarkRead" data-id="'+n.id+'">✓ قراءة</button>':'') +
               (canReply?'<button class="btn btn-ghost btn-sm" data-action="pnotifReply" data-id="'+n.id+'">↩ رد</button>':'') +
+              '<button class="btn btn-ghost btn-sm" data-action="pnotifCopy" data-body="'+esc(n.title+(n.body?'\n'+n.body:''))+'">نسخ</button>' +
               (['admin','super_admin'].includes(State.user.role) ? '<button class="btn btn-ghost btn-sm" data-action="pnotifDelete" data-id="'+n.id+'" style="color:var(--danger);">حذف</button>' : '') +
             '</div>' +
           '</div>' +
@@ -5207,6 +5221,13 @@ function bindNotificationsPanel(){
       NotifPanelUI.replyId = null;
       invalidateNotifCache(); await render(); bindNotificationsPanel();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+  document.querySelectorAll('[data-action="pnotifCopy"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var txt = el.getAttribute('data-body')||'';
+      if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){ toast('تم نسخ النص.'); }).catch(function(){ toast('تعذّر النسخ.'); });
+      else { try{ var ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('تم نسخ النص.'); }catch(e){ toast('تعذّر النسخ.'); } }
+    });
   });
   document.querySelectorAll('[data-action="pnotifDelete"]').forEach(function(el){
     el.addEventListener('click', async function(){
@@ -5426,8 +5447,9 @@ function bindPracticeBank(){
   });
   const sendBtn = document.querySelector('[data-action="sendPractice"]');
   if (sendBtn) sendBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true; var _origSend = this.textContent; this.textContent = 'جارٍ الحفظ…';
     const title = document.getElementById('pkTitle').value.trim();
-    if (!title){ toast('يرجى إدخال عنوان الممارسة.'); return; }
+    if (!title){ toast('يرجى إدخال عنوان الممارسة.'); this.disabled = false; this.textContent = _origSend; return; }
     const category = document.getElementById('pkCategory').value;
     const description = document.getElementById('pkDesc').value.trim();
     const attachment_note = document.getElementById('pkAttach').value.trim();
@@ -5443,7 +5465,7 @@ function bindPracticeBank(){
       PracticeBankUI.composeOpen = false;
       resetComposeFields();
       render(); bindPracticeBank();
-    }catch(e){ toast(arabicError(e)); }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; this.textContent = _origSend; }
   });
   document.querySelectorAll('[data-action="reviewPractice"]').forEach(function(el){
     el.addEventListener('click', function(){ PracticeBankUI.reviewId = el.getAttribute('data-id'); render(); bindPracticeBank(); });
@@ -5455,6 +5477,7 @@ function bindPracticeBank(){
   if (closeReviewBg) closeReviewBg.addEventListener('click', closeReview);
   const approveBtn = document.querySelector('[data-action="approvePractice"]');
   if (approveBtn) approveBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true; var _origAp = this.textContent; this.textContent = 'جارٍ الاعتماد…';
     const rating = +document.getElementById('pkRating').value;
     const note = document.getElementById('pkNote').value.trim();
     try{
@@ -5465,13 +5488,14 @@ function bindPracticeBank(){
       toast('تم اعتماد الممارسة وعرضها في معرض المدرسة.');
       PracticeBankUI.reviewId = null;
       render(); bindPracticeBank();
-    }catch(e){ toast(arabicError(e)); }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; this.textContent = _origAp; }
   });
   const returnBtn = document.querySelector('[data-action="returnPractice"]');
   if (returnBtn) returnBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true; var _origRt = this.textContent; this.textContent = 'جارٍ الإرجاع…';
     const rating = +document.getElementById('pkRating').value;
     const note = document.getElementById('pkNote').value.trim();
-    if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
+    if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); this.disabled = false; this.textContent = _origRt; return; }
     try{
       const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
       if (updated && updated.created_by){
@@ -5480,7 +5504,7 @@ function bindPracticeBank(){
       toast('تم إرجاع الممارسة للتعديل.');
       PracticeBankUI.reviewId = null;
       render(); bindPracticeBank();
-    }catch(e){ toast(arabicError(e)); }
+    }catch(e){ toast(arabicError(e)); this.disabled = false; this.textContent = _origRt; }
   });
 }
 
@@ -6488,7 +6512,11 @@ function bindExamAnalysis(){
   const printBtn = document.querySelector('[data-action="printExamReport"]');
   if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
   const autoSortBtn = document.querySelector('[data-action="runExamAutoSort"]');
-  if (autoSortBtn) autoSortBtn.addEventListener('click', function(){ runExamAutoSort().catch(function(e){ toast(arabicError(e)); }); });
+  if (autoSortBtn) autoSortBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true; var _origAS = this.textContent; this.textContent = 'جارٍ إنشاء الخطط…';
+    try{ await runExamAutoSort(); }catch(e){ toast(arabicError(e)); }
+    finally{ this.disabled = false; this.textContent = _origAS; }
+  });
   const indivSortBtn = document.querySelector('[data-action="runExamIndividualSort"]');
   if (indivSortBtn) indivSortBtn.addEventListener('click', function(){ runExamIndividualSort().catch(function(e){ toast(arabicError(e)); }); });
   document.querySelectorAll('[data-action="restoreExamAnalysis"]').forEach(function(el){
@@ -6503,6 +6531,7 @@ function bindExamAnalysis(){
   });
   document.querySelectorAll('[data-action="deleteExamAnalysis"]').forEach(function(el){
     el.addEventListener('click', function(){
+      if (!confirm('هل تريد حذف هذا التحليل المحفوظ؟ لن تستطيع استرجاعه.')) return;
       const list = loadExamSaved().filter(function(e){ return e.id!==el.getAttribute('data-id'); });
       try{ localStorage.setItem(examSavedKey(), JSON.stringify(list)); }catch(e){}
       render(); bindExamAnalysis();
@@ -11684,7 +11713,7 @@ function screenPicker(){
   const defs = State.user.role==='teacher' ? FORM_DEFS.filter(function(f){ return f.teacherAccess; }) : FORM_DEFS;
   const cards = defs.map(function(f){
     return (
-      '<div class="form-card" data-action="pickForm" data-id="'+f.id+'">' +
+      '<div class="form-card" data-action="pickForm" data-id="'+f.id+'" tabindex="0" role="button">' +
         '<span class="num">نموذج ('+f.no+')</span>' +
         '<div class="ic" style="background:'+f.color+'1A;color:'+f.color+';">'+f.icon+'</div>' +
         '<h3>'+esc(f.title)+'</h3><p>'+esc(f.desc)+'</p>' +
@@ -11701,6 +11730,7 @@ function screenPicker(){
 function bindPicker(){
   document.querySelectorAll('[data-action="pickForm"]').forEach(function(el){
     el.addEventListener('click', function(){ openEditor(el.getAttribute('data-id'), null); });
+    el.addEventListener('keydown', function(e){ if (e.key==='Enter'||e.key===' '){ el.click(); e.preventDefault(); } });
   });
   var _backBtn = document.querySelector('[data-action="back"]');
   if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
