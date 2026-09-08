@@ -2299,12 +2299,13 @@ const DB = {
     if (idx>=0){ list[idx].rec_status=''; localStorage.setItem(LS_COUNSELING, JSON.stringify(list)); }
   },
   async createObservation(obj){
-    obj.id = uid();
     obj.created_at = nowIso();
     if (isRemote()){
+      /* لا نُرسل id — Supabase يولّده تلقائياً كـ UUID صحيح */
       await remoteFetch('classroom_observations', { method:'POST', body:obj, prefer:'return=minimal' });
       return obj;
     }
+    obj.id = uid();
     const list = JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]');
     list.push(obj); localStorage.setItem('dtd_obs_v1', JSON.stringify(list));
     return obj;
