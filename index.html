@@ -1599,6 +1599,14 @@ const DB = {
     if (idx>-1){ subs[idx] = Object.assign({}, subs[idx], patch); localStorage.setItem(LS_SUBS, JSON.stringify(subs)); return subs[idx]; }
     return null;
   },
+  async deleteSubmission(id){
+    if (isRemote()){
+      await remoteFetch('submissions?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return;
+    }
+    const subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
+    localStorage.setItem(LS_SUBS, JSON.stringify(subs.filter(function(s){ return s.id!==id; })));
+  },
   async listUsers(filter){
     filter = filter || {};
     if (isRemote()){
@@ -8542,7 +8550,8 @@ async function screenDashboard(){
     const action = State.user.role==='coordinator'
       ? (s.status==='approved'
           ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
-          : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>')
+          : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>'
+            + (s.status==='draft' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteDraft" data-id="'+s.id+'" style="color:var(--danger);">حذف</button>' : ''))
       : !canOpen ? ''
       : (s.status==='pending'
           ? '<button class="btn btn-gold btn-sm" data-action="openReview" data-id="'+s.id+'">مراجعة واعتماد</button>'
@@ -13308,6 +13317,12 @@ function bindGlobalAction(el){
   else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
   else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('examAnalysis'); }); }
   else if (action==='openMyProfile'){ el.addEventListener('click', showProfileModal); }
+  else if (action==='deleteDraft'){ el.addEventListener('click', async function(){
+    if (!confirm('هل أنت متأكد من حذف هذه المسودة؟ لن تستطيع استرجاعها.')) return;
+    await DB.deleteSubmission(el.getAttribute('data-id'));
+    toast('تم حذف المسودة.');
+    render();
+  }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
