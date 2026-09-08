@@ -12207,7 +12207,10 @@ function renderGroupPlan(d, ro, students){
         '<div class="field"><label>شواهد التشخيص</label><select class="input" data-field="_batchDiag"><option value="">— اختر —</option>'+GP_DIAG_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchDiag||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
         '<div class="field"><label>المهارات المستهدفة</label><select class="input" data-field="_batchSkills"><option value="">— اختر —</option>'+GP_SKILLS_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchSkills||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
       '</div>' +
-      '<div class="field"><label>الهدف المستهدف</label><select class="input" data-field="_batchTargetGoal"><option value="">— اختر —</option>'+GP_TARGET_GOAL_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchTargetGoal||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
+      '<div class="field-grid cols-2">' +
+        '<div class="field"><label>الهدف المستهدف</label><select class="input" data-field="_batchTargetGoal"><option value="">— اختر —</option>'+GP_TARGET_GOAL_OPTS.map(function(o){ return '<option value="'+esc(o)+'" '+((d._batchTargetGoal||'')=== o?'selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>' +
+        '<div class="field"><label>التاريخ المستهدف للتحقق</label>'+hijriDateInputHtml('data-field="_batchTargetDate"', d._batchTargetDate||'', false)+'</div>' +
+      '</div>' +
       '<div class="field"><label>الأساليب المطبقة</label>'+checkboxGroup('_batchMethods', ['التعلم المباشر (الشرح والتوضيح)','التعلم التعاوني','التعلم الذاتي','حل المشكلات','المناقشة والحوار الصفي','التعلم القائم على المشاريع'], d._batchMethods||[])+'</div>' +
       '<div class="field"><label>الشواهد التعليمية</label>'+checkboxGroup('_batchEvidence', ['أوراق العمل','المهام الأدائية','الواجبات المنزلية','الأنشطة الصفية','نتائج الاختبارات','ملف إنجاز الطالب (Portfolio)','تقارير البحث والاستقصاء'], d._batchEvidence||[])+'</div>' +
       '<div class="field"><label>مؤشر التقدم</label>'+checkboxGroup('_batchProgress', ['التقويم المستمر','الملاحظة الصفية المباشرة','اختبار قبلي وبعدي','نتائج اختبارات الفترة','الاختبارات التكوينية الدورية'], d._batchProgress||[])+'</div>' +
@@ -12950,14 +12953,16 @@ function bindEditor(){
     var bd = EditorState.data._batchDiag || '';
     var bsk = EditorState.data._batchSkills || '';
     var btg = EditorState.data._batchTargetGoal || '';
+    var btd = EditorState.data._batchTargetDate || '';
     var bm = EditorState.data._batchMethods || [];
     var be = EditorState.data._batchEvidence || [];
     var bp = EditorState.data._batchProgress || [];
-    if (!bd && !bsk && !btg && !bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
+    if (!bd && !bsk && !btg && !btd && !bm.length && !be.length && !bp.length){ toast('لم تحدد أي خيار للتطبيق الجماعي.'); return; }
     (EditorState.data.students || []).forEach(function(s){
       if (bd) s.diag = bd;
       if (bsk) s.skills = bsk;
       if (btg) s.targetGoal = btg;
+      if (btd) s.targetDate = btd;
       if (bm.length) s.methods = bm.slice();
       if (be.length) s.evidence = be.slice();
       if (bp.length) s.progress = bp.slice();
