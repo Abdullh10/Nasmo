@@ -6122,14 +6122,12 @@ async function openObservationModal(students){
         const counselor = _obsCounselors.find(function(c){ return c.id===selCounselorId; }) || _obsCounselors[0];
         if (counselor){
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselor.id, type:'general', title:'ملاحظة صفية جديدة', body:'المعلم '+State.user.full_name+' سجّل ملاحظة بشأن '+studentName+': '+obsType });
-          pushNotify(counselor.id, 'ملاحظة صفية جديدة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
         }
         if (sev==='urgent'){
           const allUsers = await DB.listUsers({ school: State.user.school });
           const principal = (allUsers||[]).find(function(u){ return u.role==='principal'; });
           if (principal){
             await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:principal.id, type:'general', title:'⚠️ ملاحظة صفية عاجلة', body:'المعلم '+State.user.full_name+' رصد حالة عاجلة للطالب '+studentName+': '+obsType });
-            pushNotify(principal.id, '⚠️ ملاحظة صفية عاجلة', State.user.full_name+' — '+studentName+': '+obsType).catch(function(){});
           }
         }
       }catch(ne){ console.warn('[obs notify]', ne.message); }
