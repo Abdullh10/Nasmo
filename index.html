@@ -4159,10 +4159,23 @@ async function screenCoordinatorTeamStats(){
     '<div class="section-head"><h2>نشاط الفريق — '+esc(myCommunity.name)+'</h2></div>' +
     summary +
     (myTeachers.length
-      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;">'+cards+'</div>'
+      ? '<div style="margin-bottom:14px;"><input id="ts-search" class="input" style="max-width:280px;" placeholder="ابحث باسم المعلم…"></div><div id="ts-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;">'+cards+'</div>'
       : '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون مرتبطون بمجتمعك بعد.</p>'
     )
   );
+}
+
+function bindCoordinatorTeamStats(){
+  var tsSearch = document.getElementById('ts-search');
+  if (!tsSearch) return;
+  tsSearch.addEventListener('input', function(){
+    var q = this.value.trim().toLowerCase();
+    var grid = document.getElementById('ts-cards-grid');
+    if (!grid) return;
+    grid.querySelectorAll('.task-card').forEach(function(card){
+      card.hidden = q ? !card.textContent.toLowerCase().includes(q) : false;
+    });
+  });
 }
 
 /* ----- لوحة منسق المجتمع المهني: إسناد مهام للمعلمين ----- */
@@ -4379,10 +4392,22 @@ async function screenCoordinatorVisits(){
     (myCommunity ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
     (myCommunity && !teachers.length ? '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون في مجتمعك بعد، لذلك لا يمكنك اختيار معلمين للزيارات.</p>' : '') +
     builder +
-    (sent.length ? sent.map(function(s){ return visitScheduleTableHtml(s, { deletable:true }); }).join('') : (draft ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يتم إرسال أي جدول زيارات للمعلمين بعد.</p>'))
+    (sent.length ? (
+      '<div style="margin-bottom:14px;"><input id="vs-search" class="input" style="max-width:260px;" placeholder="ابحث باسم معلم أو تاريخ…"></div>' +
+      '<div id="vs-sent-list">' + sent.map(function(s){ return visitScheduleTableHtml(s, { deletable:true }); }).join('') + '</div>'
+    ) : (draft ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يتم إرسال أي جدول زيارات للمعلمين بعد.</p>'))
   );
 }
 function bindCoordinatorVisits(){
+  var vsSearch = document.getElementById('vs-search');
+  if (vsSearch) vsSearch.addEventListener('input', function(){
+    var q = this.value.trim().toLowerCase();
+    var list = document.getElementById('vs-sent-list');
+    if (!list) return;
+    list.querySelectorAll('.program-card, table').forEach(function(block){
+      block.hidden = q ? !block.textContent.toLowerCase().includes(q) : false;
+    });
+  });
   const newBtn = document.querySelector('[data-action="newVisitSchedule"]');
   function _saveVisitDraft(){ try { localStorage.setItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id, JSON.stringify(VisitsUI.draft)); } catch(e){} }
   if (newBtn) newBtn.addEventListener('click', async function(){ VisitsUI.draft = { rows:[blankVisitRow()] }; _saveVisitDraft(); await render(); bindCoordinatorVisits(); });
@@ -4925,11 +4950,12 @@ async function screenPrincipalReview(){
   const modal = reviewGoal ? goalReviewModalHtml(reviewGoal) : '';
 
   const filterBtns = (
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">' +
       ['all','tasks','goals'].map(function(k){
         const label = k==='all'?'الكل':k==='tasks'?'مهام':'أهداف';
         return '<button class="btn '+(ReviewUI.filter===k?'btn-primary':'btn-ghost')+' btn-sm" data-action="reviewFilter" data-val="'+k+'">'+label+'</button>';
       }).join('') +
+      '<input id="pr-search" class="input" style="max-width:260px;margin-inline-start:auto;" placeholder="ابحث باسم المعلم أو المنسق أو المهمة…">' +
     '</div>'
   );
   const showTasks = ReviewUI.filter==='all' || ReviewUI.filter==='tasks';
@@ -4943,14 +4969,14 @@ async function screenPrincipalReview(){
       '<div class="section-head"><h2>المهام المكتملة (بانتظار الاعتماد والتقييم)</h2></div>' +
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
         '<thead><tr><th>المهمة</th><th>المعلم</th><th>المنسق المُكلِّف</th><th>تاريخ الإكمال</th><th>تقييم المدير</th><th></th></tr></thead>' +
-        '<tbody>' + (taskRows || '<tr class="empty-row"><td colspan="6">لا توجد مهام مكتملة بعد.</td></tr>') + '</tbody>' +
+        '<tbody id="pr-tasks-tbody">' + (taskRows || '<tr class="empty-row"><td colspan="6">لا توجد مهام مكتملة بعد.</td></tr>') + '</tbody>' +
       '</table></div></div>'
     ) : '') +
     (showGoals ? (
       '<div class="section-head" style="margin-top:24px;"><h2>خطط التحسين الفصلية وأهداف المجتمعات المهنية</h2></div>' +
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
         '<thead><tr><th>الهدف</th><th>المنسق</th><th>نسبة التحقق</th><th>تقييم المدير</th><th></th></tr></thead>' +
-        '<tbody>' + (goalRows || '<tr class="empty-row"><td colspan="5">لا توجد أهداف مسجَّلة بعد.</td></tr>') + '</tbody>' +
+        '<tbody id="pr-goals-tbody">' + (goalRows || '<tr class="empty-row"><td colspan="5">لا توجد أهداف مسجَّلة بعد.</td></tr>') + '</tbody>' +
       '</table></div></div>'
     ) : '') +
     modal
@@ -4978,6 +5004,17 @@ function goalReviewModalHtml(g){
 function bindPrincipalReview(){
   document.querySelectorAll('[data-action="reviewFilter"]').forEach(function(el){
     el.addEventListener('click', async function(){ ReviewUI.filter = el.getAttribute('data-val'); await render(); bindPrincipalReview(); });
+  });
+  var prSearch = document.getElementById('pr-search');
+  if (prSearch) prSearch.addEventListener('input', function(){
+    var q = this.value.trim().toLowerCase();
+    ['pr-tasks-tbody','pr-goals-tbody'].forEach(function(tbodyId){
+      var tbody = document.getElementById(tbodyId);
+      if (!tbody) return;
+      tbody.querySelectorAll('tr:not(.empty-row)').forEach(function(row){
+        row.hidden = q ? !row.textContent.toLowerCase().includes(q) : false;
+      });
+    });
   });
   document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
@@ -5333,7 +5370,8 @@ async function screenPracticeBank(){
       '</table></div></div>'
     ) : '') +
     '<div class="section-head" style="margin-top:24px;"><h2>الممارسات المعتمدة (معرض المدرسة)</h2></div>' +
-    (approvedCards || '<p style="color:var(--muted);font-size:13.5px;">لا توجد ممارسات معتمدة بعد.</p>') +
+    (approvedCards ? '<div style="margin-bottom:14px;"><input id="pb-search" class="input" style="max-width:320px;" placeholder="ابحث باسم الممارسة أو المعلم أو التصنيف…"></div>' : '') +
+    '<div id="pb-approved-gallery">' + (approvedCards || '<p style="color:var(--muted);font-size:13.5px;">لا توجد ممارسات معتمدة بعد.</p>') + '</div>' +
     modal
   );
 }
@@ -5382,6 +5420,15 @@ function practiceReviewModalHtml(s){
 function bindPracticeBank(){
   var _backBtn = document.querySelector('[data-action="back"]');
   if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
+  var _pbSearch = document.getElementById('pb-search');
+  if (_pbSearch) _pbSearch.addEventListener('input', function(){
+    var q = this.value.trim().toLowerCase();
+    var gallery = document.getElementById('pb-approved-gallery');
+    if (!gallery) return;
+    gallery.querySelectorAll('.program-card').forEach(function(card){
+      card.hidden = q ? !card.textContent.toLowerCase().includes(q) : false;
+    });
+  });
   const resetComposeFields = function(){ PracticeBankUI.editId = null; PracticeBankUI.attachments = []; PracticeBankUI.title=''; PracticeBankUI.category='teacherSupport'; PracticeBankUI.description=''; PracticeBankUI.attachment_note=''; };
   const newBtn = document.querySelector('[data-action="newPractice"]');
   if (newBtn) newBtn.addEventListener('click', function(){ PracticeBankUI.composeOpen = true; resetComposeFields(); render(); bindPracticeBank(); });
@@ -8220,7 +8267,7 @@ function bindDashboard(){
   else if (State.dashTab==='visits' && State.user.role==='coordinator') bindCoordinatorVisits();
   else if (State.dashTab==='demoLesson' && State.user.role==='coordinator') bindCoordinatorDemoLessons();
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
-  else if (State.dashTab==='teamStats' && State.user.role==='coordinator') { /* no bind needed — static */ }
+  else if (State.dashTab==='teamStats' && State.user.role==='coordinator') bindCoordinatorTeamStats();
   else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
   else if (State.dashTab==='principalDemoLessons' && State.user.role==='principal') bindPrincipalDemoLessons();
   else if (State.dashTab==='principalGifted' && State.user.role==='principal') bindPrincipalGifted();
