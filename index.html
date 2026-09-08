@@ -6734,7 +6734,7 @@ function examAnalysisResultModal(){
     return (
       '<div class="task-card" style="margin-bottom:8px;">'+
         '<div class="meta"><b>الصف '+esc(p.grade||'—')+' — الشعبة '+esc(p.section||'—')+'</b>'+
-          '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب '+(p.created?'(خطة جديدة)':'(تمت إضافتهم إلى خطة قائمة)')+'</span></div>'+
+          '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب دون المستوى '+(p.created?'(خطة جديدة)':'(تمت إضافتهم)')+'</span></div>'+
         '<button class="btn btn-ghost btn-sm" data-action="openExamSortedPlan" data-id="'+p.id+'">متابعة الخطة العلاجية والمتابعة الأسبوعية</button>'+
       '</div>'
     );
@@ -6743,7 +6743,7 @@ function examAnalysisResultModal(){
     '<div class="modal-bg" data-action="closeExamResultModalBg">'+
       '<div class="modal-box" onclick="event.stopPropagation()">'+
         '<h3>تم الفرز الآلي بنجاح</h3>'+
-        '<p style="color:var(--muted);font-size:13px;margin:-6px 0 14px;">تم رصد '+r.totalAdded+' طالبًا ممن حصلوا على أقل من نصف الدرجة ضمن الخطط العلاجية الجماعية أدناه.</p>'+
+        '<p style="color:var(--muted);font-size:13px;margin:-6px 0 14px;">تم رصد الطلاب دون مستوى النجاح وتوزيعهم على الخطط العلاجية الجماعية أدناه.</p>'+
         plansHtml+
         '<div class="modal-actions"><button class="btn btn-ghost btn-block" data-action="closeExamResultModal">إغلاق</button></div>'+
       '</div>'+
@@ -6791,11 +6791,18 @@ async function runExamAutoSort(){
       created = true; addedHere = g.students.length;
     }
     totalAdded += addedHere;
-    plans.push({ id: sub.id, grade: g.grade, section: g.section, count: addedHere, created: created });
+    plans.push({ id: sub.id, grade: g.grade, section: g.section, count: g.students.length, created: created });
   }
   if (skipped.length){ toast('توجد خطة علاجية مرسلة بالفعل للفصول: '+skipped.join('، ')+'. تم تخطيها.'); }
-  ExamAnalysisUI.resultModal = { totalAdded: totalAdded, plans: plans };
-  render(); bindExamAnalysis();
+  if (!plans.length){ render(); bindExamAnalysis(); return; }
+  if (plans.length === 1){
+    const s = await DB.getSubmission(plans[0].id);
+    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' };
+    openEditor(s.form_type, s);
+  } else {
+    ExamAnalysisUI.resultModal = { totalAdded: totalAdded, plans: plans };
+    render(); bindExamAnalysis();
+  }
 }
 function bindExamAnalysis(){
   document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' }; go('dashboard'); });
