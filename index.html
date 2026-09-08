@@ -6799,7 +6799,7 @@ async function runExamAutoSort(){
   if (!plans.length){ render(); bindExamAnalysis(); return; }
   if (plans.length === 1){
     const s = await DB.getSubmission(plans[0].id);
-    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' };
+    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
     openEditor(s.form_type, s);
   } else {
     ExamAnalysisUI.resultModal = { totalAdded: totalAdded, plans: plans };
@@ -6807,7 +6807,7 @@ async function runExamAutoSort(){
   }
 }
 function bindExamAnalysis(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'' }; go('dashboard'); });
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('dashboard'); });
   const maxScoreSel = document.getElementById('examMaxScore');
   if (maxScoreSel) maxScoreSel.addEventListener('change', function(){ ExamAnalysisUI.maxScore = Number(this.value)||40; render(); bindExamAnalysis(); });
   const filterGradeSel = document.getElementById('examFilterGrade');
@@ -6896,7 +6896,7 @@ function bindExamAnalysis(){
   document.querySelectorAll('[data-action="openExamSortedPlan"]').forEach(function(el){
     el.addEventListener('click', async function(){
       const s = await DB.getSubmission(el.getAttribute('data-id'));
-      ExamAnalysisUI = { rows:null, resultModal:null };
+      ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
       openEditor(s.form_type, s);
     });
   });
@@ -13306,7 +13306,7 @@ function bindGlobalAction(el){
   else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); go('dashboard'); }); }
   else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
   else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
-  else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null }; go('examAnalysis'); }); }
+  else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('examAnalysis'); }); }
   else if (action==='openMyProfile'){ el.addEventListener('click', showProfileModal); }
 }
 
