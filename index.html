@@ -9044,7 +9044,10 @@ async function screenCoordinatorMyStudents(){
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
           '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
           '<tbody>'+studentRows+'</tbody>' +
-        '</table></div></div>'
+        '</table></div></div>' +
+        '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
+          '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" style="font-size:13px;">▲ إخفاء القائمة</button>' +
+        '</div>'
       ) : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن لك طلاب بعد. تواصل مع مدير النظام لتعيين طلاب لحسابك.</p>')
     )
   );
@@ -9669,7 +9672,10 @@ async function screenTeacherTasks(){
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
         '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
         '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
-      '</table></div></div>'
+      '</table></div></div>' +
+      '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" style="font-size:13px;">▲ إخفاء القائمة</button>' +
+      '</div>'
     )
   ) : '';
 
