@@ -1240,6 +1240,28 @@ async function uploadFileToStorage(file){
   }
   return CONFIG.SUPABASE_URL + '/storage/v1/object/public/nasmo-files/' + path;
 }
+async function uploadSignatureToStorage(dataUrl){
+  if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+  const fetchRes = await fetch(dataUrl);
+  const blob = await fetchRes.blob();
+  const uid = (AUTH && AUTH.user && AUTH.user.id) ? AUTH.user.id : 'anon';
+  const path = 'sigs/' + uid + '/' + Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.png';
+  const res = await fetch(CONFIG.SUPABASE_URL + '/storage/v1/object/nasmo-files/' + path, {
+    method: 'POST',
+    headers: {
+      'apikey': CONFIG.SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + (AUTH.accessToken || CONFIG.SUPABASE_ANON_KEY),
+      'Content-Type': 'image/png',
+      'x-upsert': 'true'
+    },
+    body: blob
+  });
+  if (!res.ok){
+    let msg = ''; try{ const j = await res.json(); msg = j.message || j.error || ''; }catch(e2){}
+    throw new Error('فشل رفع التوقيع: ' + (msg || res.status));
+  }
+  return CONFIG.SUPABASE_URL + '/storage/v1/object/public/nasmo-files/' + path;
+}
 async function deleteFileFromStorage(url){
   if (!url || typeof url !== 'string' || !url.includes('/storage/v1/object/public/nasmo-files/')) return;
   const path = url.split('/storage/v1/object/public/nasmo-files/')[1];
@@ -2967,10 +2989,12 @@ async function exportFormToPdf(filename){
 
 /* ---------------------- مكوّن التوقيع (Canvas) ---------------------- */
 const Pads = {};
+function sigImgSrc(s){ return (s && s.startsWith('http')) ? s : safeDataUrl(s||''); }
 function buildSignaturePad(name, existingDataUrl, readonly){
+  const sigSrc = sigImgSrc(existingDataUrl);
   if (readonly){
-    if (existingDataUrl){
-      return '<div class="sig-box"><img class="sig-img" src="'+esc(safeDataUrl(existingDataUrl))+'" alt="توقيع"></div>';
+    if (sigSrc){
+      return '<div class="sig-box"><img class="sig-img" src="'+esc(sigSrc)+'" alt="توقيع"></div>';
     }
     return '<div class="upload-note">لا يوجد توقيع مسجَّل لهذا الحقل.</div>';
   }
@@ -2978,7 +3002,7 @@ function buildSignaturePad(name, existingDataUrl, readonly){
   setTimeout(function(){ mountPad(cid, name, existingDataUrl); }, 0);
   return (
     '<div class="sig-box" id="wrap_'+cid+'">' +
-      (existingDataUrl ? '<img class="sig-img" src="'+esc(safeDataUrl(existingDataUrl))+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
+      (sigSrc ? '<img class="sig-img" src="'+esc(sigSrc)+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
       '<canvas id="'+cid+'" width="500" height="140"></canvas>' +
       '<div class="sig-actions">' +
         '<span class="sig-name">وقّع بإصبعك أو بالماوس داخل الإطار</span>' +
@@ -10421,6 +10445,10 @@ function bindTeacherSession(){
     if (sess.sig && State.user.id !== sess.teacher_id) { toast('لا يمكن تعديل جلسة بعد التوقيع.'); this.disabled = false; return; }
     if (pad && !pad.isEmpty()) sess.sig = pad.toDataUrl();
     if (!sess.sig){ toast('يرجى التوقيع قبل حفظ الجلسة.'); this.disabled = false; return; }
+    if (sess.sig && sess.sig.startsWith('data:')){
+      try{ sess.sig = await uploadSignatureToStorage(sess.sig); }
+      catch(sigErr){ toast('تعذّر رفع التوقيع: ' + (sigErr.message||'')); this.disabled = false; return; }
+    }
     try{
       await DB.updateSubmission(TeacherSessionCache.sub.id, { payload: TeacherSessionCache.sub.payload });
       invalidateAllScreenCaches();
@@ -13256,6 +13284,21 @@ async function persistEditor(targetStatus){
     });
   }
 
+  /* رفع التوقيعات لـ Storage بدلاً من تخزينها كـ base64 في DB */
+  try{
+    if (EditorState.prepSig && EditorState.prepSig.startsWith('data:')){
+      EditorState.prepSig = await uploadSignatureToStorage(EditorState.prepSig);
+    }
+    if (Array.isArray(EditorState.data.sessions)){
+      for (var _si = 0; _si < EditorState.data.sessions.length; _si++){
+        const _sess = EditorState.data.sessions[_si];
+        if (_sess.sig && _sess.sig.startsWith('data:')){
+          _sess.sig = await uploadSignatureToStorage(_sess.sig);
+        }
+      }
+    }
+  }catch(sigErr){ toast('تعذّر رفع التوقيع: ' + (sigErr.message||'')); return; }
+
   const payload = {
     form_type: EditorState.formType, school: EditorState.school,
     created_by: EditorState.createdBy, created_by_name: EditorState.createdByName,
@@ -13453,8 +13496,11 @@ function bindReview(){
     if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); this.disabled = false; return; }
     const rating = +document.getElementById('reviewRating').value;
     const note = document.getElementById('reviewNote').value.trim();
+    let principalSigUrl;
+    try{ principalSigUrl = await uploadSignatureToStorage(pad.toDataUrl()); }
+    catch(sigErr){ toast('تعذّر رفع التوقيع: ' + (sigErr.message||'')); this.disabled = false; return; }
     try{
-      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
+      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); invalidateNotifCache(); }catch(e){}
