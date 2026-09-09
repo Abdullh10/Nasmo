@@ -9032,20 +9032,27 @@ async function screenCoordinatorMyStudents(){
     ) : '') +
     '<div class="section-head" style="margin-top:8px;margin-bottom:12px;"><h2>مهامي الموكّلة من المدير ('+myAssignedTasks.length+')</h2></div>' +
     (taskCards || '<p style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">لا توجد مهام مُسنَدة إليك من المدير حاليًا.</p>') +
-    '<div class="section-head" style="margin-top:24px;margin-bottom:12px;"><h2>طلابي المعيَّنون إليّ ('+myStudents.length+')</h2></div>' +
-    (myStudents.length ? (
-      '<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button class="btn btn-primary btn-sm" data-action="goExamAnalysis">تحليل اختبار</button>' +
-        '<button class="btn btn-ghost btn-sm" data-action="coordGoGroupPlan">خطة علاجية جماعية</button>' +
-      '</div>' +
-      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-        '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
-        '<tbody>'+studentRows+'</tbody>' +
-      '</table></div></div>'
-    ) : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن لك طلاب بعد. تواصل مع مدير النظام لتعيين طلاب لحسابك.</p>')
+    '<div class="section-head" style="margin-top:24px;margin-bottom:12px;cursor:pointer;user-select:none;" data-action="toggleStudentList">' +
+      '<h2 style="display:flex;align-items:center;gap:8px;">طلابي المسندون لي ('+myStudents.length+') <span style="font-size:13px;color:var(--muted);font-weight:400;">'+(TeacherFormsUI.studentsCollapsed?'▼ عرض':'▲ إخفاء')+'</span></h2>' +
+    '</div>' +
+    (TeacherFormsUI.studentsCollapsed ? '' :
+      (myStudents.length ? (
+        '<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="btn btn-primary btn-sm" data-action="goExamAnalysis">تحليل اختبار</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="coordGoGroupPlan">خطة علاجية جماعية</button>' +
+        '</div>' +
+        '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+          '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
+          '<tbody>'+studentRows+'</tbody>' +
+        '</table></div></div>'
+      ) : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن لك طلاب بعد. تواصل مع مدير النظام لتعيين طلاب لحسابك.</p>')
+    )
   );
 }
 function bindCoordinatorMyStudents(){
+  document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = !TeacherFormsUI.studentsCollapsed; await render(); bindCoordinatorMyStudents(); });
+  });
   document.querySelectorAll('[data-action="openTaskDetail"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
   });
@@ -9116,7 +9123,7 @@ function bindCoordinatorMyStudents(){
 }
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
-let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '' }; /* dashTab: 'main'|'agenda'|'profile' */
+let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '', studentsCollapsed: true }; /* dashTab: 'main'|'agenda'|'profile' */
 let GiftedUI = { modalOpen: false, counselors: [], selectedCounselorId: '' };
 let GiftedReviewUI = { modalOpen: false, report: null };
 let _teacherDemoLessonsCache = [];
@@ -9652,13 +9659,18 @@ async function screenTeacherTasks(){
     '</div>'
   ) : '';
 
+  const _stCollapsed = TeacherFormsUI.studentsCollapsed;
   const studentSummaryHtml = myStudents.length ? (
-    '<div class="section-head" style="margin-top:20px;"><h2>طلابي المعيَّنون إليّ ('+myStudents.length+')</h2></div>' +
-    studentFilterBar +
-    '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
-      '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
-    '</table></div></div>'
+    '<div class="section-head" style="margin-top:20px;cursor:pointer;user-select:none;" data-action="toggleStudentList">' +
+      '<h2 style="display:flex;align-items:center;gap:8px;">طلابي المسندون لي ('+myStudents.length+') <span style="font-size:13px;color:var(--muted);font-weight:400;">'+ (_stCollapsed ? '▼ عرض' : '▲ إخفاء') +'</span></h2>' +
+    '</div>' +
+    (_stCollapsed ? '' :
+      studentFilterBar +
+      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+        '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
+        '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
+      '</table></div></div>'
+    )
   ) : '';
 
   /* — بطاقات الجلسات مع شريط التقدم — */
@@ -10046,6 +10058,11 @@ function bindTeacherTasks(){
     el.addEventListener('click', function(){
       go('taskDetail', { taskId: el.getAttribute('data-id') });
     });
+  });
+
+  /* طي/فتح قائمة الطلاب */
+  document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = !TeacherFormsUI.studentsCollapsed; await render(); bindTeacherTasks(); });
   });
 
   /* فلتر جدول الطلاب */
