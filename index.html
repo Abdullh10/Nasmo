@@ -8918,7 +8918,7 @@ function bindCoordinatorMyStudents(){
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '' }; /* dashTab: 'main'|'agenda'|'profile' */
-let GiftedUI = { modalOpen: false };
+let GiftedUI = { modalOpen: false, counselors: [], selectedCounselorId: '' };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
 let _teacherAllStudentsCache = [];
@@ -9750,10 +9750,21 @@ async function screenTeacherTasks(){
           '<textarea class="input" id="giftedNote" rows="3" placeholder="أي تفاصيل إضافية عن الموهبة أو مقترحاتك…" style="resize:vertical;"></textarea>' +
         '</div>' +
         '<div class="field"><label>إرسال الإشعار إلى</label>' +
-          '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;">' +
-            '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToPrincipal" checked> مدير المدرسة</label>' +
-            '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> المرشد الطلابي</label>' +
-            (State.user.community_id ? '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCoord"> منسق المجتمع (للاطلاع)</label>' : '') +
+          '<div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">' +
+            '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
+              '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToPrincipal" checked> مدير المدرسة</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> المرشد الطلابي</label>' +
+              (State.user.community_id ? '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCoord"> منسق المجتمع (للاطلاع)</label>' : '') +
+            '</div>' +
+            (GiftedUI.counselors.length > 0 ?
+              '<div id="giftedCounselorPickWrap" style="display:none;">' +
+                '<label style="font-size:13px;color:var(--muted);">اختر المرشد:</label>' +
+                '<select class="input" id="giftedCounselorSel" style="margin-top:4px;">' +
+                  '<option value="">— اختر مرشداً —</option>' +
+                  GiftedUI.counselors.map(function(c){ return '<option value="'+esc(c.id)+'"'+(GiftedUI.selectedCounselorId===c.id?' selected':'')+'>'+esc(c.full_name)+'</option>'; }).join('') +
+                '</select>' +
+              '</div>'
+            : '') +
           '</div>' +
         '</div>' +
         '<div class="modal-actions">' +
@@ -10092,6 +10103,8 @@ function bindTeacherTasks(){
   const openGiftedBtn = document.querySelector('[data-action="openGiftedModal"]');
   if (openGiftedBtn) openGiftedBtn.addEventListener('click', async function(){
     GiftedUI.modalOpen = true;
+    GiftedUI.selectedCounselorId = '';
+    try{ GiftedUI.counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&order=full_name.asc') || []; }catch(e){ GiftedUI.counselors = []; }
     await render(); bindTeacherTasks();
   });
 
@@ -10101,6 +10114,13 @@ function bindTeacherTasks(){
     GiftedUI.modalOpen = false;
     await render(); bindTeacherTasks();
   });
+  const giftedCounselorChk = document.getElementById('giftedToCounselor');
+  const giftedCounselorPickWrap = document.getElementById('giftedCounselorPickWrap');
+  function toggleCounselorPick(){
+    if (!giftedCounselorPickWrap) return;
+    giftedCounselorPickWrap.style.display = (giftedCounselorChk && giftedCounselorChk.checked) ? '' : 'none';
+  }
+  if (giftedCounselorChk){ giftedCounselorChk.addEventListener('change', toggleCounselorPick); toggleCounselorPick(); }
   const closeGiftedBg = document.querySelector('[data-action="closeGiftedModalBg"]');
   if (closeGiftedBg) closeGiftedBg.addEventListener('click', async function(){
     GiftedUI.modalOpen = false;
@@ -10124,6 +10144,10 @@ function bindTeacherTasks(){
     const toCounselor = !!(document.getElementById('giftedToCounselor') && document.getElementById('giftedToCounselor').checked);
     const toCoord = !!(document.getElementById('giftedToCoord') && document.getElementById('giftedToCoord').checked);
     if (!toPrincipal && !toCounselor && !toCoord){ toast('يرجى اختيار جهة استلام الإشعار على الأقل.'); return; }
+    if (toCounselor && GiftedUI.counselors.length > 1){
+      const selCId = (document.getElementById('giftedCounselorSel')||{}).value || '';
+      if (!selCId){ toast('يرجى اختيار المرشد الطلابي المعني من القائمة.'); return; }
+    }
     sendGiftedBtn.disabled = true;
     try{
       /* العثور على بيانات الطالب */
@@ -10160,8 +10184,14 @@ function bindTeacherTasks(){
         ps.forEach(function(p){ targets.push(p); });
       }
       if (toCounselor){
-        const cs = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor') || [];
-        cs.forEach(function(c){ targets.push(c); });
+        const selCounselorId = (document.getElementById('giftedCounselorSel')||{}).value || '';
+        if (selCounselorId){
+          const chosen = GiftedUI.counselors.find(function(c){ return c.id===selCounselorId; });
+          if (chosen) targets.push(chosen);
+        } else {
+          const cs = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor') || [];
+          cs.forEach(function(c){ targets.push(c); });
+        }
       }
       if (toCoord && State.user.community_id){
         const coords = await remoteFetch('profiles?community_id=eq.'+encodeURIComponent(State.user.community_id)+'&role=eq.coordinator&school=eq.'+encodeURIComponent(State.user.school)) || [];
