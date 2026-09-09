@@ -3561,7 +3561,7 @@ function screenLogin(){
         ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
           '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
             '<option value="">اختر اسم المدرسة</option>' +
-            SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
+            SiteSettings.schools.map(function(s){ var def = (s === 'العلا الثانوية') ? ' selected' : ''; return '<option value="'+esc(s)+'"'+def+'>'+esc(s)+'</option>'; }).join('') +
           '</select></div>' : '') +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
         '<div class="credit-line">برمجة الأستاذ عبدالله حمدي</div>' +
