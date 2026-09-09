@@ -1203,7 +1203,7 @@ const LS_GIFTED     = "dtd_gifted_v1";
 function uid(){ return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8); }
 function nowIso(){ return new Date().toISOString(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function safeDataUrl(url){ return /^data:(image\/|application\/pdf|application\/octet-stream|text\/)/.test(url||'') ? url : ''; }
+function safeDataUrl(url){ return /^data:(image\/(png|jpeg|gif|webp|svg\+xml)|application\/(pdf|octet-stream)|text\/(plain|csv))/.test(url||'') ? url : ''; }
 const MAX_EVIDENCE_MB = 10;
 function checkFileSize(file){
   if (file.size > MAX_EVIDENCE_MB * 1024 * 1024){
@@ -1276,8 +1276,12 @@ async function deleteFileFromStorage(url){
 /* helper: URL الملف سواء كان من Storage أو base64 قديم */
 function fileUrl(f){
   if (!f) return '';
-  if (typeof f === 'string') return f.startsWith('http') ? f : safeDataUrl(f);
-  return f.url ? f.url : safeDataUrl(f.data||'');
+  if (typeof f === 'string'){
+    if (/^https?:\/\//i.test(f)) return f;
+    return safeDataUrl(f);
+  }
+  if (f.url && /^https?:\/\//i.test(f.url)) return f.url;
+  return safeDataUrl(f.data||'');
 }
 function hijriDateFmt(d){
   return new Intl.DateTimeFormat('ar-SA', {calendar:'islamic-umalqura', year:'numeric', month:'long', day:'numeric'}).format(d);
@@ -10001,7 +10005,7 @@ function bindTeacherTasks(){
         '<div class="row"><span class="lbl">المُحيل:</span><span>'+esc(c.referred_by_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">المرشد المحال إليه:</span><span>'+esc(c.counselor_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">تاريخ الإحالة:</span><span>'+fmtDate(c.created_at||'')+'</span></div>' +
-        (Array.isArray(c.pre_referral_actions) && c.pre_referral_actions.length ? '<div style="margin-bottom:8px;"><div style="font-weight:bold;margin-bottom:4px;">الإجراءات المتخذة قبل التحويل:</div><div>'+c.pre_referral_actions.map(function(a){ return '• '+a; }).join('<br>')+'</div></div>' : '') +
+        (Array.isArray(c.pre_referral_actions) && c.pre_referral_actions.length ? '<div style="margin-bottom:8px;"><div style="font-weight:bold;margin-bottom:4px;">الإجراءات المتخذة قبل التحويل:</div><div>'+c.pre_referral_actions.map(function(a){ return '• '+esc(a); }).join('<br>')+'</div></div>' : '') +
         (c.referral_reason ? '<div><div style="font-weight:bold;margin-bottom:4px;">نص الإحالة الرسمي:</div><div class="pre">'+esc(c.referral_reason)+'</div></div>' : '') +
         recBlock +
         '<div style="margin-top:30px;" class="noprint"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;cursor:pointer;">🖨 طباعة</button></div>' +
@@ -12399,8 +12403,11 @@ async function screenEditor(){
         '<div class="footer-note">يُحفظ هذا النموذج إلكترونيًا ويُحال إلى مدير المدرسة للاعتماد النهائي.</div>' +
       '</div>' +
       '<div class="sheet-bar no-print" style="margin-top:16px;justify-content:flex-end;gap:10px;">' +
-        '<button class="btn btn-ghost" data-action="saveDraft">حفظ كمسودة</button>' +
-        '<button class="btn btn-primary" data-action="submitForm">إرسال لاعتماد مدير المدرسة</button>' +
+        (EditorState.status === 'approved'
+          ? '<button class="btn btn-primary" data-action="saveApproved">حفظ المتابعة الأسبوعية</button>'
+          : '<button class="btn btn-ghost" data-action="saveDraft">حفظ كمسودة</button>' +
+            '<button class="btn btn-primary" data-action="submitForm">إرسال لاعتماد مدير المدرسة</button>'
+        ) +
       '</div>' +
       (EditorState.studentPickOpen ? studentPickModalHtml() : '') +
     '</div>'
@@ -12409,7 +12416,7 @@ async function screenEditor(){
 
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
-const GP_GRADE_OPTS = ['الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
+const GP_GRADE_OPTS = ['الأول ابتدائي','الثاني ابتدائي','الثالث ابتدائي','الرابع ابتدائي','الخامس ابتدائي','السادس ابتدائي','الأول متوسط','الثاني متوسط','الثالث متوسط','الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
 const GP_DIAG_OPTS = ['نتائج الاختبار القبلي التشخيصي','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','نتائج اختبار نهاية الفصل','تحليل أوراق العمل الصفية','تحليل أخطاء الطلاب الشائعة','ملاحظة المعلم المباشرة في الفصل','بيانات التقويم المستمر','مؤشرات الحضور والمشاركة الصفية','تقارير المرشد الطلابي'];
 const GP_SKILLS_OPTS = ['الفهم القرائي وتحليل النص','التعبير الكتابي الوظيفي والإبداعي','التعبير الشفهي والعرض والمناقشة','المفردات والتراكيب اللغوية','حل المسائل والتفكير الرياضي','مهارات الاستنتاج والتحليل والتقويم','مهارات التفكير الناقد والإبداعي','المهارات العلمية والتجريبية','تطبيق المفاهيم والنظريات','مهارات البحث والاستقصاء وجمع المعلومات'];
 const GP_TEACHER_OPINION_OPTS = ['تحسّن الطلاب بشكل ملحوظ في المهارات المستهدفة بعد التدخل العلاجي','حقق معظم الطلاب الهدف المستهدف ضمن الجدول الزمني المحدد','استجاب الطلاب بشكل إيجابي للأساليب العلاجية المستخدمة','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي ومتابعة مستمرة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب وتكثيف الدعم','تحسّن الأداء بصورة محدودة وتستلزم الحالة تدخلاً أكثر تخصصاً','أخرى'];
@@ -13250,13 +13257,20 @@ function bindEditor(){
 
   var _backBtn = document.querySelector('[data-action="back"]');
   if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
-  document.querySelector('[data-action="saveDraft"]').addEventListener('click', async function(){
+  var _saveDraftBtn = document.querySelector('[data-action="saveDraft"]');
+  if (_saveDraftBtn) _saveDraftBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     try{ await persistEditor('draft'); } finally{ this.disabled = false; }
   });
-  document.querySelector('[data-action="submitForm"]').addEventListener('click', async function(){
+  var _submitBtn = document.querySelector('[data-action="submitForm"]');
+  if (_submitBtn) _submitBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     try{ await persistEditor('pending'); } finally{ this.disabled = false; }
+  });
+  var _saveApprovedBtn = document.querySelector('[data-action="saveApproved"]');
+  if (_saveApprovedBtn) _saveApprovedBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
+    try{ await persistEditor('approved'); } finally{ this.disabled = false; }
   });
 }
 
