@@ -2837,6 +2837,7 @@ function loadUserSession(){ try{ return JSON.parse(localStorage.getItem('dtd_ses
 function logout(){
   try{ localStorage.removeItem('dtd_session'); }catch(e){} clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
+  _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _studentRosterData = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
@@ -3241,6 +3242,23 @@ const PENDING_TTL_MS = 240000;
 function invalidateNotifCache(){ _notifCache = null; }
 function invalidateCommCache(){ _commCache = null; }
 function invalidatePendingCache(){ _pendingCache = null; }
+/* كاش بيانات لوحة المعلم */
+let _teacherScreenData = null, _teacherScreenDataAt = 0;
+const TEACHER_SCREEN_TTL_MS = 60000;
+function invalidateTeacherScreenData(){ _teacherScreenData = null; }
+/* كاش بيانات لوحة المنسق/المدير الرئيسية */
+let _coordScreenData = null, _coordScreenDataAt = 0;
+const COORD_SCREEN_TTL_MS = 60000;
+function invalidateCoordScreenData(){ _coordScreenData = null; }
+/* كاش بيانات لوحة المرشد الطلابي */
+let _counselorCasesData = null, _counselorCasesDataAt = 0;
+const COUNSELOR_TTL_MS = 60000;
+function invalidateCounselorData(){ _counselorCasesData = null; }
+/* كاش بيانات قائمة الطلاب */
+let _studentRosterData = null, _studentRosterDataAt = 0;
+const ROSTER_TTL_MS = 60000;
+function invalidateStudentRosterData(){ _studentRosterData = null; }
+function invalidateAllScreenCaches(){ _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; }
 async function render(){
   const token = ++_renderToken;
   const app = document.getElementById('app');
@@ -3543,7 +3561,7 @@ function screenLogin(){
         ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
           '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
             '<option value="">اختر اسم المدرسة</option>' +
-            SiteSettings.schools.map(function(s){ return '<option value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('') +
+            SiteSettings.schools.map(function(s){ var def = (s === 'العلا الثانوية') ? ' selected' : ''; return '<option value="'+esc(s)+'"'+def+'>'+esc(s)+'</option>'; }).join('') +
           '</select></div>' : '') +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
         '<div class="credit-line">برمجة الأستاذ عبدالله حمدي</div>' +
@@ -4312,8 +4330,8 @@ function bindCoordinatorTasks(){
     if (!title){ toast('يرجى إدخال عنوان المهمة.'); this.disabled = false; return; }
     try{
       await DB.createTask({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, assigned_to:teacherId, assigned_to_name:teacherName, title:title, description:description, due_date: due||null, status:'pending', teacher_notes:'', evidence_files:[] });
-      invalidatePendingCache();
-      try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:teacherId, type:'general', title:'تم تكليفك بمهمة جديدة: '+title, body:(description||title) }); }catch(e){}
+      invalidatePendingCache(); invalidateAllScreenCaches();
+      try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:teacherId, type:'general', title:'تم تكليفك بمهمة جديدة: '+title, body:(description||title) }); invalidateNotifCache(); }catch(e){}
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
       await render(); bindCoordinatorTasks();
@@ -4325,7 +4343,7 @@ function bindCoordinatorTasks(){
   document.querySelectorAll('[data-action="deleteTask"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه المهمة نهائيًا؟')) return;
-      try{ await DB.deleteTask(el.getAttribute('data-id')); invalidatePendingCache(); toast('تم حذف المهمة.'); await render(); bindCoordinatorTasks(); }
+      try{ await DB.deleteTask(el.getAttribute('data-id')); invalidatePendingCache(); invalidateAllScreenCaches(); toast('تم حذف المهمة.'); await render(); bindCoordinatorTasks(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -6176,7 +6194,13 @@ function openPlanForStudent(formType, student){
 let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
 async function screenStudentRoster(){
   const isAdmin = State.user.role === 'admin';
-  const students = await DB.listStudents({ school: State.user.school });
+  let students;
+  if (_studentRosterData && (Date.now() - _studentRosterDataAt) < ROSTER_TTL_MS){
+    students = _studentRosterData.students;
+  } else {
+    students = await DB.listStudents({ school: State.user.school });
+    _studentRosterData = { students }; _studentRosterDataAt = Date.now();
+  }
   const myId = State.user.id;
 
   /* — تطبيق الفلتر الأساسي (المعلم: طلابه فقط) — */
@@ -6331,6 +6355,7 @@ async function importStudentRows(dataRows){
     }
   }catch(e){ toast('حدث خطأ أثناء الاستيراد: ' + e.message); return; }
   toast('تم استيراد '+objs.length+' طالبًا بنجاح.');
+  invalidateStudentRosterData(); invalidateTeacherScreenData();
   StudentRosterUI.pasteOpen = false;
   go('studentRoster');
 }
@@ -6413,7 +6438,7 @@ function bindStudentRoster(){
   document.querySelectorAll('[data-action="deleteStudent"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟')) return;
-      try{ await DB.deleteStudent(el.getAttribute('data-id')); go('studentRoster'); }catch(e){ toast(arabicError(e)); }
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); invalidateStudentRosterData(); invalidateTeacherScreenData(); go('studentRoster'); }catch(e){ toast(arabicError(e)); }
     });
   });
   const closeModal = function(){ StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null; render(); bindStudentRoster(); };
@@ -6437,6 +6462,7 @@ function bindStudentRoster(){
         toast('تم إضافة الطالب بنجاح.');
       }
       StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null;
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       go('studentRoster');
     }catch(e){ toast(arabicError(e)); }
   });
@@ -6534,6 +6560,7 @@ async function runExamIndividualSort(){
       added++;
     }
   }
+  if (added) invalidateAllScreenCaches();
   toast('تم إنشاء '+added+' خطة فردية جديدة'+(existing?' ('+existing+' موجودة مسبقاً)':'')+'.');
 }
 function examPassScore(){ return Math.round(ExamAnalysisUI.maxScore / 2); }
@@ -7429,12 +7456,19 @@ function counselingPresetField(label, id, currentVal, presets, rows, placeholder
 }
 
 async function screenCounselorCases(){
-  const [cases, schoolUsers, schoolStudents, counselorGiftedReports] = await Promise.all([
-    DB.listCounselingCases(State.user.school),
-    DB.listUsers({ school: State.user.school }),
-    DB.listStudents({ school: State.user.school }),
-    DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; })
-  ]);
+  let cases, schoolUsers, schoolStudents, counselorGiftedReports;
+  if (_counselorCasesData && (Date.now() - _counselorCasesDataAt) < COUNSELOR_TTL_MS){
+    ({ cases, schoolUsers, schoolStudents, counselorGiftedReports } = _counselorCasesData);
+  } else {
+    [cases, schoolUsers, schoolStudents, counselorGiftedReports] = await Promise.all([
+      DB.listCounselingCases(State.user.school),
+      DB.listUsers({ school: State.user.school }),
+      DB.listStudents({ school: State.user.school }),
+      DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; })
+    ]);
+    _counselorCasesData = { cases, schoolUsers, schoolStudents, counselorGiftedReports };
+    _counselorCasesDataAt = Date.now();
+  }
   const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||u.role==='principal'; })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const sortedStudents = schoolStudents.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
@@ -7687,6 +7721,7 @@ async function screenCounselorCases(){
     '<div class="tab-bar">' +
       '<button class="tab '+(CounselorUI.tab==='cases'?'active':'')+'" data-action="counselorTab" data-tab="cases">الحالات</button>' +
       '<button class="tab '+(CounselorUI.tab==='stats'?'active':'')+'" data-action="counselorTab" data-tab="stats">إحصائيات</button>' +
+      '<button class="tab '+(CounselorUI.tab==='gifted'?'active':'')+'" data-action="counselorTab" data-tab="gifted">الموهوبون'+(counselorGiftedReports.length?' ('+counselorGiftedReports.length+')':'')+' </button>' +
       (CounselorUI.studentProfile ? '<button class="tab '+(CounselorUI.tab==='profile'?'active':'')+'" data-action="counselorTab" data-tab="profile">ملف: '+esc(CounselorUI.studentProfile)+'</button>' : '') +
     '</div>' +
     kpiHtml +
@@ -8155,7 +8190,7 @@ function bindCounselorCases(){
   document.querySelectorAll('[data-action="deleteCase"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه الحالة الإرشادية نهائياً؟')) return;
-      try{ await DB.deleteCounselingCase(el.getAttribute('data-id')); toast('تم حذف الحالة.'); render(); bindCounselorCases(); }
+      try{ await DB.deleteCounselingCase(el.getAttribute('data-id')); invalidateCounselorData(); toast('تم حذف الحالة.'); render(); bindCounselorCases(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -8272,10 +8307,12 @@ function bindCounselorCases(){
     const referrer = teachers.find(function(t){ return t.full_name===c.referred_by_name; });
     try{
       await DB.updateCounselingCase(CounselorUI.editingId, { rec_for_teacher: msg, rec_status: 'pending', rec_return_note: '' });
+      invalidateCounselorData();
     }catch(e){ console.warn('rec update failed', e.message); }
     if (referrer){
       try{
         await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:referrer.id, type:'general', title:'توصية إرشادية: '+c.student_name, body:msg });
+        invalidateNotifCache();
         toast('تم إرسال التوصية لـ '+referrer.full_name);
       }catch(e){ toast('فشل الإرسال: '+e.message); }
     } else {
@@ -8363,7 +8400,7 @@ function bindCounselorCases(){
         parent_phone: (document.getElementById('caseParentPhone')||{}).value||'',
         close_summary: ''
       };
-      try{ await DB.createCounselingCase(obj); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      try{ await DB.createCounselingCase(obj); invalidateCounselorData(); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
     } else {
       saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
@@ -8387,7 +8424,7 @@ function bindCounselorCases(){
         counseling_goal:counselingGoal, counseling_interventions:counselingInterventions, counseling_progress:counselingProgress,
         category:category, priority:priority, next_session_date:nextSessionDate };
       patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? (c.close_summary||'') : closeSummary;
-      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); invalidateCounselorData(); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
   });
@@ -8464,7 +8501,12 @@ async function screenDashboard(){
       ]);
     }
   } else {
-    subs = await DB.listSubmissions({ school: State.user.school });
+    if (_coordScreenData && (Date.now() - _coordScreenDataAt) < COORD_SCREEN_TTL_MS){
+      subs = _coordScreenData.subs;
+    } else {
+      subs = await DB.listSubmissions({ school: State.user.school });
+      _coordScreenData = { subs }; _coordScreenDataAt = Date.now();
+    }
     pTasks = []; pGoals = [];
   }
   State.allSubs = subs;
@@ -8769,7 +8811,7 @@ async function screenCoordinatorMyStudents(){
                 '<div style="font-size:12.5px;white-space:pre-wrap;line-height:1.6;background:color-mix(in srgb,var(--teal) 6%,transparent);border-radius:8px;padding:8px 12px;">'+esc(r.rec_for_teacher||'—')+'</div>' +
               '</div>' +
               '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">' +
-                '<button class="btn btn-primary btn-sm" data-action="acknowledgeRec" data-id="'+esc(r.id)+'">أُخذ بالعلم ✓</button>' +
+                '<button class="btn btn-primary btn-sm" data-action="acknowledgeRec" data-id="'+esc(r.id)+'" data-name="'+esc(r.student_name||'')+'" data-counselor="'+esc(r.counselor_name||'المرشد')+'">أُخذ بالعلم ✓</button>' +
                 '<button class="btn btn-ghost btn-sm" data-action="returnRec" data-id="'+esc(r.id)+'" data-name="'+esc(r.student_name)+'" data-counselor="'+esc(r.counselor_name||'المرشد')+'">إرجاع للمرشد</button>' +
               '</div>' +
             '</div>' +
@@ -8813,8 +8855,18 @@ function bindCoordinatorMyStudents(){
   document.querySelectorAll('[data-action="acknowledgeRec"]').forEach(function(el){
     el.addEventListener('click', async function(){
       var id = el.getAttribute('data-id');
+      var studentName = el.getAttribute('data-name');
+      var counselorName = el.getAttribute('data-counselor');
       try{
         await DB.updateCounselingCase(id, { rec_status: 'acknowledged' });
+        invalidateCounselorData();
+        try{
+          const counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName||''));
+          if (counselorProfiles && counselorProfiles.length){
+            await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorProfiles[0].id, type:'general', title:'أُخذ بعلم التوصية: '+(studentName||''), body:'أقرّ '+State.user.full_name+' بالتوصية الإرشادية للطالب '+(studentName||'')+'.' });
+            invalidateNotifCache();
+          }
+        }catch(e2){}
         toast('تم الإغلاق بالعلم.');
         await render(); bindCoordinatorMyStudents();
       }catch(e){ toast(arabicError(e)); }
@@ -8831,6 +8883,7 @@ function bindCoordinatorMyStudents(){
       if (note === null) return;
       try{
         await DB.updateCounselingCase(id, { rec_status: 'returned', rec_return_note: note.trim() });
+        invalidateCounselorData();
         try{
           var counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName));
           if (counselorProfiles && counselorProfiles.length){
@@ -9166,20 +9219,27 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents,
   );
 }
 async function screenTeacherTasks(){
-  const [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations] = await Promise.all([
-    DB.listSubmissions({ school: State.user.school }),
-    DB.listTasks({ school: State.user.school }),
-    DB.listGoals({ school: State.user.school }),
-    State.user.community_id ? DB.listVisitSchedules({ school: State.user.school }) : Promise.resolve([]),
-    DB.listStudents({ school: State.user.school }),
-    DB.listCounselingRecsForTeacher(State.user.school, State.user.full_name).catch(function(){ return []; }),
-    (_teacherStudentProfile
-      ? DB.listGiftedReports(State.user.school, _teacherStudentProfile).catch(function(){ return []; })
-      : Promise.resolve([])),
-    DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; }),
-    DB.listMyReferralCases(State.user.school, State.user.full_name).catch(function(){ return []; }),
-    DB.listMyObservations(State.user.school, State.user.id).catch(function(){ return []; })
-  ]);
+  let subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations;
+  if (_teacherScreenData && (Date.now() - _teacherScreenDataAt) < TEACHER_SCREEN_TTL_MS){
+    ({ subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations } = _teacherScreenData);
+  } else {
+    [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations] = await Promise.all([
+      DB.listSubmissions({ school: State.user.school }),
+      DB.listTasks({ school: State.user.school }),
+      DB.listGoals({ school: State.user.school }),
+      State.user.community_id ? DB.listVisitSchedules({ school: State.user.school }) : Promise.resolve([]),
+      DB.listStudents({ school: State.user.school }),
+      DB.listCounselingRecsForTeacher(State.user.school, State.user.full_name).catch(function(){ return []; }),
+      (_teacherStudentProfile
+        ? DB.listGiftedReports(State.user.school, _teacherStudentProfile).catch(function(){ return []; })
+        : Promise.resolve([])),
+      DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; }),
+      DB.listMyReferralCases(State.user.school, State.user.full_name).catch(function(){ return []; }),
+      DB.listMyObservations(State.user.school, State.user.id).catch(function(){ return []; })
+    ]);
+    _teacherScreenData = { subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations };
+    _teacherScreenDataAt = Date.now();
+  }
   _myObservationsCache = myObservations;
 
   /* — جلسات الخطة الفردية — */
@@ -9561,7 +9621,7 @@ async function screenTeacherTasks(){
                 (isReturned && r.rec_return_note ? '<div style="margin-top:6px;font-size:12px;color:var(--danger);">ملاحظتك المُرجَعة: '+esc(r.rec_return_note)+'</div>' : '') +
               '</div>' +
               '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">' +
-                '<button class="btn btn-primary btn-sm" data-action="acknowledgeRec" data-id="'+esc(r.id)+'">أُخذ بالعلم ✓</button>' +
+                '<button class="btn btn-primary btn-sm" data-action="acknowledgeRec" data-id="'+esc(r.id)+'" data-name="'+esc(r.student_name||'')+'" data-counselor="'+esc(r.counselor_name||'المرشد')+'">أُخذ بالعلم ✓</button>' +
                 '<button class="btn btn-ghost btn-sm" data-action="returnRec" data-id="'+esc(r.id)+'" data-name="'+esc(r.student_name)+'" data-counselor="'+esc(r.counselor_name||'المرشد')+'">إرجاع للمرشد</button>' +
               '</div>' +
             '</div>' +
@@ -9787,6 +9847,7 @@ function bindTeacherTasks(){
   document.querySelectorAll('[data-action="openStudentProfile"]').forEach(function(el){
     el.addEventListener('click', async function(){
       _teacherStudentProfile = el.getAttribute('data-name');
+      invalidateTeacherScreenData();
       TeacherFormsUI.dashTab = 'profile';
       await render(); bindTeacherTasks();
     });
@@ -9874,6 +9935,7 @@ function bindTeacherTasks(){
   if (profileBackBtn) profileBackBtn.addEventListener('click', async function(){
     TeacherFormsUI.dashTab = 'main';
     _teacherStudentProfile = null;
+    invalidateTeacherScreenData();
     await render(); bindTeacherTasks();
   });
 
@@ -9973,8 +10035,18 @@ function bindTeacherTasks(){
   document.querySelectorAll('[data-action="acknowledgeRec"]').forEach(function(el){
     el.addEventListener('click', async function(){
       var id = el.getAttribute('data-id');
+      var studentName = el.getAttribute('data-name');
+      var counselorName = el.getAttribute('data-counselor');
       try{
         await DB.updateCounselingCase(id, { rec_status: 'acknowledged' });
+        invalidateCounselorData(); invalidateTeacherScreenData();
+        try{
+          const counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName||''));
+          if (counselorProfiles && counselorProfiles.length){
+            await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorProfiles[0].id, type:'general', title:'أُخذ بعلم التوصية: '+(studentName||''), body:'أقرّ '+State.user.full_name+' بالتوصية الإرشادية للطالب '+(studentName||'')+'.' });
+            invalidateNotifCache();
+          }
+        }catch(e2){}
         toast('تم الإغلاق بالعلم.');
         await render(); bindTeacherTasks();
       }catch(e){ toast(arabicError(e)); }
@@ -9991,6 +10063,7 @@ function bindTeacherTasks(){
       if (note === null) return;
       try{
         await DB.updateCounselingCase(id, { rec_status: 'returned', rec_return_note: note.trim() });
+        invalidateCounselorData(); invalidateTeacherScreenData();
         /* إشعار للمرشد إن أمكن */
         try{
           const counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName));
@@ -10270,6 +10343,7 @@ function bindTeacherSession(){
     if (!sess.sig){ toast('يرجى التوقيع قبل حفظ الجلسة.'); this.disabled = false; return; }
     try{
       await DB.updateSubmission(TeacherSessionCache.sub.id, { payload: TeacherSessionCache.sub.payload });
+      invalidateAllScreenCaches();
       toast('تم حفظ الجلسة والشواهد بنجاح.');
       go('dashboard');
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
@@ -10372,9 +10446,11 @@ function bindTaskDetail(){
     if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); this.disabled = false; return; }
     try{
       const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso(), principal_status: null, principal_note: null, principal_reviewed_at: null, coordinator_status: null, coordinator_note: null, coordinator_reviewed_at: null });
+      invalidateAllScreenCaches();
       if (updated && updated.created_by){
         try{
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'أنجز المعلم مهمة: '+updated.title, body:'قام '+State.user.full_name+' بإنجاز المهمة ورفع الشواهد، بانتظار مراجعتك.' });
+          invalidateNotifCache();
         }catch(e){}
       }
       toast('تم حفظ المهمة وتمييزها كمكتملة.');
@@ -10387,9 +10463,9 @@ function bindTaskDetail(){
     const note = document.getElementById('taskNote').value.trim();
     try{
       await DB.updateTask(TaskDetailCache.id, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
-      invalidatePendingCache();
+      invalidatePendingCache(); invalidateAllScreenCaches();
       if (TaskDetailCache.assigned_to){
-        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم اعتماد مهمتك: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجازك للمهمة.' }); }catch(e){}
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم اعتماد مهمتك: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجازك للمهمة.' }); invalidateNotifCache(); }catch(e){}
       }
       if (TaskDetailCache.created_by && TaskDetailCache.created_by !== TaskDetailCache.assigned_to){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.created_by, type:'general', title:'اعتمد المدير مهمة: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجاز المهمة التي كلّفتَ بها.' }); }catch(e){}
@@ -10405,9 +10481,9 @@ function bindTaskDetail(){
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
       await DB.updateTask(TaskDetailCache.id, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso(), status:'pending' });
-      invalidatePendingCache();
+      invalidatePendingCache(); invalidateAllScreenCaches();
       if (TaskDetailCache.assigned_to){
-        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم إرجاع مهمتك للتعديل: '+TaskDetailCache.title, body:note }); }catch(e){}
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم إرجاع مهمتك للتعديل: '+TaskDetailCache.title, body:note }); invalidateNotifCache(); }catch(e){}
       }
       toast('تم إرجاع المهمة إلى المعلم للتعديل.');
       go('dashboard');
@@ -10419,10 +10495,11 @@ function bindTaskDetail(){
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب إرجاع المهمة.'); return; }
     try{
       const updated = await DB.updateTask(TaskDetailCache.id, { coordinator_status:'returned', coordinator_note: note, coordinator_reviewed_at: nowIso(), status:'pending' });
-      invalidatePendingCache();
+      invalidatePendingCache(); invalidateAllScreenCaches();
       if (updated && updated.assigned_to){
         try{
           await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.assigned_to, type:'general', title:'تم إرجاع مهمة لتعديلها: '+updated.title, body:note });
+          invalidateNotifCache();
         }catch(e){}
       }
       toast('تم إرجاع المهمة إلى المعلم مع الملاحظة.');
@@ -11604,6 +11681,7 @@ async function importAdminStudentRows(dataRows){
     else { for (let i=0;i<objs.length;i++){ await DB.createStudent(objs[i]); } }
   }catch(e){ toast('حدث خطأ أثناء الاستيراد: ' + e.message); return; }
   toast('تم استيراد '+objs.length+' طالبًا بنجاح'+(skipped?(' (تم تجاوز '+skipped+' سطرًا بلا اسم)'):'')+'.');
+  invalidateStudentRosterData(); invalidateTeacherScreenData();
   AdminStudentUI.pasteOpen = false;
   render(); bindAdminStudents();
 }
@@ -11631,7 +11709,7 @@ function bindAdminStudents(){
   document.querySelectorAll('[data-action="deleteAdminStudent"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟ سيُزال أيضًا من أي إسناد لمعلمين.')) return;
-      try{ await DB.deleteStudent(el.getAttribute('data-id')); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); invalidateStudentRosterData(); invalidateTeacherScreenData(); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -11669,6 +11747,7 @@ function bindAdminStudents(){
         await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, notes, assigned_teacher_ids });
         toast('تم إضافة الطالب بنجاح.');
       }
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[];
       render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -11762,6 +11841,7 @@ function bindAdminStudents(){
     if (!confirm('إلغاء إسناد جميع المعلمين لـ '+ids.length+' طالب محدد؟')) return;
     try{
       await Promise.all(ids.map(function(sid){ return DB.updateStudent(sid, { assigned_teacher_ids: [] }); }));
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم إلغاء الإسناد لـ '+ids.length+' طالب.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -11773,6 +11853,7 @@ function bindAdminStudents(){
     if (!confirm('هل تريد حذف '+ids.length+' طالبًا محددًا؟ لا يمكن التراجع عن هذا الإجراء.')) return;
     try{
       await DB.bulkDeleteStudents(ids);
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم حذف '+ids.length+' طالبًا.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -11799,6 +11880,7 @@ function bindAdminStudents(){
         teacherIds.forEach(function(tid){ if (current.indexOf(tid)===-1) current.push(tid); });
         await DB.updateStudent(s.id, { assigned_teacher_ids: current });
       }));
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم إسناد المعلمين المحددين لـ '+studentIds.length+' طالبًا.');
       AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
       render(); bindAdminStudents();
@@ -11847,6 +11929,7 @@ function bindAdminStudents(){
         }));
         invalidateNotifCache();
       }
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم نقل الطالب إلى '+newGrade+' / '+newSection+(doNotify && (Array.isArray(student.assigned_teacher_ids)&&student.assigned_teacher_ids.length) ? ' وتم إشعار المعلمين المسنَدين.' : '.'));
       AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null;
       render(); bindAdminStudents();
@@ -11861,6 +11944,7 @@ function bindAdminStudents(){
       if (!confirm('إلغاء جميع الإسنادات للطالب '+name+'؟')) return;
       try{
         await DB.updateStudent(sid, { assigned_teacher_ids: [] });
+        invalidateStudentRosterData(); invalidateTeacherScreenData();
         toast('تم إلغاء إسناد الطالب '+name+'.');
         render(); bindAdminStudents();
       }catch(e){ toast(arabicError(e)); }
@@ -13097,10 +13181,16 @@ async function persistEditor(targetStatus){
   try{
     if (EditorState.id){ await DB.updateSubmission(EditorState.id, payload); }
     else { const created = await DB.createSubmission(payload); EditorState.id = created.id; }
+    invalidateAllScreenCaches();
     if (targetStatus === 'pending'){
       invalidatePendingCache();
       const fTitle = (formDef(EditorState.formType)||{}).title || 'نموذج';
       pushNotifyPrincipal(EditorState.school, 'نموذج بانتظار اعتمادك', fTitle + ' — أرسله ' + EditorState.createdByName).catch(function(){});
+      remoteFetch('profiles?role=eq.principal&school=eq.' + encodeURIComponent(EditorState.school)).then(function(principals){
+        return Promise.all((principals||[]).map(function(p){
+          return DB.createNotification({ school:EditorState.school, sender_id:EditorState.createdBy, sender_name:EditorState.createdByName, target_type:'user', target_id:p.id, type:'general', title:'نموذج بانتظار اعتمادك', body:fTitle+' — أرسله '+EditorState.createdByName });
+        }));
+      }).then(function(){ invalidateNotifCache(); }).catch(function(){});
     }
     toast(targetStatus==='pending' ? 'تم إرسال النموذج إلى مدير المدرسة للاعتماد.' : 'تم حفظ المسودة بنجاح.');
     go('dashboard');
@@ -13280,9 +13370,9 @@ function bindReview(){
     const note = document.getElementById('reviewNote').value.trim();
     try{
       await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: pad.toDataUrl(), approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
-      invalidatePendingCache();
+      invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
-        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); }catch(e){}
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); invalidateNotifCache(); }catch(e){}
       }
       toast('تم اعتماد وتقييم النموذج بختم رسمي.');
       go('view', { id: ReviewCache.id });
@@ -13295,9 +13385,9 @@ function bindReview(){
     try{
       const retRating = +(document.getElementById('reviewRating')||{value:0}).value || 0;
       await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment, principal_rating: retRating||null });
-      invalidatePendingCache();
+      invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
-        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم إرجاع نموذجك للتعديل', body:comment }); }catch(e){}
+        try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم إرجاع نموذجك للتعديل', body:comment }); invalidateNotifCache(); }catch(e){}
       }
       toast('تم إرجاع النموذج للمُعد للتعديل.');
       go('dashboard');
@@ -13321,6 +13411,7 @@ function bindGlobalAction(el){
   else if (action==='deleteDraft'){ el.addEventListener('click', async function(){
     if (!confirm('هل أنت متأكد من حذف هذه المسودة؟ لن تستطيع استرجاعها.')) return;
     await DB.deleteSubmission(el.getAttribute('data-id'));
+    invalidateAllScreenCaches();
     toast('تم حذف المسودة.');
     render();
   }); }
