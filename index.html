@@ -2837,7 +2837,7 @@ function loadUserSession(){ try{ return JSON.parse(localStorage.getItem('dtd_ses
 function logout(){
   try{ localStorage.removeItem('dtd_session'); }catch(e){} clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
-  _teacherScreenData = null; _coordScreenData = null;
+  _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _studentRosterData = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
@@ -3250,7 +3250,15 @@ function invalidateTeacherScreenData(){ _teacherScreenData = null; }
 let _coordScreenData = null, _coordScreenDataAt = 0;
 const COORD_SCREEN_TTL_MS = 60000;
 function invalidateCoordScreenData(){ _coordScreenData = null; }
-function invalidateAllScreenCaches(){ _teacherScreenData = null; _coordScreenData = null; }
+/* كاش بيانات لوحة المرشد الطلابي */
+let _counselorCasesData = null, _counselorCasesDataAt = 0;
+const COUNSELOR_TTL_MS = 60000;
+function invalidateCounselorData(){ _counselorCasesData = null; }
+/* كاش بيانات قائمة الطلاب */
+let _studentRosterData = null, _studentRosterDataAt = 0;
+const ROSTER_TTL_MS = 60000;
+function invalidateStudentRosterData(){ _studentRosterData = null; }
+function invalidateAllScreenCaches(){ _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; }
 async function render(){
   const token = ++_renderToken;
   const app = document.getElementById('app');
@@ -6186,7 +6194,13 @@ function openPlanForStudent(formType, student){
 let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
 async function screenStudentRoster(){
   const isAdmin = State.user.role === 'admin';
-  const students = await DB.listStudents({ school: State.user.school });
+  let students;
+  if (_studentRosterData && (Date.now() - _studentRosterDataAt) < ROSTER_TTL_MS){
+    students = _studentRosterData.students;
+  } else {
+    students = await DB.listStudents({ school: State.user.school });
+    _studentRosterData = { students }; _studentRosterDataAt = Date.now();
+  }
   const myId = State.user.id;
 
   /* — تطبيق الفلتر الأساسي (المعلم: طلابه فقط) — */
@@ -6341,6 +6355,7 @@ async function importStudentRows(dataRows){
     }
   }catch(e){ toast('حدث خطأ أثناء الاستيراد: ' + e.message); return; }
   toast('تم استيراد '+objs.length+' طالبًا بنجاح.');
+  invalidateStudentRosterData(); invalidateTeacherScreenData();
   StudentRosterUI.pasteOpen = false;
   go('studentRoster');
 }
@@ -6423,7 +6438,7 @@ function bindStudentRoster(){
   document.querySelectorAll('[data-action="deleteStudent"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟')) return;
-      try{ await DB.deleteStudent(el.getAttribute('data-id')); go('studentRoster'); }catch(e){ toast(arabicError(e)); }
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); invalidateStudentRosterData(); invalidateTeacherScreenData(); go('studentRoster'); }catch(e){ toast(arabicError(e)); }
     });
   });
   const closeModal = function(){ StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null; render(); bindStudentRoster(); };
@@ -6447,6 +6462,7 @@ function bindStudentRoster(){
         toast('تم إضافة الطالب بنجاح.');
       }
       StudentRosterUI.modalOpen = false; StudentRosterUI.editingId = null;
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       go('studentRoster');
     }catch(e){ toast(arabicError(e)); }
   });
@@ -7440,12 +7456,19 @@ function counselingPresetField(label, id, currentVal, presets, rows, placeholder
 }
 
 async function screenCounselorCases(){
-  const [cases, schoolUsers, schoolStudents, counselorGiftedReports] = await Promise.all([
-    DB.listCounselingCases(State.user.school),
-    DB.listUsers({ school: State.user.school }),
-    DB.listStudents({ school: State.user.school }),
-    DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; })
-  ]);
+  let cases, schoolUsers, schoolStudents, counselorGiftedReports;
+  if (_counselorCasesData && (Date.now() - _counselorCasesDataAt) < COUNSELOR_TTL_MS){
+    ({ cases, schoolUsers, schoolStudents, counselorGiftedReports } = _counselorCasesData);
+  } else {
+    [cases, schoolUsers, schoolStudents, counselorGiftedReports] = await Promise.all([
+      DB.listCounselingCases(State.user.school),
+      DB.listUsers({ school: State.user.school }),
+      DB.listStudents({ school: State.user.school }),
+      DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; })
+    ]);
+    _counselorCasesData = { cases, schoolUsers, schoolStudents, counselorGiftedReports };
+    _counselorCasesDataAt = Date.now();
+  }
   const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||u.role==='principal'; })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const sortedStudents = schoolStudents.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
@@ -8374,7 +8397,7 @@ function bindCounselorCases(){
         parent_phone: (document.getElementById('caseParentPhone')||{}).value||'',
         close_summary: ''
       };
-      try{ await DB.createCounselingCase(obj); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      try{ await DB.createCounselingCase(obj); invalidateCounselorData(); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
     } else {
       saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
@@ -8398,7 +8421,7 @@ function bindCounselorCases(){
         counseling_goal:counselingGoal, counseling_interventions:counselingInterventions, counseling_progress:counselingProgress,
         category:category, priority:priority, next_session_date:nextSessionDate };
       patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? (c.close_summary||'') : closeSummary;
-      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); invalidateCounselorData(); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
   });
@@ -8831,6 +8854,7 @@ function bindCoordinatorMyStudents(){
       var id = el.getAttribute('data-id');
       try{
         await DB.updateCounselingCase(id, { rec_status: 'acknowledged' });
+        invalidateCounselorData();
         toast('تم الإغلاق بالعلم.');
         await render(); bindCoordinatorMyStudents();
       }catch(e){ toast(arabicError(e)); }
@@ -8847,6 +8871,7 @@ function bindCoordinatorMyStudents(){
       if (note === null) return;
       try{
         await DB.updateCounselingCase(id, { rec_status: 'returned', rec_return_note: note.trim() });
+        invalidateCounselorData();
         try{
           var counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName));
           if (counselorProfiles && counselorProfiles.length){
@@ -10000,6 +10025,7 @@ function bindTeacherTasks(){
       var id = el.getAttribute('data-id');
       try{
         await DB.updateCounselingCase(id, { rec_status: 'acknowledged' });
+        invalidateCounselorData(); invalidateTeacherScreenData();
         toast('تم الإغلاق بالعلم.');
         await render(); bindTeacherTasks();
       }catch(e){ toast(arabicError(e)); }
@@ -10016,6 +10042,7 @@ function bindTeacherTasks(){
       if (note === null) return;
       try{
         await DB.updateCounselingCase(id, { rec_status: 'returned', rec_return_note: note.trim() });
+        invalidateCounselorData(); invalidateTeacherScreenData();
         /* إشعار للمرشد إن أمكن */
         try{
           const counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName));
@@ -11631,6 +11658,7 @@ async function importAdminStudentRows(dataRows){
     else { for (let i=0;i<objs.length;i++){ await DB.createStudent(objs[i]); } }
   }catch(e){ toast('حدث خطأ أثناء الاستيراد: ' + e.message); return; }
   toast('تم استيراد '+objs.length+' طالبًا بنجاح'+(skipped?(' (تم تجاوز '+skipped+' سطرًا بلا اسم)'):'')+'.');
+  invalidateStudentRosterData(); invalidateTeacherScreenData();
   AdminStudentUI.pasteOpen = false;
   render(); bindAdminStudents();
 }
@@ -11658,7 +11686,7 @@ function bindAdminStudents(){
   document.querySelectorAll('[data-action="deleteAdminStudent"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟ سيُزال أيضًا من أي إسناد لمعلمين.')) return;
-      try{ await DB.deleteStudent(el.getAttribute('data-id')); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); invalidateStudentRosterData(); invalidateTeacherScreenData(); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -11696,6 +11724,7 @@ function bindAdminStudents(){
         await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, notes, assigned_teacher_ids });
         toast('تم إضافة الطالب بنجاح.');
       }
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[];
       render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -11789,6 +11818,7 @@ function bindAdminStudents(){
     if (!confirm('إلغاء إسناد جميع المعلمين لـ '+ids.length+' طالب محدد؟')) return;
     try{
       await Promise.all(ids.map(function(sid){ return DB.updateStudent(sid, { assigned_teacher_ids: [] }); }));
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم إلغاء الإسناد لـ '+ids.length+' طالب.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -11800,6 +11830,7 @@ function bindAdminStudents(){
     if (!confirm('هل تريد حذف '+ids.length+' طالبًا محددًا؟ لا يمكن التراجع عن هذا الإجراء.')) return;
     try{
       await DB.bulkDeleteStudents(ids);
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم حذف '+ids.length+' طالبًا.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -11826,6 +11857,7 @@ function bindAdminStudents(){
         teacherIds.forEach(function(tid){ if (current.indexOf(tid)===-1) current.push(tid); });
         await DB.updateStudent(s.id, { assigned_teacher_ids: current });
       }));
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم إسناد المعلمين المحددين لـ '+studentIds.length+' طالبًا.');
       AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
       render(); bindAdminStudents();
@@ -11874,6 +11906,7 @@ function bindAdminStudents(){
         }));
         invalidateNotifCache();
       }
+      invalidateStudentRosterData(); invalidateTeacherScreenData();
       toast('تم نقل الطالب إلى '+newGrade+' / '+newSection+(doNotify && (Array.isArray(student.assigned_teacher_ids)&&student.assigned_teacher_ids.length) ? ' وتم إشعار المعلمين المسنَدين.' : '.'));
       AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null;
       render(); bindAdminStudents();
@@ -11888,6 +11921,7 @@ function bindAdminStudents(){
       if (!confirm('إلغاء جميع الإسنادات للطالب '+name+'؟')) return;
       try{
         await DB.updateStudent(sid, { assigned_teacher_ids: [] });
+        invalidateStudentRosterData(); invalidateTeacherScreenData();
         toast('تم إلغاء إسناد الطالب '+name+'.');
         render(); bindAdminStudents();
       }catch(e){ toast(arabicError(e)); }
