@@ -3561,7 +3561,7 @@ function screenLogin(){
         ((Array.isArray(SiteSettings.schools) && SiteSettings.schools.length > 0) ?
           '<div class="field"><label>المدرسة</label><select class="input" id="loginSchool">' +
             '<option value="">اختر اسم المدرسة</option>' +
-            (function(){ var hasElUla = SiteSettings.schools.indexOf('العلا الثانوية') > -1; return SiteSettings.schools.map(function(s,i){ var def = (hasElUla ? s==='العلا الثانوية' : i===0) ? ' selected' : ''; return '<option value="'+esc(s)+'"'+def+'>'+esc(s)+'</option>'; }).join(''); })() +
+            (function(){ var hasElUla = SiteSettings.schools.indexOf('مدرسة العلا الثانوية') > -1; return SiteSettings.schools.map(function(s,i){ var def = (hasElUla ? s==='مدرسة العلا الثانوية' : i===0) ? ' selected' : ''; return '<option value="'+esc(s)+'"'+def+'>'+esc(s)+'</option>'; }).join(''); })() +
           '</select></div>' : '') +
         '<button class="btn btn-primary btn-block" data-action="doLogin">تسجيل الدخول</button>' +
         '<div class="credit-line">برمجة الأستاذ عبدالله حمدي</div>' +
