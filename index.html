@@ -982,6 +982,12 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 --   using (school = my_school() or my_role() = 'admin')
 --   with check (school = my_school() or my_role() = 'admin');
 
+-- ميزة "رعاية الموهوبين" — أعمدة مسار القرار — نفّذ مرة واحدة:
+-- alter table gifted_reports add column if not exists principal_decision text default '';
+-- alter table gifted_reports add column if not exists principal_notes text default '';
+-- alter table gifted_reports add column if not exists reviewed_by_name text default '';
+-- alter table gifted_reports add column if not exists reviewed_at timestamptz;
+
 -- ميزة "رعاية الموهوبين" — جدول بلاغات المواهب — نفّذ مرة واحدة:
 -- create table if not exists gifted_reports (
 --   id uuid primary key default gen_random_uuid(),
@@ -2469,6 +2475,16 @@ const DB = {
     if (forCounselor)   filtered = filtered.filter(function(r){ return r.notified_counselor; });
     if (forPrincipal)   filtered = filtered.filter(function(r){ return r.notified_principal; });
     return filtered.sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
+  },
+  async updateGiftedReport(id, patch){
+    if (isRemote()){
+      const rows = await remoteFetch('gifted_reports?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    const list = JSON.parse(localStorage.getItem(LS_GIFTED) || '[]');
+    const idx = list.findIndex(function(r){ return r.id===id; });
+    if (idx>-1){ list[idx] = Object.assign({}, list[idx], patch); localStorage.setItem(LS_GIFTED, JSON.stringify(list)); return list[idx]; }
+    return null;
   },
   async clearData(types, school){
     types = types || [];
@@ -5539,16 +5555,51 @@ function bindPrincipalDemoLessons(){
 }
 async function screenPrincipalGifted(){
   const reports = await DB.listGiftedReports(State.user.school, { forPrincipal: true }).catch(function(){ return []; });
+  const reviewModal = GiftedReviewUI.modalOpen ? giftedReviewModalHtml(GiftedReviewUI.report, 'principal') : '';
+  const newCount = reports.filter(function(r){ return (r.status||'new')==='new'; }).length;
   return (
+    reviewModal +
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
     dashTabsHtml() +
-    '<div class="section-head"><h2>⭐ بلاغات رعاية الموهوبين</h2></div>' +
-    '<div style="color:var(--muted);font-size:13px;margin-bottom:16px;">البلاغات المرسلة إليك من المعلمين</div>' +
-    giftedReportsListHtml(reports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.')
+    '<div class="section-head"><h2>⭐ بلاغات رعاية الموهوبين</h2>' +
+    (newCount ? '<span style="background:var(--danger,#dc2626);color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;margin-right:8px;">'+newCount+' جديد</span>' : '') +
+    '</div>' +
+    '<div style="color:var(--muted);font-size:13px;margin-bottom:16px;">البلاغات المرسلة إليك من المعلمين — اضغط «مراجعة» لاتخاذ القرار وتحديث الحالة</div>' +
+    giftedReportsListHtml(reports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.', { showActions: true, role: 'principal' })
   );
 }
-function bindPrincipalGifted(){ /* no interactive elements beyond global tab/action bindings */ }
+function bindPrincipalGifted(){
+  var _closeGiftedReview = async function(){
+    GiftedReviewUI = { modalOpen: false, report: null };
+    await render(); bindPrincipalGifted();
+  };
+  document.querySelectorAll('[data-action="openGiftedReview"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var id = el.getAttribute('data-id');
+      var reports = await DB.listGiftedReports(State.user.school, { forPrincipal: true }).catch(function(){ return []; });
+      var report = reports.find(function(r){ return r.id === id; });
+      if (!report) return;
+      GiftedReviewUI = { modalOpen: true, report: report };
+      await render(); bindPrincipalGifted();
+    });
+  });
+  document.querySelectorAll('[data-action="closeGiftedReview"]').forEach(function(el){ el.addEventListener('click', _closeGiftedReview); });
+  var saveBtn = document.querySelector('[data-action="saveGiftedDecision"]');
+  if (saveBtn) saveBtn.addEventListener('click', async function(){
+    var decision = (document.getElementById('giftedDecisionSel')||{}).value || '';
+    var notes = (document.getElementById('giftedDecisionNotes')||{}).value || '';
+    if (!decision){ toast('الرجاء اختيار القرار.'); return; }
+    if (this.disabled) return; this.disabled = true;
+    try{
+      var patch = { status: 'action_taken', principal_decision: decision, principal_notes: notes, reviewed_by_name: State.user.full_name, reviewed_at: nowIso() };
+      await DB.updateGiftedReport(GiftedReviewUI.report.id, patch);
+      toast('تم حفظ القرار بنجاح.');
+      GiftedReviewUI = { modalOpen: false, report: null };
+      await render(); bindPrincipalGifted();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+}
 
 function bindNotificationsPanel(){
   document.querySelectorAll('[data-action="pnotifFilter"]').forEach(function(el){
@@ -7728,9 +7779,11 @@ async function screenCounselorCases(){
     );
   })() : '';
 
+  const giftedReviewModal = (CounselorUI.tab === 'gifted' && GiftedReviewUI.modalOpen) ? giftedReviewModalHtml(GiftedReviewUI.report, 'counselor') : '';
   const giftedTab = CounselorUI.tab === 'gifted' ? (
+    giftedReviewModal +
     '<div style="margin-top:4px;">' +
-      giftedReportsListHtml(counselorGiftedReports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.') +
+      giftedReportsListHtml(counselorGiftedReports, 'لا توجد بلاغات موهوبين مرسلة إليك بعد.', { showActions: true, role: 'counselor' }) +
     '</div>'
   ) : '';
 
@@ -8005,11 +8058,19 @@ function teacherReferralsTabHtml(cases){
   '</div>';
 }
 
-function giftedReportsListHtml(reports, emptyMsg){
+const GIFTED_STATUS_LABEL = { new:'جديد', reviewed:'تمت المراجعة', action_taken:'تم اتخاذ إجراء' };
+const GIFTED_STATUS_COLOR = { new:'var(--golden,#b8860b)', reviewed:'var(--primary,#2563eb)', action_taken:'var(--success,#16a34a)' };
+function giftedReportsListHtml(reports, emptyMsg, opts){
+  /* opts: { showActions: bool, role: 'principal'|'counselor' } */
+  var showActions = opts && opts.showActions;
+  var role = opts && opts.role;
   if (!reports || !reports.length){
     return '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center;">'+(emptyMsg||'لا توجد بلاغات موهوبين.')+'</div>';
   }
   return reports.map(function(r){
+    var status = r.status || 'new';
+    var statusColor = GIFTED_STATUS_COLOR[status] || GIFTED_STATUS_COLOR.new;
+    var statusLabel = GIFTED_STATUS_LABEL[status] || status;
     return (
       '<div style="background:color-mix(in srgb,var(--golden,#b8860b) 5%,var(--surface));border:1px solid color-mix(in srgb,var(--golden,#b8860b) 25%,transparent);border-radius:12px;padding:14px 18px;margin-bottom:10px;">' +
         '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">' +
@@ -8019,19 +8080,55 @@ function giftedReportsListHtml(reports, emptyMsg){
               (r.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(r.student_grade)+(r.student_section?' / '+esc(r.student_section):'')+'</span>' : '') +
               '<span style="background:color-mix(in srgb,var(--golden,#b8860b) 15%,transparent);color:var(--golden,#b8860b);border-radius:6px;padding:1px 8px;font-size:11.5px;font-weight:700;">⭐ '+esc(r.talent_type)+'</span>' +
               (r.performance_level ? '<span style="background:var(--surface-2,#f4f6f8);border-radius:6px;padding:1px 8px;font-size:11.5px;">'+esc(r.performance_level)+'</span>' : '') +
+              '<span style="border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;color:'+statusColor+';border:1px solid '+statusColor+';background:color-mix(in srgb,'+statusColor+' 10%,transparent);">'+esc(statusLabel)+'</span>' +
             '</div>' +
             (r.discovery_indicators ? '<div style="font-size:12px;color:var(--muted);margin-bottom:4px;"><b>المؤشرات:</b> '+esc(r.discovery_indicators)+'</div>' : '') +
-            (r.proposed_action ? '<div style="font-size:12.5px;margin-bottom:4px;"><b>الإجراء المقترح:</b> '+esc(r.proposed_action)+'</div>' : '') +
+            (r.proposed_action ? '<div style="font-size:12.5px;margin-bottom:4px;"><b>الإجراء المقترح من المعلم:</b> '+esc(r.proposed_action)+'</div>' : '') +
             (r.notes ? '<div style="font-size:12.5px;color:var(--muted);white-space:pre-wrap;line-height:1.5;">'+esc(r.notes)+'</div>' : '') +
+            (r.principal_decision ? '<div style="font-size:12.5px;margin-top:6px;padding:6px 10px;background:color-mix(in srgb,var(--primary,#2563eb) 8%,var(--surface));border-radius:6px;"><b>قرار المدير:</b> '+esc(r.principal_decision)+(r.principal_notes?' — '+esc(r.principal_notes):'')+'</div>' : '') +
+            (showActions ? '<div style="margin-top:10px;"><button class="btn btn-ghost btn-sm" data-action="openGiftedReview" data-id="'+esc(r.id)+'">'+((status==='new')?'مراجعة واتخاذ قرار':'تعديل القرار')+'</button></div>' : '') +
           '</div>' +
           '<div style="text-align:start;flex-shrink:0;">' +
             '<div style="font-size:11.5px;color:var(--muted);">'+fmtDate(r.created_at)+'</div>' +
             '<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">المعلم: '+esc(r.reported_by_name||'—')+'</div>' +
+            (r.reviewed_by_name ? '<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">راجعه: '+esc(r.reviewed_by_name)+'</div>' : '') +
           '</div>' +
         '</div>' +
       '</div>'
     );
   }).join('');
+}
+function giftedReviewModalHtml(report, role){
+  if (!report) return '';
+  var isPrincipal = role === 'principal';
+  var decisionOpts = isPrincipal
+    ? ['اعتماد التحويل لبرامج الموهوبين','الإثراء داخل الفصل','ترشيح لمسابقة أو أولمبياد','التنسيق مع المرشد الطلابي','عقد اجتماع مع ولي الأمر','إحالة للتقييم المتخصص','أخرى']
+    : ['إنشاء خطة رعاية موهوبين','التواصل مع ولي الأمر','إرسال ترشيح رسمي','إحالة للمختص','أخرى'];
+  return (
+    '<div class="modal-bg" data-action="closeGiftedReview">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px;">' +
+        '<h3 style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="color:var(--golden,#b8860b);">⭐</span> مراجعة بلاغ الموهبة</h3>' +
+        '<div style="background:color-mix(in srgb,var(--golden,#b8860b) 8%,var(--surface));border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">' +
+          '<div style="font-weight:700;font-size:14px;margin-bottom:4px;">'+esc(report.student_name)+'</div>' +
+          '<div style="color:var(--muted);">'+esc(report.student_grade||'')+(report.student_section?' / '+esc(report.student_section):'')+' — '+esc(report.talent_type)+'</div>' +
+          (report.proposed_action ? '<div style="margin-top:6px;"><b>اقتراح المعلم:</b> '+esc(report.proposed_action)+'</div>' : '') +
+        '</div>' +
+        '<div class="field"><label>'+(isPrincipal ? 'قرار مدير المدرسة' : 'إجراء المرشد الطلابي')+'</label>' +
+          '<select class="input" id="giftedDecisionSel">' +
+            '<option value="">— اختر —</option>' +
+            decisionOpts.map(function(o){ return '<option value="'+esc(o)+'" '+(report.principal_decision===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('') +
+          '</select>' +
+        '</div>' +
+        '<div class="field"><label>ملاحظات (اختياري)</label>' +
+          '<textarea class="input" id="giftedDecisionNotes" rows="3" style="resize:vertical;" placeholder="أي توضيحات أو خطوات إضافية…">'+esc(report.principal_notes||'')+'</textarea>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary" data-action="saveGiftedDecision">حفظ القرار</button>' +
+          '<button class="btn btn-ghost" data-action="closeGiftedReview">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
 function counselorStudentProfileHtml(cases, studentName){
@@ -8252,6 +8349,34 @@ function bindCounselorCases(){
       el.value = '';
     });
   });
+  /* gifted review actions (counselor) */
+  var _closeGiftedReviewCounselor = async function(){ GiftedReviewUI = { modalOpen: false, report: null }; await render(); bindCounselorCases(); };
+  document.querySelectorAll('[data-action="openGiftedReview"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var id = el.getAttribute('data-id');
+      var reports = await DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; });
+      var report = reports.find(function(r){ return r.id === id; });
+      if (!report) return;
+      GiftedReviewUI = { modalOpen: true, report: report };
+      await render(); bindCounselorCases();
+    });
+  });
+  document.querySelectorAll('[data-action="closeGiftedReview"]').forEach(function(el){ el.addEventListener('click', _closeGiftedReviewCounselor); });
+  var saveGiftedBtn = document.querySelector('[data-action="saveGiftedDecision"]');
+  if (saveGiftedBtn) saveGiftedBtn.addEventListener('click', async function(){
+    var decision = (document.getElementById('giftedDecisionSel')||{}).value || '';
+    var notes = (document.getElementById('giftedDecisionNotes')||{}).value || '';
+    if (!decision){ toast('الرجاء اختيار الإجراء.'); return; }
+    if (this.disabled) return; this.disabled = true;
+    try{
+      var patch = { status: 'action_taken', principal_decision: decision, principal_notes: notes, reviewed_by_name: State.user.full_name, reviewed_at: nowIso() };
+      await DB.updateGiftedReport(GiftedReviewUI.report.id, patch);
+      toast('تم حفظ الإجراء بنجاح.');
+      GiftedReviewUI = { modalOpen: false, report: null };
+      await render(); bindCounselorCases();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+
   const addBtn = document.querySelector('[data-action="addCase"]');
   if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); bindCounselorCases(); });
 
@@ -8993,6 +9118,7 @@ function bindCoordinatorMyStudents(){
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '' }; /* dashTab: 'main'|'agenda'|'profile' */
 let GiftedUI = { modalOpen: false, counselors: [], selectedCounselorId: '' };
+let GiftedReviewUI = { modalOpen: false, report: null };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
 let _teacherAllStudentsCache = [];
