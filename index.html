@@ -3354,7 +3354,7 @@ function invalidateCounselorData(){ _counselorCasesData = null; }
 let _studentRosterData = null, _studentRosterDataAt = 0;
 const ROSTER_TTL_MS = 60000;
 function invalidateStudentRosterData(){ _studentRosterData = null; }
-function invalidateAllScreenCaches(){ _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _coordTasksData = null; _coordVisitsData = null; _coordGoalsData = null; }
+function invalidateAllScreenCaches(){ _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _coordTasksData = null; _coordVisitsData = null; _coordGoalsData = null; _adminUsersCache = null; _adminCommCache = null; _adminStudentsCache = null; }
 async function render(){
   const token = ++_renderToken;
   const app = document.getElementById('app');
@@ -11160,6 +11160,12 @@ function bindTaskDetail(){
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
 let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOpen:false, selectedIds:[], importCommunityId:'', userSort:'alpha', userCommunityFilter:'' };
+/* كاش بيانات تبويبات الأدمن */
+let _adminUsersCache = null, _adminUsersCacheAt = 0;
+let _adminCommCache = null, _adminCommCacheAt = 0;
+let _adminStudentsCache = null, _adminStudentsCacheAt = 0;
+const ADMIN_TAB_TTL_MS = 60000;
+function invalidateAdminCache(){ _adminUsersCache = null; _adminCommCache = null; _adminStudentsCache = null; }
 let CredsPrint = loadLastCredsBatch();
 function loadLastCredsBatch(){
   try{ const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH)); if (saved && saved.items && saved.items.length) return saved; }catch(e){}
@@ -11710,8 +11716,16 @@ function bindSuperSchool(){
 }
 
 async function screenAdminUsers(){
-  const users = await DB.listUsers({ school: State.user.school });
-  const communities = await DB.listCommunities({ school: State.user.school });
+  let users, communities;
+  if (_adminUsersCache && (Date.now() - _adminUsersCacheAt) < ADMIN_TAB_TTL_MS){
+    ({ users, communities } = _adminUsersCache);
+  } else {
+    [users, communities] = await Promise.all([
+      DB.listUsers({ school: State.user.school }),
+      DB.listCommunities({ school: State.user.school })
+    ]);
+    _adminUsersCache = { users, communities }; _adminUsersCacheAt = Date.now();
+  }
   AdminUI.selectedIds = AdminUI.selectedIds.filter(function(id){ return users.some(function(u){ return u.id===id; }) && id!==State.user.id; });
 
   /* — تطبيق الفلتر والترتيب — */
@@ -11885,6 +11899,7 @@ function showDeleteUserModal(userId, onDone){
     try{
       await DB.deleteUser(userId, purge);
       toast(purge ? 'تم حذف الحساب وجميع بياناته.' : 'تم حذف الحساب. البيانات التاريخية محفوظة.');
+      invalidateAdminCache();
       if (onDone) onDone();
     }catch(e){ toast('فشل الحذف: ' + e.message); }
   }
@@ -11944,7 +11959,7 @@ function bindAdminUsers(){
         }
         toast('تمت إضافة المستخدم بنجاح.');
       }
-      AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; render(); bindAdminUsers();
+      AdminUI.modalOpen=false; AdminUI.editingId=null; AdminUI.presetCommunityId=null; invalidateAdminCache(); render(); bindAdminUsers();
     }catch(e){ toast(arabicError(e)); }
   });
 
@@ -11985,7 +12000,7 @@ function bindAdminUsers(){
           await importTeachersFromCsv(String(reader.result), chosenCommunityId);
         }
       }
-      finally{ AdminUI.importBusy = false; importInput.value = ''; render(); bindAdminUsers(); }
+      finally{ AdminUI.importBusy = false; importInput.value = ''; invalidateAdminCache(); render(); bindAdminUsers(); }
     };
     if (isXlsx){ reader.readAsArrayBuffer(file); }
     else { reader.readAsText(file, 'UTF-8'); }
@@ -12011,7 +12026,7 @@ function bindAdminUsers(){
     finally{
       AdminUI.importBusy = false;
       AdminUI.pasteOpen = false;
-      render(); bindAdminUsers();
+      invalidateAdminCache(); render(); bindAdminUsers();
     }
   });
 
@@ -12039,7 +12054,7 @@ function bindAdminUsers(){
     try{
       for (let i=0;i<ids.length;i++){ await DB.updateUser(ids[i], { community_id: communityId }); }
       toast('تم إسناد '+ids.length+' مستخدمًا إلى المجتمع المحدد.');
-      AdminUI.selectedIds = []; render(); bindAdminUsers();
+      AdminUI.selectedIds = []; invalidateAdminCache(); render(); bindAdminUsers();
     }catch(e){ toast(arabicError(e)); }
   });
   const bulkDeleteBtn = document.querySelector('[data-action="bulkDeleteUsers"]');
@@ -12080,7 +12095,7 @@ function bindAdminUsers(){
         for (let i=0;i<ids.length;i++){ try{ await DB.deleteUser(ids[i]); }catch(e2){} }
       }
       toast('تم حذف '+ids.length+' مستخدمًا.');
-      AdminUI.selectedIds = []; render(); bindAdminUsers();
+      AdminUI.selectedIds = []; invalidateAdminCache(); render(); bindAdminUsers();
     }catch(e){ toast('فشل الحذف: '+e.message); render(); bindAdminUsers(); }
   });
 }
@@ -12139,10 +12154,19 @@ function teacherSortToggleHtml(){
   );
 }
 async function screenAdminStudents(){
-  const students = await DB.listStudents({ school: State.user.school });
+  let students, allUsers, communities;
+  if (_adminStudentsCache && (Date.now() - _adminStudentsCacheAt) < ADMIN_TAB_TTL_MS){
+    ({ students, allUsers, communities } = _adminStudentsCache);
+  } else {
+    [students, allUsers, communities] = await Promise.all([
+      DB.listStudents({ school: State.user.school }),
+      DB.listUsers({ school: State.user.school }),
+      DB.listCommunities({ school: State.user.school })
+    ]);
+    _adminStudentsCache = { students, allUsers, communities }; _adminStudentsCacheAt = Date.now();
+  }
   AdminStudentUI._rows = students;
-  const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher' || u.role==='coordinator'; });
-  const communities = await DB.listCommunities({ school: State.user.school });
+  const teachers = allUsers.filter(function(u){ return u.role==='teacher' || u.role==='coordinator'; });
 
   AdminStudentUI.selectedIds = AdminStudentUI.selectedIds.filter(function(id){ return students.some(function(s){ return s.id===id; }); });
 
@@ -12331,7 +12355,7 @@ async function importAdminStudentRows(dataRows){
     else { for (let i=0;i<objs.length;i++){ await DB.createStudent(objs[i]); } }
   }catch(e){ toast('حدث خطأ أثناء الاستيراد: ' + e.message); return; }
   toast('تم استيراد '+objs.length+' طالبًا بنجاح'+(skipped?(' (تم تجاوز '+skipped+' سطرًا بلا اسم)'):'')+'.');
-  invalidateStudentRosterData(); invalidateTeacherScreenData();
+  invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
   AdminStudentUI.pasteOpen = false;
   render(); bindAdminStudents();
 }
@@ -12359,7 +12383,7 @@ function bindAdminStudents(){
   document.querySelectorAll('[data-action="deleteAdminStudent"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف بيانات هذا الطالب؟ سيُزال أيضًا من أي إسناد لمعلمين.')) return;
-      try{ await DB.deleteStudent(el.getAttribute('data-id')); invalidateStudentRosterData(); invalidateTeacherScreenData(); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
+      try{ await DB.deleteStudent(el.getAttribute('data-id')); invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache(); toast('تم حذف الطالب.'); render(); bindAdminStudents(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -12397,7 +12421,7 @@ function bindAdminStudents(){
         await DB.createStudent({ school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, full_name, grade, section, notes, assigned_teacher_ids });
         toast('تم إضافة الطالب بنجاح.');
       }
-      invalidateStudentRosterData(); invalidateTeacherScreenData();
+      invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
       AdminStudentUI.modalOpen=false; AdminStudentUI.editingId=null; AdminStudentUI.pendingTeacherIds=[];
       render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -12491,7 +12515,7 @@ function bindAdminStudents(){
     if (!confirm('إلغاء إسناد جميع المعلمين لـ '+ids.length+' طالب محدد؟')) return;
     try{
       await Promise.all(ids.map(function(sid){ return DB.updateStudent(sid, { assigned_teacher_ids: [] }); }));
-      invalidateStudentRosterData(); invalidateTeacherScreenData();
+      invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
       toast('تم إلغاء الإسناد لـ '+ids.length+' طالب.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -12503,7 +12527,7 @@ function bindAdminStudents(){
     if (!confirm('هل تريد حذف '+ids.length+' طالبًا محددًا؟ لا يمكن التراجع عن هذا الإجراء.')) return;
     try{
       await DB.bulkDeleteStudents(ids);
-      invalidateStudentRosterData(); invalidateTeacherScreenData();
+      invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
       toast('تم حذف '+ids.length+' طالبًا.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
     }catch(e){ toast(arabicError(e)); }
@@ -12530,7 +12554,7 @@ function bindAdminStudents(){
         teacherIds.forEach(function(tid){ if (current.indexOf(tid)===-1) current.push(tid); });
         await DB.updateStudent(s.id, { assigned_teacher_ids: current });
       }));
-      invalidateStudentRosterData(); invalidateTeacherScreenData();
+      invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
       toast('تم إسناد المعلمين المحددين لـ '+studentIds.length+' طالبًا.');
       AdminStudentUI.assignOpen = false; AdminStudentUI.selectedIds = []; AdminStudentUI.pendingTeacherIds = [];
       render(); bindAdminStudents();
@@ -12579,7 +12603,7 @@ function bindAdminStudents(){
         }));
         invalidateNotifCache();
       }
-      invalidateStudentRosterData(); invalidateTeacherScreenData();
+      invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
       toast('تم نقل الطالب إلى '+newGrade+' / '+newSection+(doNotify && (Array.isArray(student.assigned_teacher_ids)&&student.assigned_teacher_ids.length) ? ' وتم إشعار المعلمين المسنَدين.' : '.'));
       AdminStudentUI.transferOpen = false; AdminStudentUI.transferStudentId = null;
       render(); bindAdminStudents();
@@ -12594,7 +12618,7 @@ function bindAdminStudents(){
       if (!confirm('إلغاء جميع الإسنادات للطالب '+name+'؟')) return;
       try{
         await DB.updateStudent(sid, { assigned_teacher_ids: [] });
-        invalidateStudentRosterData(); invalidateTeacherScreenData();
+        invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
         toast('تم إلغاء إسناد الطالب '+name+'.');
         render(); bindAdminStudents();
       }catch(e){ toast(arabicError(e)); }
@@ -12606,8 +12630,16 @@ function bindAdminStudents(){
 let CommUI = { modalOpen:false, editingId:null };
 async function screenAdminCommunities(){
   const isSuper = State.user.role === 'super_admin';
-  const communities = await DB.listCommunities(isSuper ? {} : { school: State.user.school });
-  const users = await DB.listUsers(isSuper ? {} : { school: State.user.school });
+  let communities, users;
+  if (!isSuper && _adminCommCache && (Date.now() - _adminCommCacheAt) < ADMIN_TAB_TTL_MS){
+    ({ communities, users } = _adminCommCache);
+  } else {
+    [communities, users] = await Promise.all([
+      DB.listCommunities(isSuper ? {} : { school: State.user.school }),
+      DB.listUsers(isSuper ? {} : { school: State.user.school })
+    ]);
+    if (!isSuper){ _adminCommCache = { communities, users }; _adminCommCacheAt = Date.now(); }
+  }
 
   const cards = communities.map(function(c){
     const members = users.filter(function(u){ return u.community_id===c.id; });
@@ -12680,7 +12712,7 @@ function bindAdminCommunities(){
   document.querySelectorAll('[data-action="deleteCommunity"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا المجتمع المهني؟ سيبقى الأعضاء بدون مجتمع.')) return;
-      try{ await DB.deleteCommunity(el.getAttribute('data-id')); invalidateCommCache(); toast('تم حذف المجتمع.'); render(); bindAdminCommunities(); }
+      try{ await DB.deleteCommunity(el.getAttribute('data-id')); invalidateCommCache(); invalidateAdminCache(); toast('تم حذف المجتمع.'); render(); bindAdminCommunities(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -12703,7 +12735,7 @@ function bindAdminCommunities(){
         await DB.createCommunity({ name:name, school:school, meeting_day:day, meeting_time:time });
         toast('تمت إضافة المجتمع بنجاح.');
       }
-      CommUI.modalOpen=false; CommUI.editingId=null; invalidateCommCache(); render(); bindAdminCommunities();
+      CommUI.modalOpen=false; CommUI.editingId=null; invalidateCommCache(); invalidateAdminCache(); render(); bindAdminCommunities();
     }catch(e){ toast(arabicError(e)); }
   });
   document.querySelectorAll('[data-action="addLeaderForCommunity"]').forEach(function(el){
