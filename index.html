@@ -10074,7 +10074,7 @@ async function screenTeacherTasks(){
           '</div>' +
         '</div>' +
         '<div class="field"><label>تاريخ التنفيذ <span style="color:var(--danger)">*</span></label>' +
-          '<input class="input" id="initDate" type="date" value="'+today+'">' +
+          '<input class="input" id="initDate" type="date" value="'+new Date().toISOString().slice(0,10)+'">' +
         '</div>' +
         '<div class="field"><label>وصف المبادرة وأهدافها</label>' +
           '<textarea class="input" id="initDesc" rows="3" placeholder="اشرح فكرة المبادرة وما تسعى لتحقيقه…" style="resize:vertical;"></textarea>' +
