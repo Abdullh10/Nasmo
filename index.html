@@ -7340,6 +7340,15 @@ async function screenAdminSettings(){
         '</div>' +
       '</div>' +
     '</div>' : '') +
+    '<div class="program-card" style="border-color:#dc2626;border-width:2px;">' +
+      '<div class="ph"><h3 style="color:#dc2626;">🗑 إعادة تهيئة البرنامج</h3>' +
+        '<p>يحذف جميع بيانات النشاط لمدرسة "'+esc(State.user.school)+'" دفعةً واحدة مع الحفاظ على بيانات المعلمين والطلاب. البيانات التي ستُحذف: النماذج — التنبيهات — المهام — الأهداف — ملاحظات الفصل — الزيارات — الإحالات الإرشادية — بلاغات الموهوبين — بنك التجارب — مؤشرات الدليل.</p>' +
+        '<p style="font-weight:700;color:#dc2626;font-size:13px;">⚠ هذا الإجراء نهائي ولا يمكن التراجع عنه. نزّل نسخة احتياطية أولاً.</p>' +
+      '</div>' +
+      '<div style="padding:16px 18px;">' +
+        '<button class="btn btn-danger" data-action="resetProgramData">🗑 حذف كل شيء وإعادة التهيئة</button>' +
+      '</div>' +
+    '</div>' +
     '<div class="program-card">' +
       '<div class="ph"><h3>تصفير البيانات التجريبية</h3><p>لحذف بيانات تجريبية أو خاطئة أدخلتها أثناء التجربة (مدرسة "'+esc(State.user.school)+'" فقط). حدِّد الأنواع المطلوب حذفها — هذا الإجراء نهائي ولا يمكن التراجع عنه، ويُنصح بتنزيل نسخة احتياطية كاملة قبل المتابعة.</p></div>' +
       '<div style="padding:16px 18px;">' +
@@ -7555,6 +7564,25 @@ function bindAdminSettings(){
       render();
     }catch(e){ toast('تعذّر حذف البيانات: ' + e.message); }
     clearAllBtn.disabled = false;
+  });
+
+  const resetBtn = document.querySelector('[data-action="resetProgramData"]');
+  if (resetBtn) resetBtn.addEventListener('click', async function(){
+    const school = State.user.school;
+    if (!confirm('تحذير: سيتم حذف جميع بيانات النشاط لمدرسة "' + school + '" نهائيًا.\n\nالبيانات التي ستُحذف:\n- النماذج (جميع أنواعها)\n- التنبيهات والرسائل\n- المهام\n- الأهداف الفصلية\n- ملاحظات الفصل\n- جداول الزيارات\n- الإحالات الإرشادية\n- بلاغات الموهوبين\n- بنك التجارب\n- مؤشرات الدليل\n\nسيتم الحفاظ على بيانات المعلمين والطلاب.\n\nهل تريد الاستمرار؟')) return;
+    if (!confirm('تأكيد نهائي: هل أنت متأكد تمامًا من إعادة تهيئة برنامج مدرسة "' + school + '"؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    resetBtn.disabled = true; resetBtn.textContent = 'جارٍ الحذف…';
+    try{
+      const sch = encodeURIComponent(school);
+      await Promise.all([
+        DB.clearData(['submissions','notifications','tasks','goals','indicator_status','practice','counseling','gifted'], school),
+        isRemote() ? remoteFetch('classroom_observations?school=eq.' + sch, { method:'DELETE' }) : Promise.resolve(),
+        isRemote() ? remoteFetch('visit_schedules?school=eq.'           + sch, { method:'DELETE' }) : Promise.resolve()
+      ]);
+      invalidateAllScreenCaches(); invalidateNotifCache(); invalidatePendingCache();
+      toast('✓ تمت إعادة تهيئة البرنامج. جميع بيانات النشاط حُذفت مع الحفاظ على بيانات المعلمين والطلاب.');
+      render();
+    }catch(e){ toast('تعذّر إعادة التهيئة: ' + e.message); resetBtn.disabled = false; resetBtn.textContent = '🗑 حذف كل شيء وإعادة التهيئة'; }
   });
 }
 /* ============================================================
