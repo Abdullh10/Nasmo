@@ -6140,7 +6140,10 @@ async function openObservationModal(students){
   /* جلب المرشدين الطلابيين مسبقاً */
   let _obsCounselors = [];
   try { _obsCounselors = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='counselor'; }); } catch(e){}
-  const studentOpts = (students||[]).map(function(s){ return '<option value="'+esc(s.name)+'" data-grade="'+esc(s.grade||'')+'">'+esc(s.name)+(s.grade?' — '+s.grade:'')+'</option>'; }).join('');
+  const obsGrades = [];
+  (students||[]).forEach(function(s){ if(s.grade && obsGrades.indexOf(s.grade)<0) obsGrades.push(s.grade); });
+  obsGrades.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const gradeOpts = obsGrades.map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('');
   const typeOpts = OBS_TYPES.map(function(t){ return '<option value="'+esc(t.label)+'" data-sev="'+t.severity+'">'+esc(t.label)+'</option>'; }).join('');
   const counselorOpts = _obsCounselors.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.full_name)+'</option>'; }).join('');
   const showCounselorSel = _obsCounselors.length > 1;
@@ -6154,17 +6157,26 @@ async function openObservationModal(students){
         '<div style="font-size:12px;color:var(--muted);margin-top:2px;">للحالات التي يلاحظها المعلم ولا تستوجب إحالة رسمية بعد</div>' +
       '</div>' +
       '<div style="padding:0 20px 20px;">' +
+        /* الصف */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">الصف <span style="color:var(--danger)">*</span></label>' +
+          '<select class="input" id="obsGradeSel" style="margin-top:4px;">' +
+            '<option value="">— اختر الصف —</option>' + gradeOpts +
+          '</select>' +
+        '</div>' +
+        /* الشعبة */
+        '<div class="field" style="margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">الشعبة <span style="color:var(--danger)">*</span></label>' +
+          '<select class="input" id="obsSectionSel" style="margin-top:4px;" disabled>' +
+            '<option value="">— اختر الصف أولاً —</option>' +
+          '</select>' +
+        '</div>' +
         /* الطالب */
         '<div class="field" style="margin-bottom:14px;">' +
           '<label style="font-size:12px;font-weight:600;color:var(--text);">الطالب <span style="color:var(--danger)">*</span></label>' +
-          '<select class="input" id="obsStudentSel" style="margin-top:4px;">' +
-            '<option value="">— اختر الطالب —</option>' + studentOpts +
+          '<select class="input" id="obsStudentSel" style="margin-top:4px;" disabled>' +
+            '<option value="">— اختر الشعبة أولاً —</option>' +
           '</select>' +
-        '</div>' +
-        /* الصف */
-        '<div class="field" style="margin-bottom:14px;">' +
-          '<label style="font-size:12px;font-weight:600;color:var(--text);">الصف / الشعبة</label>' +
-          '<input class="input" id="obsGrade" style="margin-top:4px;" placeholder="مثال: الأول أ">' +
         '</div>' +
         /* نوع الملاحظة */
         '<div class="field" style="margin-bottom:14px;">' +
@@ -6211,10 +6223,31 @@ async function openObservationModal(students){
     '</div>';
   document.body.appendChild(div);
 
-  /* تحديث الصف تلقائياً عند اختيار الطالب */
-  document.getElementById('obsStudentSel').addEventListener('change', function(){
-    const opt = this.options[this.selectedIndex];
-    document.getElementById('obsGrade').value = opt.getAttribute('data-grade')||'';
+  /* فلترة متتالية: الصف → الشعبة → الطالب */
+  var obsGradeSel   = document.getElementById('obsGradeSel');
+  var obsSectionSel = document.getElementById('obsSectionSel');
+  var obsStudentSel = document.getElementById('obsStudentSel');
+  obsGradeSel.addEventListener('change', function(){
+    var grade = this.value;
+    obsSectionSel.innerHTML = '<option value="">— اختر الشعبة —</option>';
+    obsStudentSel.innerHTML = '<option value="">— اختر الشعبة أولاً —</option>';
+    obsSectionSel.disabled = !grade;
+    obsStudentSel.disabled = true;
+    if (!grade) return;
+    var secs = [];
+    (students||[]).forEach(function(s){ if(s.grade===grade && s.section && secs.indexOf(s.section)<0) secs.push(s.section); });
+    secs.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+    secs.forEach(function(sec){ obsSectionSel.add(new Option(sec, sec)); });
+  });
+  obsSectionSel.addEventListener('change', function(){
+    var grade = obsGradeSel.value;
+    var sec   = this.value;
+    obsStudentSel.innerHTML = '<option value="">— اختر الطالب —</option>';
+    obsStudentSel.disabled = !sec;
+    if (!sec) return;
+    var filtered = (students||[]).filter(function(s){ return s.grade===grade && s.section===sec; });
+    filtered.sort(function(a,b){ return (a.name||'').localeCompare(b.name||'','ar'); });
+    filtered.forEach(function(s){ obsStudentSel.add(new Option(s.name, s.name)); });
   });
   /* تحديث الشدة تلقائياً عند اختيار نوع الملاحظة */
   document.getElementById('obsTypeSel').addEventListener('change', function(){
@@ -6237,10 +6270,12 @@ async function openObservationModal(students){
   document.getElementById('obsSubmit').addEventListener('click', async function(){
     const studentName = document.getElementById('obsStudentSel').value;
     const obsType     = document.getElementById('obsTypeSel').value;
+    if (!document.getElementById('obsGradeSel').value){ toast('يرجى اختيار الصف.'); return; }
+    if (!document.getElementById('obsSectionSel').value){ toast('يرجى اختيار الشعبة.'); return; }
     if (!studentName){ toast('يرجى اختيار الطالب.'); return; }
     if (!obsType){ toast('يرجى اختيار نوع الملاحظة.'); return; }
     if (showCounselorSel && !(document.getElementById('obsCounselorSel')||{}).value){ toast('يرجى اختيار المرشد الطلابي.'); return; }
-    const grade   = document.getElementById('obsGrade').value.trim();
+    const grade   = document.getElementById('obsGradeSel').value + ' / ' + document.getElementById('obsSectionSel').value;
     const desc    = document.getElementById('obsDesc').value.trim();
     const sev     = (document.querySelector('input[name="obsSev"]:checked')||{value:'info'}).value;
     const btn = document.getElementById('obsSubmit');
@@ -9032,7 +9067,7 @@ async function screenCoordinatorMyStudents(){
     ) : '') +
     '<div class="section-head" style="margin-top:8px;margin-bottom:12px;"><h2>مهامي الموكّلة من المدير ('+myAssignedTasks.length+')</h2></div>' +
     (taskCards || '<p style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">لا توجد مهام مُسنَدة إليك من المدير حاليًا.</p>') +
-    '<div class="section-head" style="margin-top:24px;margin-bottom:12px;cursor:pointer;user-select:none;" data-action="toggleStudentList">' +
+    '<div class="section-head" style="margin-top:24px;margin-bottom:12px;cursor:pointer;user-select:none;" data-action="toggleStudentList" data-st-val="'+(TeacherFormsUI.studentsCollapsed?'false':'true')+'">' +
       '<h2 style="display:flex;align-items:center;gap:8px;">طلابي المسندون لي ('+myStudents.length+') <span style="font-size:13px;color:var(--muted);font-weight:400;">'+(TeacherFormsUI.studentsCollapsed?'▼ عرض':'▲ إخفاء')+'</span></h2>' +
     '</div>' +
     (TeacherFormsUI.studentsCollapsed ? '' :
@@ -9044,14 +9079,17 @@ async function screenCoordinatorMyStudents(){
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
           '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
           '<tbody>'+studentRows+'</tbody>' +
-        '</table></div></div>'
+        '</table></div></div>' +
+        '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
+          '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" data-st-val="true" style="font-size:13px;">▲ إخفاء القائمة</button>' +
+        '</div>'
       ) : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن لك طلاب بعد. تواصل مع مدير النظام لتعيين طلاب لحسابك.</p>')
     )
   );
 }
 function bindCoordinatorMyStudents(){
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = !TeacherFormsUI.studentsCollapsed; await render(); bindCoordinatorMyStudents(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); bindCoordinatorMyStudents(); });
   });
   document.querySelectorAll('[data-action="openTaskDetail"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
@@ -9129,6 +9167,7 @@ let GiftedReviewUI = { modalOpen: false, report: null };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
 let _teacherAllStudentsCache = [];
+let _teacherGiftedStudentsCache = [];
 let _teacherReferralExpanded = null; /* اسم الطالب الذي فُتح ملف إحالاته */
 let _teacherReferralSort = 'pending'; /* 'pending'|'date'|'name' */
 let _teacherReferralCache = []; /* نسخة من myReferralCases لاستخدامها في الطباعة */
@@ -9661,7 +9700,7 @@ async function screenTeacherTasks(){
 
   const _stCollapsed = TeacherFormsUI.studentsCollapsed;
   const studentSummaryHtml = myStudents.length ? (
-    '<div class="section-head" style="margin-top:20px;cursor:pointer;user-select:none;" data-action="toggleStudentList">' +
+    '<div class="section-head" style="margin-top:20px;cursor:pointer;user-select:none;" data-action="toggleStudentList" data-st-val="'+(_stCollapsed?'false':'true')+'">' +
       '<h2 style="display:flex;align-items:center;gap:8px;">طلابي المسندون لي ('+myStudents.length+') <span style="font-size:13px;color:var(--muted);font-weight:400;">'+ (_stCollapsed ? '▼ عرض' : '▲ إخفاء') +'</span></h2>' +
     '</div>' +
     (_stCollapsed ? '' :
@@ -9669,7 +9708,10 @@ async function screenTeacherTasks(){
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
         '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
         '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
-      '</table></div></div>'
+      '</table></div></div>' +
+      '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" data-st-val="true" style="font-size:13px;">▲ إخفاء القائمة</button>' +
+      '</div>'
     )
   ) : '';
 
@@ -9905,17 +9947,27 @@ async function screenTeacherTasks(){
 
   /* — نافذة رعاية الموهوبين — */
   const giftedDropdownStudents = myStudents.length ? myStudents : schoolStudents;
-  const studentOptions = giftedDropdownStudents.map(function(s){
-    return '<option value="'+esc(s.full_name)+'">'+esc(s.full_name)+' — '+esc(s.grade||s.student_grade||'')+(s.section||s.student_section?' / '+esc(s.section||s.student_section||''):'')+'</option>';
-  }).join('');
+  _teacherGiftedStudentsCache = giftedDropdownStudents;
+  const giftedGradesArr = [];
+  giftedDropdownStudents.forEach(function(s){ var g=s.grade||s.student_grade||''; if(g && giftedGradesArr.indexOf(g)<0) giftedGradesArr.push(g); });
+  giftedGradesArr.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const giftedGradeOpts = giftedGradesArr.map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('');
   const GIFTED_INDICATORS = ['تفوق ملحوظ في المادة','سرعة استيعاب وتعلم','إبداع وأصالة في الأفكار','مبادرة وقيادة','فضول علمي مرتفع','مهارة تحليل وحل مشكلات','إنجازات في مسابقات','تميّز في الأنشطة اللاصفية'];
   const giftedModal = GiftedUI.modalOpen ? (
     '<div class="modal-bg" data-action="closeGiftedModalBg">' +
       '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">' +
         '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:var(--golden,#b8860b);">⭐</span> إشعار رعاية الموهوبين</h3>' +
         '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">وثّق موهبة الطالب وأرسل إشعاراً للجهات المعنية ليُحفظ في سجله الدائم.</p>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0;">' +
+          '<div class="field" style="margin:0;"><label>الصف</label>' +
+            '<select class="input" id="giftedGradeSel"><option value="">— اختر الصف —</option>'+giftedGradeOpts+'</select>' +
+          '</div>' +
+          '<div class="field" style="margin:0;"><label>الشعبة</label>' +
+            '<select class="input" id="giftedSectionSel" disabled><option value="">— الشعبة —</option></select>' +
+          '</div>' +
+        '</div>' +
         '<div class="field"><label>اسم الطالب'+(myStudents.length ? '' : ' <span style="font-size:11px;color:var(--muted);">(طلاب المدرسة)</span>')+'</label>' +
-          '<select class="input" id="giftedStudentSel"><option value="">— اختر طالباً —</option>'+studentOptions+'</select>' +
+          '<select class="input" id="giftedStudentSel" disabled><option value="">— اختر الصف أولاً —</option></select>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
           '<div class="field" style="margin:0;"><label>نوع الموهبة</label>' +
@@ -10062,7 +10114,7 @@ function bindTeacherTasks(){
 
   /* طي/فتح قائمة الطلاب */
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = !TeacherFormsUI.studentsCollapsed; await render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); bindTeacherTasks(); });
   });
 
   /* فلتر جدول الطلاب */
@@ -10331,6 +10383,33 @@ function bindTeacherTasks(){
     GiftedUI.modalOpen = false;
     await render(); bindTeacherTasks();
   });
+  /* فلترة متتالية في نافذة الموهوبين: الصف → الشعبة → الطالب */
+  var giftedGradeSelEl   = document.getElementById('giftedGradeSel');
+  var giftedSectionSelEl = document.getElementById('giftedSectionSel');
+  var giftedStudentSelEl = document.getElementById('giftedStudentSel');
+  if (giftedGradeSelEl) giftedGradeSelEl.addEventListener('change', function(){
+    var grade = this.value;
+    giftedSectionSelEl.innerHTML = '<option value="">— الشعبة —</option>';
+    giftedStudentSelEl.innerHTML = '<option value="">— اختر الشعبة أولاً —</option>';
+    giftedSectionSelEl.disabled = !grade;
+    giftedStudentSelEl.disabled = true;
+    if (!grade) return;
+    var secs = [];
+    (_teacherGiftedStudentsCache||[]).forEach(function(s){ var sec=s.section||s.student_section||''; var g=s.grade||s.student_grade||''; if(g===grade && sec && secs.indexOf(sec)<0) secs.push(sec); });
+    secs.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+    secs.forEach(function(sec){ giftedSectionSelEl.add(new Option(sec, sec)); });
+  });
+  if (giftedSectionSelEl) giftedSectionSelEl.addEventListener('change', function(){
+    var grade = giftedGradeSelEl.value;
+    var sec   = this.value;
+    giftedStudentSelEl.innerHTML = '<option value="">— اختر الطالب —</option>';
+    giftedStudentSelEl.disabled = !sec;
+    if (!sec) return;
+    var filtered = (_teacherGiftedStudentsCache||[]).filter(function(s){ return (s.grade||s.student_grade||'')===grade && (s.section||s.student_section||'')===sec; });
+    filtered.sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+    filtered.forEach(function(s){ giftedStudentSelEl.add(new Option(s.full_name, s.full_name)); });
+  });
+
   const giftedCounselorChk = document.getElementById('giftedToCounselor');
   const giftedCounselorPickWrap = document.getElementById('giftedCounselorPickWrap');
   function toggleCounselorPick(){
@@ -10348,6 +10427,8 @@ function bindTeacherTasks(){
   const _sendGiftedRaw = document.querySelector('[data-action="sendGiftedNotif"]');
   const sendGiftedBtn = _sendGiftedRaw ? (function(){ const c=_sendGiftedRaw.cloneNode(true); _sendGiftedRaw.parentNode.replaceChild(c,_sendGiftedRaw); return c; })() : null;
   if (sendGiftedBtn) sendGiftedBtn.addEventListener('click', async function(){
+    if (!(document.getElementById('giftedGradeSel')||{}).value){ toast('يرجى اختيار الصف أولاً.'); return; }
+    if (!(document.getElementById('giftedSectionSel')||{}).value){ toast('يرجى اختيار الشعبة.'); return; }
     const selEl = document.getElementById('giftedStudentSel');
     const studentName = (selEl ? selEl.value : '').trim();
     if (!studentName){ toast('يرجى اختيار اسم الطالب.'); return; }
