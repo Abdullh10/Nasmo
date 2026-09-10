@@ -9032,7 +9032,7 @@ async function screenCoordinatorMyStudents(){
     ) : '') +
     '<div class="section-head" style="margin-top:8px;margin-bottom:12px;"><h2>مهامي الموكّلة من المدير ('+myAssignedTasks.length+')</h2></div>' +
     (taskCards || '<p style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">لا توجد مهام مُسنَدة إليك من المدير حاليًا.</p>') +
-    '<div class="section-head" style="margin-top:24px;margin-bottom:12px;cursor:pointer;user-select:none;" data-action="toggleStudentList">' +
+    '<div class="section-head" style="margin-top:24px;margin-bottom:12px;cursor:pointer;user-select:none;" data-action="toggleStudentList" data-st-val="'+(TeacherFormsUI.studentsCollapsed?'false':'true')+'">' +
       '<h2 style="display:flex;align-items:center;gap:8px;">طلابي المسندون لي ('+myStudents.length+') <span style="font-size:13px;color:var(--muted);font-weight:400;">'+(TeacherFormsUI.studentsCollapsed?'▼ عرض':'▲ إخفاء')+'</span></h2>' +
     '</div>' +
     (TeacherFormsUI.studentsCollapsed ? '' :
@@ -9046,7 +9046,7 @@ async function screenCoordinatorMyStudents(){
           '<tbody>'+studentRows+'</tbody>' +
         '</table></div></div>' +
         '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
-          '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" style="font-size:13px;">▲ إخفاء القائمة</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" data-st-val="true" style="font-size:13px;">▲ إخفاء القائمة</button>' +
         '</div>'
       ) : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن لك طلاب بعد. تواصل مع مدير النظام لتعيين طلاب لحسابك.</p>')
     )
@@ -9054,7 +9054,7 @@ async function screenCoordinatorMyStudents(){
 }
 function bindCoordinatorMyStudents(){
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = !TeacherFormsUI.studentsCollapsed; await render(); bindCoordinatorMyStudents(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); bindCoordinatorMyStudents(); });
   });
   document.querySelectorAll('[data-action="openTaskDetail"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
@@ -9664,7 +9664,7 @@ async function screenTeacherTasks(){
 
   const _stCollapsed = TeacherFormsUI.studentsCollapsed;
   const studentSummaryHtml = myStudents.length ? (
-    '<div class="section-head" style="margin-top:20px;cursor:pointer;user-select:none;" data-action="toggleStudentList">' +
+    '<div class="section-head" style="margin-top:20px;cursor:pointer;user-select:none;" data-action="toggleStudentList" data-st-val="'+(_stCollapsed?'false':'true')+'">' +
       '<h2 style="display:flex;align-items:center;gap:8px;">طلابي المسندون لي ('+myStudents.length+') <span style="font-size:13px;color:var(--muted);font-weight:400;">'+ (_stCollapsed ? '▼ عرض' : '▲ إخفاء') +'</span></h2>' +
     '</div>' +
     (_stCollapsed ? '' :
@@ -9674,7 +9674,7 @@ async function screenTeacherTasks(){
         '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
       '</table></div></div>' +
       '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
-        '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" style="font-size:13px;">▲ إخفاء القائمة</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" data-st-val="true" style="font-size:13px;">▲ إخفاء القائمة</button>' +
       '</div>'
     )
   ) : '';
@@ -10068,7 +10068,7 @@ function bindTeacherTasks(){
 
   /* طي/فتح قائمة الطلاب */
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = !TeacherFormsUI.studentsCollapsed; await render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); bindTeacherTasks(); });
   });
 
   /* فلتر جدول الطلاب */
