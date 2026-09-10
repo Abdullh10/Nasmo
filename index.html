@@ -2670,7 +2670,8 @@ function selfEvalAvgScore(payload){
 function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
-const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'مرشد طلابي', super_admin:'سوبر أدمن' };
+const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', vice_principal:'وكيل المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'مرشد طلابي', super_admin:'سوبر أدمن' };
+function isPrincipal(u){ return u && (u.role==='principal' || u.role==='vice_principal'); }
 
 /* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
 const PRINCIPAL_STATUS_LABEL = { approved:'معتمد ومقيَّم', returned:'مرتجع للتعديل' };
@@ -3370,9 +3371,9 @@ async function render(){
         const [freshNotif, freshComm, freshPending] = await Promise.all([
           DB.listNotifications({ school: State.user.school }),
           State.user.role==='super_admin' ? DB.listCommunities({})
-            : (State.user.role==='admin'||State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
+            : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)) ? DB.listCommunities({ school: State.user.school })
             : Promise.resolve([]),
-          State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])
+          isPrincipal(State.user) ? loadPrincipalPendingApprovals() : Promise.resolve([])
         ]);
         if (token !== _renderToken) return;
         _notifCache = freshNotif; _notifCacheAt = Date.now();
@@ -3384,9 +3385,9 @@ async function render(){
       Promise.all([
         needNotif   ? DB.listNotifications({ school: State.user.school }) : Promise.resolve(_notifCache),
         needComm    ? (State.user.role==='super_admin' ? DB.listCommunities({})
-                      : (State.user.role==='admin'||State.user.role==='coordinator'||State.user.role==='principal') ? DB.listCommunities({ school: State.user.school })
+                      : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)) ? DB.listCommunities({ school: State.user.school })
                       : Promise.resolve([])) : Promise.resolve(_commCache),
-        needPending ? (State.user.role==='principal' ? loadPrincipalPendingApprovals() : Promise.resolve([])) : Promise.resolve(_pendingCache)
+        needPending ? (isPrincipal(State.user) ? loadPrincipalPendingApprovals() : Promise.resolve([])) : Promise.resolve(_pendingCache)
       ]).then(function(results){
         if (needNotif)   { _notifCache   = results[0]; _notifCacheAt   = Date.now(); }
         if (needComm)    { _commCache    = results[1]; _commCacheAt    = Date.now(); }
@@ -3779,13 +3780,13 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">تسجيل حصة توضيحية</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
-      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
-      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
-      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
-      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
-      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalArchive'?'active':'')+'" data-action="dashTab" data-tab="principalArchive">📁 أرشيف النماذج</button>' : '') +
-      (State.user.role==='principal' ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalArchive'?'active':'')+'" data-action="dashTab" data-tab="principalArchive">📁 أرشيف النماذج</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
   );
 }
@@ -4782,7 +4783,7 @@ function bindCoordinatorDemoLessons(){
       const notifBody = State.user.full_name+' سجَّل حصة توضيحية بعنوان "'+lessonTitle+'" يوم '+day+' '+fmtDate(date)+' الحصة '+period+' ('+startTime+(endTime?' - '+endTime:'')+') مادة '+subject+'.';
       const allUsers = await DB.listUsers({ school: State.user.school });
       const communityTeachers = allUsers.filter(function(u){ return u.role==='teacher' && u.community_id===communityId; });
-      const principals = allUsers.filter(function(u){ return u.role==='principal'; });
+      const principals = allUsers.filter(function(u){ return isPrincipal(u); });
       const notifTargets = [];
       communityTeachers.forEach(function(u){ notifTargets.push(u.id); });
       principals.forEach(function(u){ notifTargets.push(u.id); });
@@ -5735,7 +5736,7 @@ function attachmentsGridHtml(attachments, removable, rmvAction){
 async function screenPracticeBank(){
   const shares = await DB.listPracticeShares({ school: State.user.school });
   const canShare = State.user.role==='coordinator' || State.user.role==='teacher';
-  const isPrincipal = State.user.role==='principal';
+  const isUserPrincipal = isPrincipal(State.user);
   const mine = shares.filter(function(s){ return s.created_by===State.user.id; });
   const pending = shares.filter(function(s){ return s.status==='pending'; });
   const approved = shares.filter(function(s){ return s.status==='approved'; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
@@ -5763,7 +5764,7 @@ async function screenPracticeBank(){
 
   const approvedCards = approved.map(function(s){
     const stars = s.principal_rating ? ('التقييم: '+s.principal_rating+'/100') : '';
-    const principalActions = isPrincipal ? (
+    const principalActions = isUserPrincipal ? (
       '<div class="row-actions" style="margin-top:8px;">' +
         '<button class="btn btn-ghost btn-sm" data-action="editPractice" data-id="'+s.id+'">تعديل</button>' +
         '<button class="btn btn-danger btn-sm" data-action="deletePractice" data-id="'+s.id+'">حذف</button>' +
@@ -5796,7 +5797,7 @@ async function screenPracticeBank(){
         '<tbody>' + (mineRows || '<tr class="empty-row"><td colspan="3">لم تشارك أي ممارسة بعد.</td></tr>') + '</tbody>' +
       '</table></div></div>'
     ) : '') +
-    (isPrincipal ? (
+    (isUserPrincipal ? (
       '<div class="section-head" style="margin-top:24px;"><h2>ممارسات بانتظار الاعتماد</h2></div>' +
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
         '<thead><tr><th>الممارسة</th><th>المعلم/المنسق</th><th>التاريخ</th><th></th></tr></thead>' +
@@ -7176,7 +7177,7 @@ async function screenAdminSettings(){
     '',
     '-- 1) إضافة أدوار counselor و super_admin لجدول profiles',
     "alter table profiles drop constraint if exists profiles_role_check;",
-    "alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','teacher','admin','counselor','super_admin'));",
+    "alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','vice_principal','teacher','admin','counselor','super_admin'));",
     '',
     '-- 2) جدول الحالات الإرشادية (للمستشار)',
     'create table if not exists counseling_cases (',
@@ -7698,7 +7699,7 @@ async function screenCounselorCases(){
     _counselorCasesData = { cases, schoolUsers, schoolStudents, counselorGiftedReports };
     _counselorCasesDataAt = Date.now();
   }
-  const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||u.role==='principal'; })
+  const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||isPrincipal(u); })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const sortedStudents = schoolStudents.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const grades = cases.map(function(c){ return c.student_grade||''; }).filter(Boolean)
@@ -8204,7 +8205,7 @@ function giftedReportsListHtml(reports, emptyMsg, opts){
 }
 function giftedReviewModalHtml(report, role){
   if (!report) return '';
-  var isPrincipal = role === 'principal';
+  var isPrincipal = role === 'principal' || role === 'vice_principal';
   var decisionOpts = isPrincipal
     ? ['اعتماد التحويل لبرامج الموهوبين','الإثراء داخل الفصل','ترشيح لمسابقة أو أولمبياد','التنسيق مع المرشد الطلابي','عقد اجتماع مع ولي الأمر','إحالة للتقييم المتخصص','أخرى']
     : ['إنشاء خطة رعاية موهوبين','التواصل مع ولي الأمر','إرسال ترشيح رسمي','إحالة للمختص','أخرى'];
@@ -8751,7 +8752,7 @@ async function screenDashboard(){
   if (State.dashTab==='tasks' && State.user.role==='coordinator'){
     return await screenCoordinatorTasks();
   }
-  if (State.dashTab==='communitiesEval' && State.user.role==='principal'){
+  if (State.dashTab==='communitiesEval' && isPrincipal(State.user)){
     return await screenPrincipalCommunities();
   }
   if (State.dashTab==='goals' && State.user.role==='coordinator'){
@@ -8769,31 +8770,31 @@ async function screenDashboard(){
   if (State.dashTab==='teamStats' && State.user.role==='coordinator'){
     return await screenCoordinatorTeamStats();
   }
-  if (State.dashTab==='principalArchive' && State.user.role==='principal'){
+  if (State.dashTab==='principalArchive' && isPrincipal(State.user)){
     return await screenPrincipalArchive();
   }
-  if (State.dashTab==='principalReview' && State.user.role==='principal'){
+  if (State.dashTab==='principalReview' && isPrincipal(State.user)){
     return await screenPrincipalReview();
   }
-  if (State.dashTab==='principalDemoLessons' && State.user.role==='principal'){
+  if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)){
     return await screenPrincipalDemoLessons();
   }
-  if (State.dashTab==='principalGifted' && State.user.role==='principal'){
+  if (State.dashTab==='principalGifted' && isPrincipal(State.user)){
     return await screenPrincipalGifted();
   }
-  if (State.dashTab==='principalNotif' && State.user.role==='principal'){
+  if (State.dashTab==='principalNotif' && isPrincipal(State.user)){
     return await screenNotificationsPanel();
   }
   if (State.dashTab==='indicators'){
     return (
-      '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : 'لوحة مدير المدرسة') + '</h2>' +
+      '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : isPrincipal(State.user) ? (ROLE_LABEL[State.user.role]||'مدير المدرسة') : 'لوحة مدير المدرسة') + '</h2>' +
       '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
       dashTabsHtml() +
       await screenIndicators()
     );
   }
   let subs, pTasks, pGoals;
-  if (State.user.role === 'principal') {
+  if (isPrincipal(State.user)) {
     if (PrincipalUI.cachedSubs && PrincipalUI.cachedTasks && PrincipalUI.cachedGoals){
       subs = PrincipalUI.cachedSubs; pTasks = PrincipalUI.cachedTasks; pGoals = PrincipalUI.cachedGoals;
     } else {
@@ -8820,7 +8821,7 @@ async function screenDashboard(){
   mine.forEach(function(s){ counts[s.status] = (counts[s.status]||0)+1; });
 
   const now = new Date();
-  const staleSubs = State.user.role==='principal' ? subs.filter(function(s){
+  const staleSubs = isPrincipal(State.user) ? subs.filter(function(s){
     return s.status==='pending' && ((now - new Date(s.updated_at)) / 86400000) > 7;
   }) : [];
   const staleWarning = staleSubs.length ? (
@@ -8838,7 +8839,7 @@ async function screenDashboard(){
   const _teacherChecks = _bcastTeachers.map(function(t){
     return '<label class="check-row"><input type="checkbox" class="pBcastTeacher" value="'+esc(t.id)+'"> '+esc(t.full_name)+'</label>';
   }).join('');
-  const broadcastModal = (State.user.role==='principal' && PrincipalUI.broadcastOpen) ? (
+  const broadcastModal = (isPrincipal(State.user) && PrincipalUI.broadcastOpen) ? (
     '<div class="modal-bg" data-action="closePrincipalBroadcast">' +
     '<div class="modal-box" style="max-width:460px;" onclick="event.stopPropagation()">' +
       '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><h3 style="margin:0;">إشعار المعلمين</h3><button class="btn-close" data-action="closePrincipalBroadcast">×</button></div>' +
@@ -8891,7 +8892,7 @@ async function screenDashboard(){
   const rows = sorted.map(function(s){
     const def = formDef(s.form_type);
     if (!def) return '';
-    const canOpen = State.user.role==='principal' ? ((s.status==='pending' || s.status==='approved' || s.status==='returned') && s.created_by !== State.user.id) : true;
+    const canOpen = isPrincipal(State.user) ? ((s.status==='pending' || s.status==='approved' || s.status==='returned') && s.created_by !== State.user.id) : true;
     const action = State.user.role==='coordinator'
       ? (s.status==='approved'
           ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
@@ -8931,7 +8932,7 @@ async function screenDashboard(){
     kpis +
     staleWarning +
     '<div class="section-head"><h2>' + (State.user.role==='coordinator' ? 'نماذجي' : 'جميع النماذج') + '</h2>' +
-      (State.user.role==='principal' ? '<button class="btn btn-gold btn-sm" data-action="openPrincipalBroadcast">📢 إشعار للمعلمين</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="btn btn-gold btn-sm" data-action="openPrincipalBroadcast">📢 إشعار للمعلمين</button>' : '') +
       newBtn +
     '</div>' +
     tableBlock
@@ -8945,19 +8946,19 @@ function bindDashboard(){
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
-  else if (State.dashTab==='communitiesEval' && State.user.role==='principal') bindPrincipalCommunities();
+  else if (State.dashTab==='communitiesEval' && isPrincipal(State.user)) bindPrincipalCommunities();
   else if (State.dashTab==='goals' && State.user.role==='coordinator') bindCoordinatorGoals();
   else if (State.dashTab==='visits' && State.user.role==='coordinator') bindCoordinatorVisits();
   else if (State.dashTab==='demoLesson' && State.user.role==='coordinator') bindCoordinatorDemoLessons();
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') bindCoordinatorTeamStats();
-  else if (State.dashTab==='principalArchive' && State.user.role==='principal') bindPrincipalArchive();
-  else if (State.dashTab==='principalReview' && State.user.role==='principal') bindPrincipalReview();
-  else if (State.dashTab==='principalDemoLessons' && State.user.role==='principal') bindPrincipalDemoLessons();
-  else if (State.dashTab==='principalGifted' && State.user.role==='principal') bindPrincipalGifted();
-  else if (State.dashTab==='principalNotif' && State.user.role==='principal') bindNotificationsPanel();
+  else if (State.dashTab==='principalArchive' && isPrincipal(State.user)) bindPrincipalArchive();
+  else if (State.dashTab==='principalReview' && isPrincipal(State.user)) bindPrincipalReview();
+  else if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)) bindPrincipalDemoLessons();
+  else if (State.dashTab==='principalGifted' && isPrincipal(State.user)) bindPrincipalGifted();
+  else if (State.dashTab==='principalNotif' && isPrincipal(State.user)) bindNotificationsPanel();
   else if (State.dashTab==='indicators') bindIndicators();
-  else if (State.user.role==='principal') bindPrincipalMain();
+  else if (isPrincipal(State.user)) bindPrincipalMain();
 }
 function bindPrincipalMain(){
   var openBtn = document.querySelector('[data-action="openPrincipalBroadcast"]');
@@ -11013,8 +11014,8 @@ async function screenTaskDetail(taskId, readonly){
       '</div>'
     );
   }).join('');
-  const isPrincipal = State.user.role==='principal';
-  const canReview = isPrincipal && t.status==='done';
+  const isUserPrincipal = isPrincipal(State.user);
+  const canReview = isUserPrincipal && t.status==='done';
   const reviewPanel = canReview ? (
     '<div class="review-panel no-print" style="margin-top:16px;">' +
       '<h3>تقييم مدير المدرسة لإنجاز المهمة</h3>' +
@@ -11038,7 +11039,7 @@ async function screenTaskDetail(taskId, readonly){
         '<button class="btn btn-danger btn-block" data-action="coordinatorReturnTask">إرجاع المهمة مع الملاحظة</button>' +
       '</div>' +
     '</div>'
-  ) : (!isPrincipal && t.coordinator_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>ملاحظة المنسق</h3><p style="margin:0 0 6px;">'+coordinatorReturnBadgeHtml(t)+'</p>'+(t.coordinator_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.coordinator_note)+'</p>'):'')+'</div>') : '');
+  ) : (!isUserPrincipal && t.coordinator_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>ملاحظة المنسق</h3><p style="margin:0 0 6px;">'+coordinatorReturnBadgeHtml(t)+'</p>'+(t.coordinator_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.coordinator_note)+'</p>'):'')+'</div>') : '');
   return (
     '<div class="sheet-wrap">' +
       '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
@@ -11853,7 +11854,7 @@ function userModal(users, communities){
         '<div class="field"><label>اسم المستخدم</label><input class="input" id="umUsername" value="'+esc(editing?editing.username:'')+'" '+(editing?'disabled':'')+'></div>' +
         '<div class="field"><label>كلمة المرور</label><input class="input" id="umPassword" type="text" placeholder="'+(editing?'اتركه فارغًا للاحتفاظ بالحالية':(isRemote()?'6 أحرف على الأقل':''))+'"></div>' +
         '<div class="field"><label>الصلاحية</label><select class="input" id="umRole">' +
-          (State.user.role==='super_admin' ? ['coordinator','principal','teacher','counselor','admin','super_admin'] : ['coordinator','principal','teacher','counselor','admin']).map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
+          (State.user.role==='super_admin' ? ['coordinator','principal','vice_principal','teacher','counselor','admin','super_admin'] : ['coordinator','principal','vice_principal','teacher','counselor','admin']).map(function(r){ return '<option value="'+r+'" '+((editing?editing.role:'')===r?'selected':'')+'>'+ROLE_LABEL[r]+'</option>'; }).join('') +
         '</select></div>' +
         '<div class="field"><label>المدرسة</label><input class="input" id="umSchool" value="'+esc(editing?editing.school:State.user.school)+'" '+(State.user.role==='super_admin'?'':'readonly')+'></div>' +
         '<div class="field"><label>المجتمع المهني (اختياري)</label><select class="input" id="umCommunity">' +
