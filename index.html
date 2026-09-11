@@ -3297,7 +3297,9 @@ function blankData(formType){
     case 'plcSelfEval': return { school:State.user.school, plc:'', semester:'', criteria:blankSelfEvalCriteria(), reflection:'' };
     case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
     case 'behavioralPlan': return { school:State.user.school, grade:'', section:'', date:today, parentNotified:'لا', behaviorStudents:[ blankBehaviorRow() ], teacherOpinion:'' };
+    case 'teacherInitiative': return { initiativeTitle:'', initiativeType:'', targetGroup:'', estimatedBeneficiaries:'', executionDate:today, description:'', evidenceType:'description', evidenceContent:'', expectedOutcome:'' };
   }
+  return {};
 }
 function blankSelfEvalCriteria(){
   const obj = {};
@@ -13717,6 +13719,7 @@ function renderMotivation(d, ro){
 }
 
 function renderTeacherInitiative(d){
+  d = d || {};
   var ev = d.evidenceType||'description';
   var evLabel = ev==='url' ? 'رابط Drive/OneDrive' : ev==='procedure' ? 'وصف إجراء التنفيذ' : ev==='file' ? 'ملف الشاهد' : 'وصف الشاهد';
   var evidenceHtml;
