@@ -2784,7 +2784,7 @@ function indicatorPeriodLabel(ind){
 }
 
 /* ---------------------- الحالة العامة والتوجيه ---------------------- */
-const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms', adminTab:'users', notifications:[], communitiesCache:[], pendingApprovals:[] };
+const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms', adminTab:'overview', notifications:[], communitiesCache:[], pendingApprovals:[] };
 
 /* ---------------------- التنبيهات والرسائل ---------------------- */
 let NotifUI = { open:false, compose:false };
@@ -2938,7 +2938,7 @@ function logout(){
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
-  State.adminTab = 'users'; State.dashTab = 'forms';
+  State.adminTab = 'overview'; State.dashTab = 'forms';
   _fcClear();
   go('login');
 }
@@ -7230,6 +7230,7 @@ function bindExamAnalysis(){
 function adminTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
+      '<button class="tab '+(State.adminTab==='overview'?'active':'')+'" data-action="adminTab" data-tab="overview">📊 نظرة عامة</button>' +
       '<button class="tab '+(State.adminTab==='users'?'active':'')+'" data-action="adminTab" data-tab="users">المستخدمون</button>' +
       '<button class="tab '+(State.adminTab==='students'?'active':'')+'" data-action="adminTab" data-tab="students">بيانات الطلاب</button>' +
       '<button class="tab '+(State.adminTab==='communities'?'active':'')+'" data-action="adminTab" data-tab="communities">المجتمعات المهنية</button>' +
@@ -8915,7 +8916,7 @@ async function screenDashboard(){
       '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
       '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين، والمجتمعات المهنية</div>' +
       adminTabsHtml() +
-      (State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : State.adminTab==='students' ? await screenAdminStudents() : await screenAdminUsers())
+      (State.adminTab==='overview' ? await screenAdminOverview() : State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : State.adminTab==='students' ? await screenAdminStudents() : await screenAdminUsers())
     );
   }
   if (State.dashTab==='community' && State.user.role==='coordinator'){
@@ -9136,7 +9137,7 @@ function bindDashboard(){
   if (State.user.role==='counselor') { bindCounselorCases(); return; }
   if (State.user.role==='super_admin') { bindSuperAdmin(); return; }
   if (State.user.role==='teacher') bindTeacherTasks();
-  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else bindAdminUsers(); }
+  else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else if (State.adminTab==='overview') { /* handled by bindGlobalAction */ } else bindAdminUsers(); }
   else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='communitiesEval' && isPrincipal(State.user)) bindPrincipalCommunities();
@@ -11397,8 +11398,9 @@ let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, pasteOp
 let _adminUsersCache = null, _adminUsersCacheAt = 0;
 let _adminCommCache = null, _adminCommCacheAt = 0;
 let _adminStudentsCache = null, _adminStudentsCacheAt = 0;
+let _adminSubmCache = null, _adminSubmCacheAt = 0;
 const ADMIN_TAB_TTL_MS = 60000;
-function invalidateAdminCache(){ _adminUsersCache = null; _adminCommCache = null; _adminStudentsCache = null; }
+function invalidateAdminCache(){ _adminUsersCache = null; _adminCommCache = null; _adminStudentsCache = null; _adminSubmCache = null; }
 let CredsPrint = loadLastCredsBatch();
 function loadLastCredsBatch(){
   try{ const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH)); if (saved && saved.items && saved.items.length) return saved; }catch(e){}
@@ -11946,6 +11948,139 @@ function bindSuperSchool(){
     toast('تمت إزالة المدرسة من قائمة صفحة الدخول.');
     State.screen='dashboard'; render(); bindDashboard();
   });
+}
+
+async function screenAdminOverview(){
+  var users, communities, submissions;
+  if (_adminUsersCache && (Date.now() - _adminUsersCacheAt) < ADMIN_TAB_TTL_MS){
+    users = _adminUsersCache.users; communities = _adminUsersCache.communities;
+  } else {
+    var _ovFetch = await Promise.all([
+      DB.listUsers({ school: State.user.school }),
+      DB.listCommunities({ school: State.user.school })
+    ]);
+    users = _ovFetch[0]; communities = _ovFetch[1];
+    _adminUsersCache = { users: users, communities: communities }; _adminUsersCacheAt = Date.now();
+  }
+  if (_adminSubmCache && (Date.now() - _adminSubmCacheAt) < ADMIN_TAB_TTL_MS){
+    submissions = _adminSubmCache;
+  } else {
+    submissions = await DB.listSubmissions({ school: State.user.school });
+    _adminSubmCache = submissions; _adminSubmCacheAt = Date.now();
+  }
+
+  var totalUsers = users.length;
+  var teacherCount  = users.filter(function(u){ return u.role==='teacher'; }).length;
+  var coordCount    = users.filter(function(u){ return u.role==='coordinator'; }).length;
+  var principalCount= users.filter(function(u){ return u.role==='principal'||u.role==='vice_principal'; }).length;
+  var unassigned    = users.filter(function(u){ return u.role==='teacher' && !u.community_id; }).length;
+  var pendingForms  = submissions.filter(function(s){ return s.status==='pending'; }).length;
+  var approvedForms = submissions.filter(function(s){ return s.status==='approved'; }).length;
+  var draftForms    = submissions.filter(function(s){ return s.status==='draft'; }).length;
+  var returnedForms = submissions.filter(function(s){ return s.status==='returned'; }).length;
+  var totalForms    = submissions.length;
+  var commCount     = communities.length;
+
+  function _ovKpi(val, label, color, note){
+    return '<div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;">' +
+      '<div style="font-size:30px;font-weight:800;line-height:1.1;color:'+color+';">'+val+'</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-top:5px;">'+label+'</div>' +
+      (note ? '<div style="font-size:11.5px;margin-top:3px;color:'+color+';">'+note+'</div>' : '') +
+    '</div>';
+  }
+
+  var kpiRow = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px;">' +
+    _ovKpi(totalUsers,    '👥 إجمالي المستخدمين', 'var(--primary)') +
+    _ovKpi(commCount,     '🌐 المجتمعات المهنية',  'var(--teal,#0d9488)') +
+    _ovKpi(pendingForms,  '⏳ بانتظار الاعتماد',   pendingForms > 0 ? '#f59e0b' : 'var(--muted)',    pendingForms > 0 ? 'يحتاج مراجعة' : 'لا توجد') +
+    _ovKpi(unassigned,    '⚠ معلمون بدون مجتمع', unassigned > 0 ? 'var(--danger)' : 'var(--success)', unassigned > 0 ? 'يحتاج إسناد' : 'الجميع مُسند') +
+  '</div>';
+
+  function _pBar(label, count, total, color){
+    var pct = total > 0 ? Math.round(count/total*100) : 0;
+    return '<div style="margin-bottom:10px;">' +
+      '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;">' +
+        '<span>'+label+'</span>' +
+        '<span style="font-weight:700;color:'+color+';">'+count+'<span style="font-size:11px;font-weight:400;color:var(--muted);"> ('+pct+'%)</span></span>' +
+      '</div>' +
+      '<div style="background:var(--border);border-radius:20px;height:7px;overflow:hidden;">' +
+        '<div style="height:100%;background:'+color+';border-radius:20px;width:'+pct+'%;transition:width .4s;"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  var rolePanel = '<div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;">' +
+    '<div style="font-weight:700;font-size:14px;margin-bottom:14px;">توزيع الأدوار</div>' +
+    _pBar('معلمون',           teacherCount,  totalUsers, '#2563eb') +
+    _pBar('منسقو المجتمعات', coordCount,    totalUsers, '#0d9488') +
+    _pBar('مديرون ووكلاء',   principalCount,totalUsers, '#7c3aed') +
+  '</div>';
+
+  var formsPanel = '<div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;">' +
+    '<div style="font-weight:700;font-size:14px;margin-bottom:14px;">حالة النماذج <span style="font-size:12px;font-weight:400;color:var(--muted);">('+totalForms+' إجمالاً)</span></div>' +
+    (totalForms > 0 ? (
+      _pBar('معتمدة ✓',           approvedForms, totalForms, '#22c55e') +
+      _pBar('بانتظار الاعتماد',   pendingForms,  totalForms, '#f59e0b') +
+      _pBar('مرتجعة للتعديل',     returnedForms, totalForms, '#ef4444') +
+      _pBar('مسودات',             draftForms,    totalForms, 'var(--muted)')
+    ) : '<div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0;">لا توجد نماذج بعد</div>') +
+  '</div>';
+
+  var commRows = communities.map(function(c){
+    var mems   = users.filter(function(u){ return u.community_id===c.id; });
+    var coord  = mems.find(function(u){ return u.role==='coordinator'; });
+    var tCnt   = mems.filter(function(u){ return u.role==='teacher'; }).length;
+    var dot    = tCnt===0 ? '#ef4444' : tCnt < 3 ? '#f59e0b' : '#22c55e';
+    return '<tr>' +
+      '<td style="font-weight:600;">'+esc(c.name)+'</td>' +
+      '<td>'+(coord ? esc(coord.full_name) : '<span style="color:var(--muted);">—</span>')+'</td>' +
+      '<td style="text-align:center;"><span style="display:inline-flex;align-items:center;gap:5px;">'+
+        '<span style="width:9px;height:9px;border-radius:50%;background:'+dot+';flex-shrink:0;"></span>'+tCnt+'</span></td>' +
+    '</tr>';
+  }).join('');
+
+  var commTable = commCount > 0 ? (
+    '<div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;margin-top:16px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">' +
+        '<div style="font-weight:700;font-size:14px;">المجتمعات المهنية</div>' +
+        '<button class="btn btn-ghost btn-sm" data-action="adminTab" data-tab="communities">إدارة المجتمعات</button>' +
+      '</div>' +
+      '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+        '<thead><tr><th>اسم المجتمع</th><th>المنسق</th><th style="text-align:center;">عدد المعلمين</th></tr></thead>' +
+        '<tbody>'+(commRows||'<tr class="empty-row"><td colspan="3">لا توجد مجتمعات.</td></tr>')+'</tbody>' +
+      '</table></div></div>' +
+    '</div>'
+  ) : '';
+
+  var unassignedAlert = unassigned > 0 ? (
+    '<div style="background:rgba(245,158,11,0.1);border:1.5px solid #f59e0b;border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13.5px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+      '<span>⚠ يوجد <b>'+unassigned+' معلم</b> غير مرتبط بأي مجتمع مهني</span>' +
+      '<button class="btn btn-ghost btn-sm" data-action="adminTab" data-tab="users">عرض المستخدمين</button>' +
+    '</div>'
+  ) : '';
+
+  var today = new Date();
+  var todayStr = today.getFullYear()+'/'+(today.getMonth()+1)+'/'+(today.getDate());
+
+  return (
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:10px;">' +
+      '<div>' +
+        '<div style="font-size:16px;font-weight:700;">مرحباً، '+esc(State.user.full_name)+'</div>' +
+        '<div style="font-size:13px;color:var(--muted);">'+esc(State.user.school)+' — '+todayStr+'</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="adminTab" data-tab="users">إدارة المستخدمين</button>' +
+        '<button class="btn btn-primary btn-sm" data-action="adminTab" data-tab="communities">إدارة المجتمعات</button>' +
+      '</div>' +
+    '</div>' +
+    unassignedAlert +
+    kpiRow +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' +
+      rolePanel +
+      formsPanel +
+    '</div>' +
+    commTable
+  );
 }
 
 async function screenAdminUsers(){
