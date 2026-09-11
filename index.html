@@ -4307,12 +4307,71 @@ async function screenCoordinatorTeamStats(){
     );
   }).join('');
 
+  var _cs = subs.filter(function(s){ return s.community_id===myCommunity.id; });
+  var _csApproved = _cs.filter(function(s){ return s.status==='approved'; }).length;
+  var _csPending  = _cs.filter(function(s){ return s.status==='pending'; }).length;
+  var _csReturned = _cs.filter(function(s){ return s.status==='returned'; }).length;
+  var _csTasks    = tasks.filter(function(t){ return t.community_id===myCommunity.id; });
+  var _csTasksDone= _csTasks.filter(function(t){ return t.status==='done'; }).length;
+  var _csGoals    = goals.filter(function(g){ return g.community_id===myCommunity.id; });
+  var _csGoalsAch = _csGoals.filter(function(g){ return g.status==='achieved'; }).length;
+  var _approvalRate = _cs.length ? Math.round(_csApproved/_cs.length*100) : 0;
+  var _taskRate = _csTasks.length ? Math.round(_csTasksDone/_csTasks.length*100) : 0;
+  var _goalRate = _csGoals.length ? Math.round(_csGoalsAch/_csGoals.length*100) : 0;
+  var _overallScore = Math.round((_approvalRate + _taskRate + _goalRate) / 3);
+  var _scoreColor = _overallScore>=80?'#22c55e':_overallScore>=60?'#f59e0b':'#ef4444';
+
+  var activeTeachersCount = myTeachers.filter(function(t){
+    var tSubs = subs.filter(function(s){ return s.created_by===t.id; });
+    var tTasks2 = tasks.filter(function(tk){ return tk.assigned_to===t.id && tk.completed_at; });
+    var dates = tSubs.map(function(s){ return s.updated_at; }).concat(tTasks2.map(function(tk){ return tk.completed_at; })).filter(Boolean).sort().reverse();
+    return dates[0] && ((now - new Date(dates[0])) / 86400000) < 7;
+  }).length;
+
+  var atRiskTeachers = myTeachers.filter(function(t){
+    var tSubs2 = subs.filter(function(s){ return s.created_by===t.id; });
+    var tTasks3 = tasks.filter(function(tk){ return tk.assigned_to===t.id && tk.status!=='done' && tk.due_date && new Date(tk.due_date)<now; });
+    var returned2 = tSubs2.filter(function(s){ return s.status==='returned'; }).length;
+    return returned2>0 || tTasks3.length>0;
+  });
+
+  function healthBar(pct, color, label){
+    return '<div style="margin-bottom:10px;">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;"><span>'+label+'</span><span style="font-weight:700;color:'+color+';">'+pct+'%</span></div>'+
+      '<div style="background:var(--border);border-radius:20px;height:8px;overflow:hidden;"><div style="height:100%;background:'+color+';border-radius:20px;width:'+pct+'%;transition:width .4s;"></div></div>'+
+    '</div>';
+  }
+
+  var communityHealthPanel = myTeachers.length ? (
+    '<div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">' +
+        '<div style="font-size:15px;font-weight:700;">📊 صحة المجتمع المهني</div>'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<span style="font-size:12.5px;color:var(--muted);">'+activeTeachersCount+' / '+myTeachers.length+' أعضاء نشطون هذا الأسبوع</span>'+
+          (atRiskTeachers.length ? '<span style="background:color-mix(in srgb,var(--danger) 15%,transparent);color:var(--danger);font-size:12px;font-weight:700;padding:2px 10px;border-radius:12px;">'+atRiskTeachers.length+' بحاجة متابعة</span>' : '')+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;">'+
+        '<div style="flex:1;min-width:200px;">'+
+          healthBar(_approvalRate, '#22c55e', 'معدل اعتماد النماذج')+
+          healthBar(_taskRate, 'var(--teal)', 'إنجاز المهام')+
+          healthBar(_goalRate, 'var(--gold)', 'تحقيق الأهداف')+
+        '</div>'+
+        '<div style="text-align:center;min-width:100px;">'+
+          '<div style="font-size:36px;font-weight:800;color:'+_scoreColor+';line-height:1;">'+_overallScore+'<span style="font-size:16px;">%</span></div>'+
+          '<div style="font-size:12px;color:var(--muted);margin-top:2px;">الأداء الإجمالي</div>'+
+        '</div>'+
+      '</div>'+
+      (atRiskTeachers.length ? '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;font-size:12.5px;color:var(--danger);">⚠ يحتاج متابعة: '+atRiskTeachers.map(function(t){ return esc(t.full_name); }).join('، ')+'</div>' : '')+
+    '</div>'
+  ) : '';
+
   const summary = myTeachers.length ? (
     '<div class="kpi-grid" style="margin-bottom:16px;">' +
-      '<div class="kpi-card accent-success"><div class="v">'+subs.filter(function(s){ return s.community_id===myCommunity.id && s.status==='approved'; }).length+'</div><div class="l">نماذج معتمدة</div></div>' +
-      '<div class="kpi-card accent-pending"><div class="v">'+subs.filter(function(s){ return s.community_id===myCommunity.id && s.status==='pending'; }).length+'</div><div class="l">بانتظار الاعتماد</div></div>' +
-      '<div class="kpi-card accent-danger"><div class="v">'+subs.filter(function(s){ return s.community_id===myCommunity.id && s.status==='returned'; }).length+'</div><div class="l">مُعادة للتعديل</div></div>' +
-      '<div class="kpi-card"><div class="v">'+tasks.filter(function(t){ return t.community_id===myCommunity.id && t.status==='done'; }).length+'/'+tasks.filter(function(t){ return t.community_id===myCommunity.id; }).length+'</div><div class="l">مهام منجزة</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+_csApproved+'</div><div class="l">نماذج معتمدة</div></div>' +
+      '<div class="kpi-card accent-pending"><div class="v">'+_csPending+'</div><div class="l">بانتظار الاعتماد</div></div>' +
+      '<div class="kpi-card accent-danger"><div class="v">'+_csReturned+'</div><div class="l">مُعادة للتعديل</div></div>' +
+      '<div class="kpi-card"><div class="v">'+_csTasksDone+'/'+_csTasks.length+'</div><div class="l">مهام منجزة</div></div>' +
       '<div class="kpi-card"><div class="v">'+myTeachers.length+'</div><div class="l">أعضاء الفريق</div></div>' +
     '</div>'
   ) : '';
@@ -4321,6 +4380,7 @@ async function screenCoordinatorTeamStats(){
     hdr +
     '<div class="section-head"><h2>نشاط الفريق — '+esc(myCommunity.name)+'</h2></div>' +
     summary +
+    communityHealthPanel +
     (myTeachers.length
       ? '<div style="margin-bottom:14px;"><input id="ts-search" class="input" style="max-width:280px;" placeholder="ابحث باسم المعلم…"></div><div id="ts-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;">'+cards+'</div>'
       : '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون مرتبطون بمجتمعك بعد.</p>'
@@ -8941,6 +9001,18 @@ async function screenDashboard(){
     '</div>'
   ) : '';
 
+  const coordStalePending = State.user.role==='coordinator' ? mine.filter(function(s){
+    return s.status==='pending' && ((now - new Date(s.updated_at)) / 86400000) > 3;
+  }) : [];
+  const coordStaleAlert = coordStalePending.length ? (
+    '<div style="background:color-mix(in srgb,var(--pending) 12%,transparent);border:1.5px solid var(--pending);border-radius:8px;padding:12px 16px;margin-bottom:14px;">' +
+      '<b style="color:var(--pending);">⏳ '+coordStalePending.length+' نماذج بانتظار اعتماد المدير منذ أكثر من 3 أيام</b>' +
+      '<div style="margin-top:5px;font-size:13px;display:flex;flex-wrap:wrap;gap:8px;">'+
+        coordStalePending.map(function(s){ var d=formDef(s.form_type); return '<span style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-size:12px;">'+esc(d?d.title:s.form_type)+'</span>'; }).join('')+
+      '</div>'+
+    '</div>'
+  ) : '';
+
   const commCount = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; }).length;
   const pendingTasksReview = (pTasks||[]).filter(function(t){ return t.status==='done' && !t.principal_status; }).length;
   const pendingGoalsReview = (pGoals||[]).filter(function(g){ return !g.principal_status; }).length;
@@ -9045,6 +9117,7 @@ async function screenDashboard(){
     dashTabsHtml() +
     kpis +
     staleWarning +
+    coordStaleAlert +
     analyticsBlock +
     '<div class="section-head"><h2>' + (State.user.role==='coordinator' ? 'نماذجي' : 'جميع النماذج') + '</h2>' +
       '<div style="display:flex;gap:6px;align-items:center;">' +
@@ -10294,12 +10367,51 @@ async function screenTeacherTasks(){
     '</div>'
   ) : '';
 
+  /* — لوحة تقدم الفصل الدراسي — */
+  var _tApprRate = myForms.length ? Math.round(approvedCount/myForms.length*100) : 0;
+  var _tDoneTaskCount = generalTasks.filter(function(t){ return t.status==='done'; }).length;
+  var _tTaskRate = generalTasks.length ? Math.round(_tDoneTaskCount/generalTasks.length*100) : 0;
+  var _tGoalsAch = myGoals.filter(function(g){ return g.status==='achieved'; }).length;
+  var _tGoalRate = myGoals.length ? Math.round(_tGoalsAch/myGoals.length*100) : 0;
+  var _tSessRate = sessTasks.length ? Math.round(completedSessions/sessTasks.length*100) : 0;
+  var _tScore = [_tApprRate, _tTaskRate, _tGoalRate, _tSessRate].filter(function(_,i){
+    return [myForms.length, generalTasks.length, myGoals.length, sessTasks.length][i] > 0;
+  });
+  var _tOverall = _tScore.length ? Math.round(_tScore.reduce(function(a,b){return a+b;},0) / _tScore.length) : 0;
+  var _tOverallColor = _tOverall>=80?'#22c55e':_tOverall>=60?'#f59e0b':'#ef4444';
+  function _tBar(pct, color, label, hint){
+    return '<div style="margin-bottom:9px;">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;">'+
+        '<span>'+label+'</span>'+
+        '<span style="font-weight:700;color:'+color+';">'+pct+'%<span style="font-size:11px;font-weight:400;color:var(--muted);"> '+hint+'</span></span>'+
+      '</div>'+
+      '<div style="background:var(--border);border-radius:20px;height:8px;overflow:hidden;"><div style="height:100%;background:'+color+';border-radius:20px;width:'+pct+'%;transition:width .4s;"></div></div>'+
+    '</div>';
+  }
+  var semesterProgressPanel = (_tScore.length > 0) ? (
+    '<div style="background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;margin-bottom:16px;">' +
+      '<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">' +
+        '<div style="text-align:center;min-width:80px;">' +
+          '<div style="font-size:32px;font-weight:800;color:'+_tOverallColor+';line-height:1;">'+_tOverall+'<span style="font-size:14px;">%</span></div>'+
+          '<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">إنجازي هذا الفصل</div>'+
+        '</div>'+
+        '<div style="flex:1;min-width:180px;">'+
+          (myForms.length ? _tBar(_tApprRate,'#22c55e','النماذج المعتمدة',approvedCount+' / '+myForms.length) : '')+
+          (generalTasks.length ? _tBar(_tTaskRate,'var(--teal)','المهام المنجزة',_tDoneTaskCount+' / '+generalTasks.length) : '')+
+          (myGoals.length ? _tBar(_tGoalRate,'var(--gold)','الأهداف المحققة',_tGoalsAch+' / '+myGoals.length) : '')+
+          (sessTasks.length ? _tBar(_tSessRate,'var(--primary)','جلسات المتابعة',completedSessions+' / '+sessTasks.length) : '')+
+        '</div>'+
+      '</div>'+
+    '</div>'
+  ) : '';
+
   return (
     giftedModal +
     initiativeModal +
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:12px;">'+esc(State.user.school)+'</div>' +
     kpiHtml +
+    semesterProgressPanel +
     '<div class="tab-bar" style="margin-bottom:14px;overflow-x:auto;white-space:nowrap;">' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='main'?'active':'')+'" data-action="teacherDashTab" data-tab="main">لوحتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myReferrals'?'active':'')+'" data-action="teacherDashTab" data-tab="myReferrals">📋 إحالاتي</button>' +
