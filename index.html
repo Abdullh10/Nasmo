@@ -2643,18 +2643,9 @@ const FORM_DEFS = [
   { id:'motivationInitiative', no:6, title:'توثيق مبادرة تحفيزية وقياس الأثر', desc:'توثيق مبادرات تحفيز المعلمين والمتعلمين ومؤشرات قياس الأثر.', icon:'🏆', color:'#B8860B', source:false, teacherAccess:true },
   { id:'plcSelfEval', no:7, title:'التقييم الذاتي الفصلي لمجتمع التعلم', desc:'تقييم ذاتي لأداء المجتمع وفق معايير الرؤية المشتركة والفرق التعاونية والاستقصاء الجماعي والتوجه العملي والنتائج.', icon:'🧭', color:'#1F6F50', source:false },
   { id:'peerObservation', no:8, title:'الزيارة الصفية التبادلية', desc:'توثيق ملاحظة معلم زميل لحصة معلم آخر، وأبرز نقاط القوة وفرص التحسين والمتابعة.', icon:'👀', color:'#9D174D', source:false, teacherAccess:true },
-  { id:'behavioralPlan', no:9, title:'الخطة العلاجية السلوكية', desc:'تسجيل السلوكيات المستهدفة لدى الطلاب، وتحليل أسبابها المحتملة، واستراتيجيات التدخل والمتابعة وإشعار ولي الأمر.', icon:'🧩', color:'#C2410C', source:false, teacherAccess:true },
-  { id:'teacherInitiative', no:10, title:'توثيق مبادرة تعليمية', desc:'توثيق مبادرات المعلم التعليمية مع الشواهد وإرسالها للمدير للاعتماد الرسمي.', icon:'💡', color:'#0F766E', source:false, teacherAccess:false }
+  { id:'behavioralPlan', no:9, title:'الخطة العلاجية السلوكية', desc:'تسجيل السلوكيات المستهدفة لدى الطلاب، وتحليل أسبابها المحتملة، واستراتيجيات التدخل والمتابعة وإشعار ولي الأمر.', icon:'🧩', color:'#C2410C', source:false, teacherAccess:true }
 ];
 
-const INITIATIVE_TYPES = [
-  { group:'أ — دعم التحصيل الأكاديمي', items:['برنامج قراءة إثرائية','مبادرة دعم رياضيات','برنامج تحسين مهارات الكتابة','ربط المنهج بالحياة العملية'] },
-  { group:'ب — التحفيز وبناء الشخصية', items:['برنامج تحفيز الدافعية الذاتية','مبادرة تنمية القيادة الطلابية','مشروع تطوع اجتماعي','نشاط توعية برؤية 2030'] },
-  { group:'ج — التقنية والابتكار', items:['مبادرة تعلم رقمي','مشروع استقصاء علمي وبحثي','نشاط برمجة وذكاء اصطناعي'] },
-  { group:'د — التنمية المهنية للمعلم', items:['تطوير ذاتي مهني','نقل خبرة ومشاركة معرفة بين المعلمين','إرشاد مهني للطلاب'] },
-  { group:'هـ — بيئة التعلم والشراكات', items:['تطوير بيئة الفصل الدراسي','شراكة فاعلة مع أولياء الأمور','برنامج دعم الصحة النفسية'] },
-  { group:'و — المواهب والأنشطة الإثرائية', items:['رعاية الطلاب الموهوبين والمتميزين','الإعداد والمشاركة في المسابقات','برنامج مهارات القرن الحادي والعشرين'] }
-];
 const SELF_EVAL_CRITERIA = [
   { key:'vision', label:'رؤية ورسالة وقيم مشتركة', hint:'يتشارك أعضاء المجتمع رؤية واضحة لأهداف التعلم والتحسين.' },
   { key:'teams', label:'فرق تعاونية فاعلة', hint:'يعمل الأعضاء بروح الفريق الواحد في التخطيط والتنفيذ والمساءلة الجماعية.' },
@@ -3297,7 +3288,6 @@ function blankData(formType){
     case 'plcSelfEval': return { school:State.user.school, plc:'', semester:'', criteria:blankSelfEvalCriteria(), reflection:'' };
     case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
     case 'behavioralPlan': return { school:State.user.school, grade:'', section:'', date:today, parentNotified:'لا', behaviorStudents:[ blankBehaviorRow() ], teacherOpinion:'' };
-    case 'teacherInitiative': return { initiativeTitle:'', initiativeType:'', targetGroup:'', estimatedBeneficiaries:'', executionDate:today, description:'', evidenceType:'description', evidenceContent:'', expectedOutcome:'' };
   }
   return {};
 }
@@ -9426,7 +9416,6 @@ function bindCoordinatorMyStudents(){
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '', studentsCollapsed: true }; /* dashTab: 'main'|'agenda'|'profile'|'myInitiatives' */
 let GiftedUI = { modalOpen: false, counselors: [], selectedCounselorId: '' };
-let TeacherInitiativeUI = { modalOpen: false, editId: null };
 let GiftedReviewUI = { modalOpen: false, report: null };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
@@ -10181,7 +10170,6 @@ async function screenTeacherTasks(){
         '<button class="btn btn-ghost btn-sm" data-action="goExamAnalysis">📊 تحليل درجات الاختبار</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
         (State.user.community_id ? '<button class="btn btn-ghost btn-sm" data-action="teacherContactCoord">تواصل مع المنسق</button>' : '') +
-        '<button class="btn btn-ghost btn-sm" data-action="openInitiativeModal" style="color:#0F766E;">💡 توثيق مبادرة تعليمية</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="openGiftedModal" style="color:var(--golden,#b8860b);">⭐ رعاية الموهوبين</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="openObsModal" style="color:var(--primary,#2563eb);">🔍 ملاحظة صفية</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="teacherContactPrincipal">تواصل مع المدير</button>' +
@@ -10304,71 +10292,6 @@ async function screenTeacherTasks(){
     '</div>'
   ) : '';
 
-  /* — نافذة توثيق المبادرة التعليمية — */
-  const initiativeGroupOpts = INITIATIVE_TYPES.map(function(g){ return '<optgroup label="'+esc(g.group)+'">'+g.items.map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }).join('');
-  const myInitiativeSubs = myForms.filter(function(s){ return s.form_type==='teacherInitiative'; });
-  var _initEd = TeacherInitiativeUI.editData || {};
-  var _initEvType = _initEd.evidenceType || 'description';
-  var _initEvLabel = _initEvType==='url' ? 'رابط الشاهد الإلكتروني' : _initEvType==='procedure' ? 'وصف إجراء التنفيذ' : _initEvType==='file' ? 'رابط الملف المرفوع' : 'وصف الشاهد';
-  var _initEvPlh = _initEvType==='url' ? 'https://...' : _initEvType==='procedure' ? 'اشرح خطوات تنفيذ المبادرة بالتفصيل…' : _initEvType==='file' ? 'سيظهر الرابط تلقائياً بعد الرفع' : 'صف الدليل الذي يثبت تنفيذ المبادرة…';
-  function _initRadio(val){ return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="initEvidenceType" value="'+val+'"'+(_initEvType===val?' checked':'')+'>'; }
-  var _initTypeOpts = initiativeGroupOpts.replace('value="'+esc(_initEd.initiativeType||'')+'"', 'value="'+esc(_initEd.initiativeType||'')+'" selected');
-  const initiativeModal = TeacherInitiativeUI.modalOpen ? (
-    '<div class="modal-bg" data-action="closeInitiativeModalBg">' +
-      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">' +
-        '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:#0F766E;">💡</span> '+(TeacherInitiativeUI.editId ? 'تعديل المبادرة' : 'توثيق مبادرة تعليمية')+'</h3>' +
-        '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">وثّق مبادرتك التعليمية وأرسلها لمدير المدرسة للاعتماد الرسمي وحفظها في سجلك.</p>' +
-        '<div class="field"><label>عنوان المبادرة <span style="color:var(--danger)">*</span></label>' +
-          '<input class="input" id="initTitle" placeholder="مثال: مبادرة تحسين مهارات القراءة للصف الثاني" maxlength="200" value="'+esc(_initEd.initiativeTitle||'')+'">' +
-        '</div>' +
-        '<div class="field"><label>نوع المبادرة <span style="color:var(--danger)">*</span></label>' +
-          '<select class="input" id="initType"><option value="">— اختر نوع المبادرة —</option>'+_initTypeOpts+'</select>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-          '<div class="field" style="margin:0;"><label>الفئة المستفيدة</label>' +
-            '<input class="input" id="initTargetGroup" placeholder="مثال: طلاب الصف الثالث" maxlength="100" value="'+esc(_initEd.targetGroup||'')+'">' +
-          '</div>' +
-          '<div class="field" style="margin:0;"><label>عدد المستفيدين المتوقع</label>' +
-            '<input class="input" id="initBeneficiaries" type="number" min="1" placeholder="مثال: 30" value="'+(_initEd.estimatedBeneficiaries||'')+'">' +
-          '</div>' +
-        '</div>' +
-        '<div class="field"><label>تاريخ التنفيذ <span style="color:var(--danger)">*</span></label>' +
-          '<input class="input" id="initDate" type="date" value="'+esc(_initEd.executionDate||new Date().toISOString().slice(0,10))+'">' +
-        '</div>' +
-        '<div class="field"><label>وصف المبادرة وأهدافها</label>' +
-          '<textarea class="input" id="initDesc" rows="3" placeholder="اشرح فكرة المبادرة وما تسعى لتحقيقه…" style="resize:vertical;">'+esc(_initEd.description||'')+'</textarea>' +
-        '</div>' +
-        '<div class="field"><label>نوع الشاهد / الدليل <span style="color:var(--danger)">*</span></label>' +
-          '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;">' +
-            _initRadio('description')+'وصف تفصيلي</label>' +
-            _initRadio('url')+'رابط Drive/OneDrive</label>' +
-            _initRadio('procedure')+'وصف إجراء</label>' +
-            _initRadio('file')+'ملف (صورة / PDF)</label>' +
-          '</div>' +
-        '</div>' +
-        '<div class="field" id="initEvidenceWrap"' + (_initEvType==='file'?' style="display:none;"':'') + '><label id="initEvidenceLabel">'+_initEvLabel+'</label>' +
-          '<textarea class="input" id="initEvidenceText" rows="3" placeholder="'+_initEvPlh+'" style="resize:vertical;">'+esc(_initEvType==='file'?'':(_initEd.evidenceContent||''))+'</textarea>' +
-        '</div>' +
-        '<div class="field" id="initFileWrap"' + (_initEvType!=='file'?' style="display:none;"':'') + '>' +
-          '<label>ارفع ملف الشاهد (صورة أو PDF) <span style="color:var(--danger)">*</span></label>' +
-          (_initEd.evidenceContent && _initEvType==='file' ? '<div style="margin-bottom:8px;font-size:12.5px;color:var(--muted);">ملف مرفق: <a href="'+esc(_initEd.evidenceContent)+'" target="_blank" style="color:#0F766E;">عرض الملف الحالي</a></div>' : '') +
-          '<input type="file" id="initFileInput" accept="image/*,.pdf" style="display:none;">' +
-          '<button type="button" class="btn btn-ghost btn-sm" id="initFilePickBtn" style="width:100%;border:2px dashed var(--border);border-radius:8px;padding:20px;color:var(--muted);">📎 اختر ملفاً أو اسحبه هنا<br><span style="font-size:11px;">(صورة أو PDF، حتى 20MB)</span></button>' +
-          '<div id="initFileStatus" style="font-size:12.5px;margin-top:6px;color:var(--muted);"></div>' +
-          '<input type="hidden" id="initFileUrl" value="'+esc(_initEvType==='file'?(_initEd.evidenceContent||''):'') +'">' +
-        '</div>' +
-        '<div class="field"><label>النتيجة المتوقعة</label>' +
-          '<textarea class="input" id="initExpectedOutcome" rows="2" placeholder="ما النتيجة التي تتوقع تحقيقها؟" style="resize:vertical;">'+esc(_initEd.expectedOutcome||'')+'</textarea>' +
-        '</div>' +
-        '<div class="modal-actions">' +
-          '<button class="btn btn-primary btn-block" data-action="submitInitiative" style="background:#0F766E;border-color:#0F766E;">💡 إرسال للمدير للاعتماد</button>' +
-          '<button class="btn btn-ghost btn-sm" data-action="saveInitiativeDraft">حفظ كمسودة</button>' +
-          '<button class="btn btn-ghost btn-block" data-action="closeInitiativeModal">إلغاء</button>' +
-        '</div>' +
-      '</div>' +
-    '</div>'
-  ) : '';
-
   /* — لوحة تقدم الفصل الدراسي — */
   var _tApprRate = myForms.length ? Math.round(approvedCount/myForms.length*100) : 0;
   var _tDoneTaskCount = generalTasks.filter(function(t){ return t.status==='done'; }).length;
@@ -10409,7 +10332,6 @@ async function screenTeacherTasks(){
 
   return (
     giftedModal +
-    initiativeModal +
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المعلم</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:12px;">'+esc(State.user.school)+'</div>' +
     kpiHtml +
@@ -10420,7 +10342,6 @@ async function screenTeacherTasks(){
       '<button class="tab '+(TeacherFormsUI.dashTab==='myObservations'?'active':'')+'" data-action="teacherDashTab" data-tab="myObservations">🔍 ملاحظاتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">📅 جدول متابعتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ ترشيحاتي</button>' +
-      '<button class="tab '+(TeacherFormsUI.dashTab==='myInitiatives'?'active':'')+'" data-action="teacherDashTab" data-tab="myInitiatives">💡 مبادراتي</button>' +
       (_teacherStudentProfile ? '<button class="tab '+(TeacherFormsUI.dashTab==='profile'?'active':'')+'" data-action="teacherDashTab" data-tab="profile">ملف: '+esc(_teacherStudentProfile)+'</button>' : '') +
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
@@ -10459,39 +10380,7 @@ async function screenTeacherTasks(){
         obsHtml +
       '</div>';
     })() : '') +
-    (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '') +
-    (TeacherFormsUI.dashTab==='myInitiatives' ? (function(){
-      var STATUS_CLR = { pending:'var(--pending)', approved:'var(--success)', returned:'var(--danger)', draft:'var(--muted)' };
-      var initCards = myInitiativeSubs.length === 0
-        ? '<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px;">لم تُوثَّق مبادرات تعليمية بعد.<br><button class="btn btn-primary" style="margin-top:16px;" data-action="openInitiativeModal">💡 توثيق مبادرتي الأولى</button></div>'
-        : myInitiativeSubs.map(function(s){
-            var p = s.payload||{};
-            return '<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
-              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
-                '<div style="flex:1;min-width:0;">' +
-                  '<div style="font-weight:700;font-size:14px;color:var(--text);">'+esc(p.initiativeTitle||'—')+'</div>' +
-                  '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">'+esc(p.initiativeType||'—')+'</div>' +
-                  (p.executionDate ? '<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">تاريخ التنفيذ: '+esc(p.executionDate)+'</div>' : '') +
-                  (s.status==='approved' && s.principal_note ? '<div style="font-size:12px;color:var(--success);margin-top:4px;">ملاحظة المدير: '+esc(s.principal_note)+'</div>' : '') +
-                  (s.status==='returned' && s.reviewer_comment ? '<div style="font-size:12px;color:var(--danger);margin-top:4px;">سبب الإرجاع: '+esc(s.reviewer_comment)+'</div>' : '') +
-                '</div>' +
-                '<span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span>' +
-              '</div>' +
-              '<div style="margin-top:10px;display:flex;gap:8px;">' +
-                (s.status==='draft'||s.status==='returned'
-                  ? '<button class="btn btn-ghost btn-sm" data-action="editInitiativeDraft" data-id="'+s.id+'">إكمال وإرسال</button>'
-                  : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>') +
-              '</div>' +
-            '</div>';
-          }).join('');
-      return '<div style="margin-top:4px;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">' +
-          '<div style="font-weight:700;font-size:15px;">💡 مبادراتي التعليمية ('+myInitiativeSubs.length+')</div>' +
-          '<button class="btn btn-primary btn-sm" data-action="openInitiativeModal" style="background:#0F766E;border-color:#0F766E;">+ مبادرة جديدة</button>' +
-        '</div>' +
-        initCards +
-      '</div>';
-    })() : '')
+    (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '')
   );
 }
 function bindTeacherTasks(){
@@ -10907,145 +10796,6 @@ function bindTeacherTasks(){
       await render(); bindTeacherTasks();
     }catch(e){ toast(arabicError(e)); sendGiftedBtn.disabled = false; }
   });
-
-  /* — توثيق المبادرة التعليمية — */
-  document.querySelectorAll('[data-action="openInitiativeModal"]').forEach(function(btn){
-    btn.addEventListener('click', async function(){
-      TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
-      TeacherInitiativeUI.modalOpen = true;
-      await render(); bindTeacherTasks();
-    });
-  });
-  var closeInitBtn = document.querySelector('[data-action="closeInitiativeModal"]');
-  if (closeInitBtn) closeInitBtn.addEventListener('click', async function(){
-    TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
-    await render(); bindTeacherTasks();
-  });
-  var initModalBg = document.querySelector('[data-action="closeInitiativeModalBg"]');
-  if (initModalBg) initModalBg.addEventListener('click', async function(e){
-    if (e.target === initModalBg){ TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null; await render(); bindTeacherTasks(); }
-  });
-  document.querySelectorAll('[data-action="editInitiativeDraft"]').forEach(function(btn){
-    btn.addEventListener('click', async function(){
-      var sid = btn.getAttribute('data-id');
-      var sub = myInitiativeSubs.find(function(s){ return s.id===sid; });
-      if (!sub) return;
-      TeacherInitiativeUI.editId = sid;
-      TeacherInitiativeUI.editData = sub.payload || {};
-      TeacherInitiativeUI.modalOpen = true;
-      await render(); bindTeacherTasks();
-    });
-  });
-
-  /* تغيير نوع الشاهد */
-  document.querySelectorAll('[name="initEvidenceType"]').forEach(function(radio){
-    radio.addEventListener('change', function(){
-      var lbl  = document.getElementById('initEvidenceLabel');
-      var txt  = document.getElementById('initEvidenceText');
-      var wrap = document.getElementById('initEvidenceWrap');
-      var fwrap= document.getElementById('initFileWrap');
-      if (!lbl || !txt || !wrap || !fwrap) return;
-      var isFile = this.value === 'file';
-      wrap.style.display  = isFile ? 'none' : '';
-      fwrap.style.display = isFile ? '' : 'none';
-      if (this.value === 'url'){ lbl.textContent = 'رابط Drive/OneDrive'; txt.setAttribute('placeholder','https://...'); }
-      else if (this.value === 'procedure'){ lbl.textContent = 'وصف إجراء التنفيذ'; txt.setAttribute('placeholder','اشرح خطوات تنفيذ المبادرة بالتفصيل…'); }
-      else { lbl.textContent = 'وصف الشاهد'; txt.setAttribute('placeholder','صف الدليل الذي يثبت تنفيذ المبادرة…'); }
-    });
-  });
-
-  /* رفع ملف الشاهد */
-  var initFilePickBtn = document.getElementById('initFilePickBtn');
-  var initFileInput   = document.getElementById('initFileInput');
-  if (initFilePickBtn && initFileInput){
-    initFilePickBtn.addEventListener('click', function(){ initFileInput.click(); });
-    initFileInput.addEventListener('change', async function(){
-      var file = initFileInput.files[0];
-      if (!file) return;
-      if (file.size > 20 * 1024 * 1024){ toast('حجم الملف يتجاوز 20MB.'); return; }
-      var status = document.getElementById('initFileStatus');
-      if (status) status.textContent = 'جاري الرفع…';
-      if (initFilePickBtn) initFilePickBtn.disabled = true;
-      try {
-        var url = await uploadFileToStorage(file);
-        var hiddenUrl = document.getElementById('initFileUrl');
-        if (hiddenUrl) hiddenUrl.value = url;
-        if (status) status.innerHTML = '✅ تم الرفع: <a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer" style="color:#0F766E;">عرض الملف</a>';
-        if (initFilePickBtn){ initFilePickBtn.textContent = '✅ '+file.name+' — تغيير'; initFilePickBtn.style.color='#0F766E'; }
-      } catch(e){
-        if (status) status.textContent = 'فشل الرفع: '+arabicError(e);
-      } finally {
-        if (initFilePickBtn) initFilePickBtn.disabled = false;
-      }
-    });
-  }
-
-  /* إرسال المبادرة */
-  async function _doSubmitInitiative(targetStatus){
-    var title = ((document.getElementById('initTitle')||{}).value||'').trim();
-    var type  = ((document.getElementById('initType')||{}).value||'').trim();
-    var date  = ((document.getElementById('initDate')||{}).value||'').trim();
-    if (!title){ toast('يرجى كتابة عنوان المبادرة.'); return; }
-    if (!type){  toast('يرجى اختيار نوع المبادرة.'); return; }
-    if (!date){  toast('يرجى تحديد تاريخ التنفيذ.'); return; }
-    var evType = 'description';
-    document.querySelectorAll('[name="initEvidenceType"]').forEach(function(r){ if(r.checked) evType=r.value; });
-    var evText;
-    if (evType === 'file'){
-      evText = ((document.getElementById('initFileUrl')||{}).value||'').trim();
-      if (!evText){ toast('يرجى رفع ملف الشاهد أولاً.'); return; }
-    } else {
-      evText = ((document.getElementById('initEvidenceText')||{}).value||'').trim();
-      if (!evText){ toast('يرجى إدخال الشاهد / الدليل.'); return; }
-    }
-    var payload = {
-      initiativeTitle: title,
-      initiativeType: type,
-      targetGroup: ((document.getElementById('initTargetGroup')||{}).value||'').trim(),
-      estimatedBeneficiaries: parseInt(((document.getElementById('initBeneficiaries')||{}).value||'0'),10)||0,
-      executionDate: date,
-      description: ((document.getElementById('initDesc')||{}).value||'').trim(),
-      evidenceType: evType,
-      evidenceContent: evText,
-      expectedOutcome: ((document.getElementById('initExpectedOutcome')||{}).value||'').trim()
-    };
-    try{
-      if (TeacherInitiativeUI.editId){
-        await DB.updateSubmission(TeacherInitiativeUI.editId, { payload: payload, status: targetStatus });
-      } else {
-        await DB.createSubmission({
-          form_type: 'teacherInitiative',
-          school: State.user.school,
-          created_by: State.user.id,
-          created_by_name: State.user.full_name,
-          community_id: State.user.community_id||null,
-          status: targetStatus,
-          payload: payload,
-          preparer_signature: null,
-          principal_signature: null,
-          principal_comment: ''
-        });
-      }
-      invalidateTeacherScreenData();
-      TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
-      toast(targetStatus==='pending' ? 'تم إرسال المبادرة للمدير للاعتماد.' : 'تم حفظ المسودة.');
-      TeacherFormsUI.dashTab = 'myInitiatives';
-      await render(); bindTeacherTasks();
-    }catch(e){ toast(arabicError(e)); }
-  }
-
-  var submitInitRaw = document.querySelector('[data-action="submitInitiative"]');
-  if (submitInitRaw){
-    var submitInitBtn = submitInitRaw.cloneNode(true);
-    submitInitRaw.parentNode.replaceChild(submitInitBtn, submitInitRaw);
-    submitInitBtn.addEventListener('click', async function(){ submitInitBtn.disabled=true; await _doSubmitInitiative('pending'); submitInitBtn.disabled=false; });
-  }
-  var draftInitRaw = document.querySelector('[data-action="saveInitiativeDraft"]');
-  if (draftInitRaw){
-    var draftInitBtn = draftInitRaw.cloneNode(true);
-    draftInitRaw.parentNode.replaceChild(draftInitBtn, draftInitRaw);
-    draftInitBtn.addEventListener('click', async function(){ draftInitBtn.disabled=true; await _doSubmitInitiative('draft'); draftInitBtn.disabled=false; });
-  }
 
   /* طباعة التقرير الدوري */
   const printBtn = document.querySelector('[data-action="teacherPrintReport"]');
@@ -13172,7 +12922,6 @@ async function screenEditor(){
     case 'plcSelfEval': body = renderPlcSelfEval(EditorState.data, readonly); break;
     case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly, teachers); break;
     case 'behavioralPlan': body = renderBehavioralPlan(EditorState.data, readonly, students); break;
-    case 'teacherInitiative': body = renderTeacherInitiative(EditorState.data); break;
   }
 
   const returnBox = EditorState.status==='returned' && EditorState.returnComment
