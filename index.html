@@ -2910,7 +2910,7 @@ function visibleNotifications(all, user){
     if (user.role !== 'super_admin' && n.school && n.school !== user.school) return false;
     if (n.target_type==='school') return true;
     if (n.target_type==='community'){
-      if (isPrincipal(user)) return n.school === user.school || n.school_id === user.school;
+      if (isPrincipal(user) || user.role==='admin') return n.school === user.school;
       return !!user.community_id && n.target_id===user.community_id;
     }
     if (n.target_type==='user') return n.target_id===user.id;
@@ -3377,7 +3377,7 @@ async function render(){
       /* أول تحميل — لا توجد بيانات، انتظر الجلب */
       try{
         const [freshNotif, freshComm, freshPending] = await Promise.all([
-          DB.listNotifications({ school: State.user.school }),
+          DB.listNotifications(State.user.role==='super_admin' ? {} : { school: State.user.school }),
           State.user.role==='super_admin' ? DB.listCommunities({})
             : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)) ? DB.listCommunities({ school: State.user.school })
             : Promise.resolve([]),
@@ -3391,7 +3391,7 @@ async function render(){
     } else if (needNotif || needComm || needPending){
       /* cache موجود لكن قديم — اعرض فوراً ثم حدّث في الخلفية */
       Promise.all([
-        needNotif   ? DB.listNotifications({ school: State.user.school }) : Promise.resolve(_notifCache),
+        needNotif   ? DB.listNotifications(State.user.role==='super_admin' ? {} : { school: State.user.school }) : Promise.resolve(_notifCache),
         needComm    ? (State.user.role==='super_admin' ? DB.listCommunities({})
                       : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)) ? DB.listCommunities({ school: State.user.school })
                       : Promise.resolve([])) : Promise.resolve(_commCache),
@@ -3447,7 +3447,7 @@ function topNav(){
   const unreadCount = visible.filter(function(n){ return isNotifUnread(n, State.user.id); }).length;
   const pending = State.pendingApprovals || [];
   const totalAlertCount = unreadCount + pending.length;
-  const canCompose = State.user.role==='admin' || State.user.role==='coordinator';
+  const canCompose = State.user.role==='admin' || State.user.role==='coordinator' || isPrincipal(State.user);
 
   const pendingHtml = pending.length ? (
     '<div class="notif-panel-head"><h4>بانتظار اعتمادك ('+pending.length+')</h4></div>' +
@@ -3519,7 +3519,7 @@ function topNav(){
 }
 function notifComposeModal(){
   const communities = (State.communitiesCache || []).filter(function(c){ return c.school === State.user.school; });
-  const isAdmin = State.user.role==='admin';
+  const isAdmin = State.user.role==='admin' || isPrincipal(State.user);
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
   return (
     '<div class="modal-bg" data-action="closeNotifComposeBg">' +
@@ -3536,7 +3536,7 @@ function notifComposeModal(){
             '<option value="school">كل أعضاء المدرسة</option>' +
             communities.map(function(c){ return '<option value="community:'+c.id+'">مجتمع: '+esc(c.name)+'</option>'; }).join('') +
           '</select></div>')
-          : ('<div class="field"><label>الجهة المستهدفة</label><input class="input" value="'+(myCommunity?(esc(myCommunity.name)+' (أعضاء مجتمعك المهني)'):'لا يوجد مجتمع مرتبط بحسابك')+'" disabled></div>')
+          : ('<div class="field"><label>الجهة المستهدفة</label><input class="input" value="'+(myCommunity?(esc(myCommunity.name)+' (أعضاء مجتمعك المهني)'):'— لا يوجد مجتمع مرتبط بحسابك')+'" disabled></div>' + (!myCommunity ? '<div style="font-size:12px;color:var(--danger);margin-top:-8px;margin-bottom:8px;">تواصل مع مدير النظام لتعيين مجتمع مهني لحسابك.</div>' : ''))
         ) +
         '<div class="modal-actions">' +
           '<button class="btn btn-primary btn-block" data-action="sendNotif">إرسال</button>' +
@@ -3625,7 +3625,7 @@ function bindTopNav(){
     const due = document.getElementById('ncDue').value;
     if (!title){ toast('يرجى إدخال عنوان التنبيه.'); this.disabled = false; return; }
     let target_type, target_id;
-    if (State.user.role==='admin'){
+    if (State.user.role==='admin' || isPrincipal(State.user)){
       const targetVal = document.getElementById('ncTarget').value;
       if (targetVal==='school'){ target_type='school'; target_id=null; }
       else { target_type='community'; target_id = targetVal.split(':')[1]; }
