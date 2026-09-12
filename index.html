@@ -1628,6 +1628,21 @@ const DB = {
     const found = users.find(function(u){ return u.username===username && u.password===password; });
     return found || null;
   },
+  async logLogin(user){
+    if (!isRemote() || !user || !user.id) return;
+    try {
+      await remoteFetch('login_logs', { method:'POST', body:{ user_id:user.id, username:user.username||'', role:user.role||'', school:user.school||null, logged_at:new Date().toISOString() } });
+    } catch(e) { /* silent */ }
+  },
+  async listLoginLogs(filter){
+    if (!isRemote()) return [];
+    filter = filter || {};
+    let path = 'login_logs?order=logged_at.desc&select=user_id,username,role,school,logged_at';
+    if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
+    else if (filter.user_id) path += '&user_id=eq.' + encodeURIComponent(filter.user_id);
+    const rows = await remoteFetch(path, { range: '0-199' });
+    return rows || [];
+  },
   async listSubmissions(filter){
     filter = filter || {};
     if (isRemote()){
@@ -3766,6 +3781,7 @@ function bindLogin(){
         if (user.school !== selectedSchool){ errBox.textContent='هذا الحساب لا ينتمي للمدرسة المحددة.'; errBox.style.display='block'; return; }
       }
       setUserSession(user);
+      DB.logLogin(user).catch(function(){});
       go('dashboard');
       initPWA();
     }catch(e){ errBox.textContent = e.message; errBox.style.display='block'; }
@@ -7228,13 +7244,21 @@ function bindExamAnalysis(){
 }
 
 function adminTabsHtml(){
+  const badgeCount = loginLogBadgeCount(AdminLoginLogUI.logs);
   return (
-    '<div class="tabs no-print" style="margin-bottom:20px;">' +
-      '<button class="tab '+(State.adminTab==='overview'?'active':'')+'" data-action="adminTab" data-tab="overview">📊 نظرة عامة</button>' +
-      '<button class="tab '+(State.adminTab==='users'?'active':'')+'" data-action="adminTab" data-tab="users">المستخدمون</button>' +
-      '<button class="tab '+(State.adminTab==='students'?'active':'')+'" data-action="adminTab" data-tab="students">بيانات الطلاب</button>' +
-      '<button class="tab '+(State.adminTab==='communities'?'active':'')+'" data-action="adminTab" data-tab="communities">المجتمعات المهنية</button>' +
-      '<button class="tab '+(State.adminTab==='settings'?'active':'')+'" data-action="adminTab" data-tab="settings">إعدادات النظام</button>' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">' +
+      '<div class="tabs no-print" style="margin-bottom:0;flex:1;min-width:0;">' +
+        '<button class="tab '+(State.adminTab==='overview'?'active':'')+'" data-action="adminTab" data-tab="overview">📊 نظرة عامة</button>' +
+        '<button class="tab '+(State.adminTab==='users'?'active':'')+'" data-action="adminTab" data-tab="users">المستخدمون</button>' +
+        '<button class="tab '+(State.adminTab==='students'?'active':'')+'" data-action="adminTab" data-tab="students">بيانات الطلاب</button>' +
+        '<button class="tab '+(State.adminTab==='communities'?'active':'')+'" data-action="adminTab" data-tab="communities">المجتمعات المهنية</button>' +
+        '<button class="tab '+(State.adminTab==='settings'?'active':'')+'" data-action="adminTab" data-tab="settings">إعدادات النظام</button>' +
+      '</div>' +
+      '<button class="btn btn-ghost btn-sm" data-action="openLoginLogModal" style="display:flex;align-items:center;gap:5px;white-space:nowrap;flex-shrink:0;" title="سجل الدخول">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+        'سجل الدخول' +
+        (badgeCount>0 ? '<span style="background:#ef4444;color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;line-height:1.5;">'+badgeCount+'</span>' : '') +
+      '</button>' +
     '</div>'
   );
 }
@@ -8912,11 +8936,13 @@ async function screenDashboard(){
   if (State.user.role==='teacher') return screenTeacherTasks();
   if (State.user.role==='super_admin') return screenSuperAdmin();
   if (State.user.role==='admin'){
+    const _adminTabContent = (State.adminTab==='overview' ? await screenAdminOverview() : State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : State.adminTab==='students' ? await screenAdminStudents() : await screenAdminUsers());
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير النظام</h2>' +
       '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">إدارة حسابات المنسقين والمديرين والمعلمين، والمجتمعات المهنية</div>' +
       adminTabsHtml() +
-      (State.adminTab==='overview' ? await screenAdminOverview() : State.adminTab==='communities' ? await screenAdminCommunities() : State.adminTab==='settings' ? await screenAdminSettings() : State.adminTab==='students' ? await screenAdminStudents() : await screenAdminUsers())
+      _adminTabContent +
+      (AdminLoginLogUI.open ? loginLogModalHtml(AdminLoginLogUI.logs) : '')
     );
   }
   if (State.dashTab==='community' && State.user.role==='coordinator'){
@@ -11400,6 +11426,38 @@ function bindTaskDetail(){
 
 /* ----- لوحة مدير النظام: إدارة المستخدمين ----- */
 let AdminUI = { modalOpen:false, editingId:null, presetCommunityId:null, presetSchool:'', pasteOpen:false, selectedIds:[], importCommunityId:'', userSort:'alpha', userCommunityFilter:'' };
+let AdminLoginLogUI = { open:false, logs:[] };
+const LS_LOGIN_LOG_SEEN = 'nasmo_login_log_seen_at';
+function loginLogSeenAt(){ try{ return localStorage.getItem(LS_LOGIN_LOG_SEEN)||''; }catch(e){ return ''; } }
+function setLoginLogSeen(){ try{ localStorage.setItem(LS_LOGIN_LOG_SEEN, new Date().toISOString()); }catch(e){} }
+function loginLogBadgeCount(logs){
+  const seen = loginLogSeenAt();
+  if (!seen) return logs.length;
+  return logs.filter(function(l){ return l.logged_at > seen; }).length;
+}
+function loginLogModalHtml(logs){
+  const count = loginLogBadgeCount(logs);
+  const rows = logs.map(function(l){
+    return '<tr><td><b>'+esc(l.username||'—')+'</b></td><td><span class="badge approved">'+esc(ROLE_LABEL[l.role]||l.role||'—')+'</span></td><td>'+esc(l.school||'—')+'</td><td style="color:var(--muted);font-size:12px;">'+fmtDateTime(l.logged_at)+'</td></tr>';
+  }).join('');
+  return (
+    '<div class="modal-bg" data-action="closeLoginLogModal">' +
+      '<div class="modal-box" style="max-width:680px;" onclick="event.stopPropagation()">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">' +
+          '<h3 style="margin:0;">سجل الدخول'+(count>0?' <span style="background:#ef4444;color:#fff;font-size:11px;border-radius:999px;padding:1px 7px;margin-right:4px;">'+count+' جديد</span>':'')+'</h3>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn btn-ghost btn-sm" data-action="clearLoginLogBadge">تصفير العداد</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="closeLoginLogModal">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
+          '<thead><tr><th>اسم المستخدم</th><th>الصلاحية</th><th>المدرسة</th><th>وقت الدخول</th></tr></thead>' +
+          '<tbody>'+(rows||'<tr class="empty-row"><td colspan="4">لا توجد سجلات بعد.</td></tr>')+'</tbody>' +
+        '</table></div></div>' +
+      '</div>' +
+    '</div>'
+  );
+}
 /* كاش بيانات تبويبات الأدمن */
 let _adminUsersCache = null, _adminUsersCacheAt = 0;
 let _adminCommCache = null, _adminCommCacheAt = 0;
@@ -12069,6 +12127,12 @@ async function screenAdminOverview(){
     submissions = await DB.listSubmissions({ school: State.user.school });
     _adminSubmCache = submissions; _adminSubmCacheAt = Date.now();
   }
+  try {
+    if (!AdminLoginLogUI.logs.length || (Date.now() - (AdminLoginLogUI._fetchedAt||0)) > 60000){
+      AdminLoginLogUI.logs = await DB.listLoginLogs({ school: State.user.school });
+      AdminLoginLogUI._fetchedAt = Date.now();
+    }
+  } catch(e) {}
 
   var totalUsers = users.length;
   var teacherCount  = users.filter(function(u){ return u.role==='teacher'; }).length;
@@ -14619,7 +14683,7 @@ function bindGlobalAction(el){
   else if (action==='openView'){ el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); }); }
   else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
   else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
-  else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); go('dashboard'); }); }
+  else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); AdminLoginLogUI.open=false; go('dashboard'); }); }
   else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
   else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
   else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('examAnalysis'); }); }
@@ -14631,6 +14695,14 @@ function bindGlobalAction(el){
     toast('تم حذف المسودة.');
     render();
   }); }
+  else if (action==='openLoginLogModal'){ el.addEventListener('click', async function(){
+    if (!AdminLoginLogUI.logs.length){
+      try { AdminLoginLogUI.logs = await DB.listLoginLogs({ school: State.user.school }); AdminLoginLogUI._fetchedAt = Date.now(); } catch(e) {}
+    }
+    AdminLoginLogUI.open = true; render(); bindDashboard();
+  }); }
+  else if (action==='closeLoginLogModal'){ el.addEventListener('click', function(){ AdminLoginLogUI.open=false; render(); bindDashboard(); }); }
+  else if (action==='clearLoginLogBadge'){ el.addEventListener('click', function(){ setLoginLogSeen(); AdminLoginLogUI.open=false; render(); bindDashboard(); }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
