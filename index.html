@@ -6437,16 +6437,16 @@ function openPlanForStudent(formType, student){
   const today = new Date().toISOString().slice(0,10);
   let data;
   if (formType === 'individualAgreement'){
-    data = { studentName: student.full_name, grade: student.grade||'', section: student.section||'', sessions: [blankSession()], parentSuggested: '' };
+    data = { studentName: student.full_name, student_id: student.id||'', grade: student.grade||'', section: student.section||'', sessions: [blankSession()], parentSuggested: '' };
   } else if (formType === 'groupPlan'){
     const row = blankStudentRow();
-    row.name = student.full_name;
+    row.name = student.full_name; row.student_id = student.id||'';
     data = { school: State.user.school, grade: student.grade||'', section: student.section||'', subject:'', date:today, students:[row], teacherOpinion:'' };
   } else if (formType === 'behavioralPlan'){
     data = blankData(formType);
     data.grade = student.grade||'';
     data.section = student.section||'';
-    if (data.behaviorStudents && data.behaviorStudents.length) data.behaviorStudents[0].name = student.full_name;
+    if (data.behaviorStudents && data.behaviorStudents.length){ data.behaviorStudents[0].name = student.full_name; data.behaviorStudents[0].student_id = student.id||''; }
   } else {
     data = blankData(formType);
   }
@@ -9244,12 +9244,14 @@ async function screenCoordinatorMyStudents(){
   });
 
   const myForms = subs.filter(function(s){ return s.created_by===State.user.id; });
-  const formsByStudent = {};
+  const formsByStudent = {}, formsByStudentId = {};
   myForms.forEach(function(s){
+    function markId(id){ if (!id) return; if (!formsByStudentId[id]) formsByStudentId[id]=[]; formsByStudentId[id].push(s); }
     function mark(name){ if (!name) return; if (!formsByStudent[name]) formsByStudent[name]=[]; formsByStudent[name].push(s); }
+    markId(s.payload.student_id);
     if (s.payload.studentName) mark(s.payload.studentName);
-    (s.payload.students||[]).forEach(function(st){ mark(st.name); });
-    (s.payload.behaviorStudents||[]).forEach(function(st){ mark(st.name); });
+    (s.payload.students||[]).forEach(function(st){ markId(st.student_id); mark(st.name); });
+    (s.payload.behaviorStudents||[]).forEach(function(st){ markId(st.student_id); mark(st.name); });
   });
 
   const myAssignedTasks = rawTasks.filter(function(t){ return t.assigned_to===State.user.id; });
@@ -9260,7 +9262,7 @@ async function screenCoordinatorMyStudents(){
   (pendingRecs||[]).forEach(function(r){ recsByStudentName[r.student_name] = r; });
 
   const studentRows = myStudents.map(function(s){
-    const formsForSt = formsByStudent[s.full_name] || [];
+    const formsForSt = formsByStudentId[s.id] || formsByStudent[s.full_name] || [];
     const badges = formsForSt.map(function(f){
       const def = formDef(f.form_type);
       return '<span class="badge '+esc(f.status)+'" style="font-size:10.5px;margin-left:3px;">'+(def?def.title.slice(0,6)+'…':esc(f.form_type))+'</span>';
@@ -9431,6 +9433,7 @@ let TeacherInitiativeUI = { modalOpen: false, editId: null };
 let GiftedReviewUI = { modalOpen: false, report: null };
 let _teacherDemoLessonsCache = [];
 let _teacherStudentProfile = null; /* اسم الطالب المفتوح في ملف الطالب */
+let _teacherStudentProfileId = null; /* معرّف الطالب المفتوح في ملف الطالب */
 let _teacherAllStudentsCache = [];
 let _teacherGiftedStudentsCache = [];
 let _teacherReferralExpanded = null; /* اسم الطالب الذي فُتح ملف إحالاته */
@@ -9603,13 +9606,15 @@ function teacherWeekAgendaHtml(sessTasks, generalTasks, rawVisits, demoLessonTas
 }
 
 function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents, giftedReports){
+  var sid = _teacherStudentProfileId || null;
   var stForms = myForms.filter(function(s){
+    if (sid && (s.payload.student_id===sid || (s.payload.students||[]).some(function(st){ return st.student_id===sid; }) || (s.payload.behaviorStudents||[]).some(function(st){ return st.student_id===sid; }))) return true;
     return s.payload.studentName===studentName ||
       (s.payload.students||[]).some(function(st){ return st.name===studentName; }) ||
       (s.payload.behaviorStudents||[]).some(function(st){ return st.name===studentName; });
   });
-  var stSessions = sessTasks.filter(function(t){ return t.sub.payload.studentName===studentName; });
-  var stRec = allStudents.find(function(s){ return s.full_name===studentName; });
+  var stSessions = sessTasks.filter(function(t){ return (sid && t.sub.payload.student_id===sid) || t.sub.payload.studentName===studentName; });
+  var stRec = sid ? (allStudents.find(function(s){ return s.id===sid; }) || allStudents.find(function(s){ return s.full_name===studentName; })) : allStudents.find(function(s){ return s.full_name===studentName; });
   var notes = teacherGetNotesItems(studentName);
   var doneSess = stSessions.filter(function(t){ return !!t.sess.sig; }).length;
   var hasIndividualPlan = stForms.some(function(f){ return f.form_type==='individualAgreement'; });
@@ -9883,7 +9888,7 @@ async function screenTeacherTasks(){
           '<b style="flex:1;">'+esc(s.payload.studentName||'—')+'</b>' +
           '<span style="color:var(--danger);font-size:12px;">'+daysSince+' يوم بلا جلسة</span>' +
           '<span style="color:var(--muted);font-size:12px;">'+remaining+' جلسة متبقية</span>' +
-          '<button class="btn btn-ghost btn-sm" data-action="openStudentProfile" data-name="'+esc(s.payload.studentName||'')+'">فتح الملف</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="openStudentProfile" data-name="'+esc(s.payload.studentName||'')+'" data-id="'+esc(s.payload.student_id||'')+'">فتح الملف</button>' +
         '</div>';
       }).join('') +
     '</div>'
@@ -9944,7 +9949,7 @@ async function screenTeacherTasks(){
         '<td>'+esc(s.section||s.student_section||'—')+'</td>' +
         '<td>'+(badges||'<span style="color:var(--muted);font-size:11.5px;">لا يوجد</span>')+'</td>' +
         '<td style="min-width:120px;">'+sessBar+'</td>' +
-        '<td><button class="btn btn-ghost btn-sm" data-action="openStudentProfile" data-name="'+esc(s.full_name)+'">ملف</button></td>' +
+        '<td><button class="btn btn-ghost btn-sm" data-action="openStudentProfile" data-name="'+esc(s.full_name)+'" data-id="'+esc(s.id||'')+'">ملف</button></td>' +
       '</tr>'
     );
   }).join('');
@@ -10531,6 +10536,7 @@ function bindTeacherTasks(){
   document.querySelectorAll('[data-action="openStudentProfile"]').forEach(function(el){
     el.addEventListener('click', async function(){
       _teacherStudentProfile = el.getAttribute('data-name');
+      _teacherStudentProfileId = el.getAttribute('data-id') || null;
       invalidateTeacherScreenData();
       TeacherFormsUI.dashTab = 'profile';
       await render(); bindTeacherTasks();
@@ -10618,7 +10624,7 @@ function bindTeacherTasks(){
   const profileBackBtn = document.querySelector('[data-action="teacherProfileBack"]');
   if (profileBackBtn) profileBackBtn.addEventListener('click', async function(){
     TeacherFormsUI.dashTab = 'main';
-    _teacherStudentProfile = null;
+    _teacherStudentProfile = null; _teacherStudentProfileId = null;
     invalidateTeacherScreenData();
     await render(); bindTeacherTasks();
   });
@@ -14274,7 +14280,10 @@ function bindEditor(){
   if (confirmStudentPickBtn) confirmStudentPickBtn.addEventListener('click', function(){
     const list = EditorState.studentPickList;
     const newRows = EditorState.studentPickSelected.map(function(name){
-      const row = defaultRowFor(list); row.name = name; return row;
+      const row = defaultRowFor(list); row.name = name;
+      const stObj = (EditorState.students||[]).find(function(s){ return s.full_name===name; });
+      if (stObj) row.student_id = stObj.id||'';
+      return row;
     });
     EditorState.data[list] = (EditorState.data[list]||[]).concat(newRows);
     closeStudentPick();
