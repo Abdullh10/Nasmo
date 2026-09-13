@@ -1093,20 +1093,27 @@ function authEmailFor(username){ return username.trim().toLowerCase() + '@nasmo.
 function persistAuth(){ try{ localStorage.setItem('dtd_auth', JSON.stringify(AUTH)); }catch(e){} }
 function loadAuth(){ try{ const a = JSON.parse(localStorage.getItem('dtd_auth')); if (a) AUTH = a; }catch(e){} }
 function clearAuth(){ AUTH = { accessToken:null, refreshToken:null }; try{ localStorage.removeItem('dtd_auth'); }catch(e){} }
+let _refreshPromise = null;
 async function refreshAuthToken(){
   if (!AUTH.refreshToken) return false;
-  try{
-    const res = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", {
-      method: "POST",
-      headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: AUTH.refreshToken })
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
-    persistAuth();
-    return true;
-  }catch(e){ return false; }
+  /* singleton — إذا التجديد قيد التنفيذ، انتظر نفس الوعد بدل إرسال طلب جديد */
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = (async function(){
+    try{
+      const res = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", {
+        method: "POST",
+        headers: { "apikey": CONFIG.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: AUTH.refreshToken })
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
+      persistAuth();
+      return true;
+    }catch(e){ return false; }
+    finally{ _refreshPromise = null; }
+  })();
+  return _refreshPromise;
 }
 
 const LS_FC = 'dtd_fc_';
@@ -1618,6 +1625,7 @@ const DB = {
       }
       const data = await res.json();
       AUTH.accessToken = data.access_token; AUTH.refreshToken = data.refresh_token;
+      persistAuth();
       try{
         const rows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(data.user.id));
         if (!rows || !rows[0]) { clearAuth(); throw new Error('تم تسجيل الدخول، لكن لا يوجد ملف مستخدم (profile) مطابق في قاعدة البيانات.'); }
