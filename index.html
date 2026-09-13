@@ -12290,7 +12290,7 @@ async function screenAdminUsers(){
         '<td>'+(comm?esc(comm.name):'<span style="color:var(--muted);">—</span>')+'</td>' +
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="editUser" data-id="'+u.id+'">تعديل</button>' +
-          (canDelete ? '<button class="btn btn-danger btn-sm" data-action="deleteUser" data-id="'+u.id+'">حذف</button>' : '') +
+          (canDelete ? '<button class="btn btn-danger btn-sm" data-action="deleteUser" data-id="'+u.id+'" data-name="'+esc(u.full_name||u.username||'')+'">حذف</button>' : '') +
         '</td>' +
       '</tr>'
     );
@@ -12404,48 +12404,79 @@ function userModal(users, communities){
     '</div>'
   );
 }
-function showDeleteUserModal(userId, onDone){
+function showDeleteUserModal(userId, onDone, userName){
   const existing = document.getElementById('deleteUserModal');
   if (existing) existing.remove();
   const overlay = document.createElement('div');
   overlay.id = 'deleteUserModal';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:16px;';
-  overlay.innerHTML =
-    '<div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:420px;max-width:95vw;direction:rtl;max-height:calc(100dvh - 32px);overflow-y:auto;margin:auto;">' +
-      '<h3 style="font-size:16px;font-weight:700;margin-bottom:8px;color:var(--danger);">⚠ حذف المستخدم</h3>' +
-      '<p style="font-size:13px;color:var(--text);margin-bottom:20px;line-height:1.6;">اختر نوع الحذف — لا يمكن التراجع عن أي منهما:</p>' +
-      '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">' +
-        '<button id="delAccountOnly" class="btn btn-gold" style="justify-content:flex-start;text-align:right;padding:12px 16px;">' +
-          '<div><div style="font-weight:700;font-size:14px;">حذف الحساب فقط</div>' +
-          '<div style="font-size:12px;opacity:.8;margin-top:2px;">تبقى النماذج والمهام والبيانات التاريخية — يُزال الارتباط بالحساب فقط</div></div>' +
-        '</button>' +
-        '<button id="delEverything" class="btn btn-danger" style="justify-content:flex-start;text-align:right;padding:12px 16px;">' +
-          '<div><div style="font-weight:700;font-size:14px;">حذف الحساب وجميع البيانات</div>' +
-          '<div style="font-size:12px;opacity:.8;margin-top:2px;">يمسح النماذج والمهام والأهداف والملفات والحالات الإرشادية كلياً</div></div>' +
-        '</button>' +
-      '</div>' +
-      '<button id="delCancel" class="btn btn-ghost btn-block">إلغاء</button>' +
-    '</div>';
-  document.body.appendChild(overlay);
-  async function doDelete(purge){
-    overlay.remove();
-    try{
-      await DB.deleteUser(userId, purge);
-      toast(purge ? 'تم حذف الحساب وجميع بياناته.' : 'تم حذف الحساب. البيانات التاريخية محفوظة.');
-      invalidateAdminCache();
-      if (onDone) onDone();
-    }catch(e){ toast('فشل الحذف: ' + e.message); }
+
+  function renderStep1(){
+    overlay.innerHTML =
+      '<div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:420px;max-width:95vw;direction:rtl;max-height:calc(100dvh - 32px);overflow-y:auto;margin:auto;">' +
+        '<h3 style="font-size:16px;font-weight:700;margin-bottom:8px;color:var(--danger);">⚠ حذف المستخدم</h3>' +
+        (userName ? '<p style="font-size:13px;font-weight:600;margin-bottom:6px;">'+esc(userName)+'</p>' : '') +
+        '<p style="font-size:13px;color:var(--text);margin-bottom:20px;line-height:1.6;">اختر نوع الحذف — لا يمكن التراجع عن أي منهما:</p>' +
+        '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">' +
+          '<button id="delAccountOnly" class="btn btn-gold" style="justify-content:flex-start;text-align:right;padding:12px 16px;">' +
+            '<div><div style="font-weight:700;font-size:14px;">حذف الحساب فقط</div>' +
+            '<div style="font-size:12px;opacity:.8;margin-top:2px;">تبقى النماذج والمهام والبيانات التاريخية — يُزال الارتباط بالحساب فقط</div></div>' +
+          '</button>' +
+          '<button id="delEverything" class="btn btn-danger" style="justify-content:flex-start;text-align:right;padding:12px 16px;">' +
+            '<div><div style="font-weight:700;font-size:14px;">حذف الحساب وجميع البيانات</div>' +
+            '<div style="font-size:12px;opacity:.8;margin-top:2px;">يمسح النماذج والمهام والأهداف والملفات والحالات الإرشادية كلياً</div></div>' +
+          '</button>' +
+        '</div>' +
+        '<button id="delCancel" class="btn btn-ghost btn-block">إلغاء</button>' +
+      '</div>';
+    document.getElementById('delAccountOnly').addEventListener('click', function(){ renderStep2(false); });
+    document.getElementById('delEverything').addEventListener('click', function(){ renderStep2(true); });
+    document.getElementById('delCancel').addEventListener('click', function(){ overlay.remove(); });
   }
-  document.getElementById('delAccountOnly').addEventListener('click', function(){
-    if (!confirm('هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع.')) return;
-    doDelete(false);
-  });
-  document.getElementById('delEverything').addEventListener('click', function(){
-    if (!confirm('هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع.')) return;
-    if (!confirm('سيُحذف كل شيء نهائياً بلا رجعة. متأكد؟')) return;
-    doDelete(true);
-  });
-  document.getElementById('delCancel').addEventListener('click', function(){ overlay.remove(); });
+
+  function renderStep2(purge){
+    const label = purge ? 'حذف الحساب وجميع البيانات' : 'حذف الحساب فقط';
+    const color = purge ? 'var(--danger)' : '#b45309';
+    overlay.innerHTML =
+      '<div style="background:var(--surface);border-radius:16px;padding:28px 24px;width:420px;max-width:95vw;direction:rtl;max-height:calc(100dvh - 32px);overflow-y:auto;margin:auto;">' +
+        '<h3 style="font-size:16px;font-weight:700;margin-bottom:8px;color:'+color+';">تأكيد الحذف النهائي</h3>' +
+        (userName ? '<p style="font-size:13px;font-weight:600;margin-bottom:4px;">'+esc(userName)+'</p>' : '') +
+        '<p style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">النوع: '+label+'</p>' +
+        '<div style="background:rgba(239,68,68,.08);border:1.5px solid #ef4444;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13px;line-height:1.6;">' +
+          '⚠ هذا الإجراء <b>لا يمكن التراجع عنه</b>. اكتب كلمة <b>حذف</b> بالعربية في الحقل أدناه للتأكيد.' +
+        '</div>' +
+        '<div class="field" style="margin-bottom:18px;">' +
+          '<label style="font-size:13px;">اكتب كلمة <b>حذف</b> للتأكيد</label>' +
+          '<input id="delConfirmInput" class="input" placeholder="حذف" autocomplete="off" style="margin-top:6px;text-align:center;font-size:16px;letter-spacing:3px;">' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;">' +
+          '<button id="delConfirmBtn" class="btn '+(purge?'btn-danger':'btn-gold')+' btn-block" disabled>تأكيد الحذف</button>' +
+          '<button id="delBackBtn" class="btn btn-ghost btn-block">رجوع</button>' +
+        '</div>' +
+      '</div>';
+    const input = document.getElementById('delConfirmInput');
+    const confirmBtn = document.getElementById('delConfirmBtn');
+    input.addEventListener('input', function(){
+      const match = input.value.trim() === 'حذف';
+      confirmBtn.disabled = !match;
+      confirmBtn.style.opacity = match ? '1' : '0.45';
+    });
+    input.focus();
+    confirmBtn.addEventListener('click', async function(){
+      if (input.value.trim() !== 'حذف') return;
+      overlay.remove();
+      try{
+        await DB.deleteUser(userId, purge);
+        toast(purge ? 'تم حذف الحساب وجميع بياناته.' : 'تم حذف الحساب. البيانات التاريخية محفوظة.');
+        invalidateAdminCache();
+        if (onDone) onDone();
+      }catch(e){ toast('فشل الحذف: ' + e.message); }
+    });
+    document.getElementById('delBackBtn').addEventListener('click', renderStep1);
+  }
+
+  document.body.appendChild(overlay);
+  renderStep1();
   overlay.addEventListener('click', function(e){ if (e.target===overlay) overlay.remove(); });
 }
 
@@ -12456,7 +12487,7 @@ function bindAdminUsers(){
     el.addEventListener('click', function(){ AdminUI.modalOpen=true; AdminUI.editingId=el.getAttribute('data-id'); AdminUI.presetCommunityId=null; render(); bindAdminUsers(); });
   });
   document.querySelectorAll('[data-action="deleteUser"]').forEach(function(el){
-    el.addEventListener('click', function(){ showDeleteUserModal(el.getAttribute('data-id'), function(){ render(); bindAdminUsers(); }); });
+    el.addEventListener('click', function(){ showDeleteUserModal(el.getAttribute('data-id'), function(){ render(); bindAdminUsers(); }, el.getAttribute('data-name')||''); });
   });
   const closeBtn = document.querySelector('[data-action="closeModal"]');
   if (closeBtn) closeBtn.addEventListener('click', function(){ AdminUI.modalOpen=false; AdminUI.presetCommunityId=null; render(); bindAdminUsers(); });
@@ -12594,7 +12625,8 @@ function bindAdminUsers(){
   if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
     const ids = AdminUI.selectedIds.slice();
     if (!ids.length) return;
-    if (!confirm('هل تريد حذف '+ids.length+' مستخدمًا المحددين؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    const confirmWord = window.prompt('ستحذف '+ids.length+' مستخدمًا نهائياً. لا يمكن التراجع.\n\nاكتب كلمة "حذف" للتأكيد:');
+    if (!confirmWord || confirmWord.trim() !== 'حذف') { if (confirmWord !== null) toast('الحذف ملغى — الكلمة غير صحيحة.'); return; }
     bulkDeleteBtn.disabled = true;
     bulkDeleteBtn.textContent = 'جاري الحذف…';
     try{
