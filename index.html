@@ -14602,7 +14602,7 @@ async function screenView(id){
         body +
         '<div class="sig-footer">' +
           '<div><div class="who">توقيع المُعد: '+esc(s.created_by_name)+'</div>'+buildSignaturePad('v_prep', s.preparer_signature, true)+'</div>' +
-          '<div><div class="who">اعتماد مدير المدرسة</div>'+buildSignaturePad('v_principal', s.principal_signature, true)+(s.approved_at?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">اعتُمد بتاريخ '+fmtDateTime(s.approved_at)+'</div>':'')+'</div>' +
+          '<div><div class="who">'+(s.status==='approved' && s.principal_comment ? esc(s.principal_comment) : 'اعتماد مدير المدرسة')+'</div>'+buildSignaturePad('v_principal', s.principal_signature, true)+(s.approved_at?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">اعتُمد بتاريخ '+fmtDateTime(s.approved_at)+'</div>':'')+'</div>' +
         '</div>' +
       '</div>' +
       evalBlock +
@@ -14688,7 +14688,7 @@ async function screenReview(id){
         '<div class="sig-footer"><div><div class="who">توقيع المُعد</div>'+buildSignaturePad('rv_prep', s.preparer_signature, true)+'</div></div>' +
       '</div>' +
       '<div class="review-panel no-print">' +
-        '<h3>اعتماد مدير المدرسة</h3>' +
+        '<h3>'+(State.user.role==='vice_principal' ? 'اعتماد بالنيابة عن مدير المدرسة' : 'اعتماد مدير المدرسة')+'</h3>' +
         '<div class="review-grid">' +
           '<div class="field">' +
             '<label style="margin-bottom:8px;display:block;">قائمة المراجعة الإشرافية</label>' +
@@ -14701,7 +14701,7 @@ async function screenReview(id){
           '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
           '<div class="field"><label>التقييم عند الاعتماد (من 0 إلى 100)</label>'+ratingInputHtml('reviewRating', s.principal_rating)+'</div>' +
           '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
-          '<div class="field"><label>التوقيع الإلكتروني لمدير المدرسة</label>' + buildSignaturePad('approve', null, false) + '</div>' +
+          '<div class="field"><label>'+(State.user.role==='vice_principal' ? 'التوقيع الإلكتروني (بالنيابة عن مدير المدرسة)' : 'التوقيع الإلكتروني لمدير المدرسة')+'</label>' + buildSignaturePad('approve', null, false) + '</div>' +
           '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
           '<button class="btn btn-danger btn-block" data-action="returnSub">إرجاع للتعديل</button>' +
         '</div>' +
@@ -14726,7 +14726,10 @@ function bindReview(){
     try{ principalSigUrl = await uploadSignatureToStorage(pad.toDataUrl()); }
     catch(sigErr){ toast('تعذّر رفع التوقيع: ' + (sigErr.message||'')); this.disabled = false; return; }
     try{
-      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
+      const _approverNote = State.user.role==='vice_principal'
+        ? 'بالنيابة عن مدير المدرسة (' + (State.user.full_name||State.user.name||'') + ')'
+        : 'اعتمد: ' + (State.user.full_name||State.user.name||'');
+      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment: _approverNote, principal_rating: rating, principal_note: note||null });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); invalidateNotifCache(); }catch(e){}
