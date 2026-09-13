@@ -9283,6 +9283,12 @@ async function screenCoordinatorMyStudents(){
     return (a.grade||a.student_grade||'').localeCompare(b.grade||b.student_grade||'','ar') || (a.full_name||'').localeCompare(b.full_name||'','ar');
   });
 
+  const coordStGrades = myStudents.map(function(s){ return s.grade||s.student_grade||''; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const coordStSections = myStudents.map(function(s){ return s.section||s.student_section||''; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  let filteredCoordStudents = myStudents;
+  if (TeacherFormsUI.studentGradeFilter) filteredCoordStudents = filteredCoordStudents.filter(function(s){ return (s.grade||s.student_grade||'')===TeacherFormsUI.studentGradeFilter; });
+  if (TeacherFormsUI.studentSectionFilter) filteredCoordStudents = filteredCoordStudents.filter(function(s){ return (s.section||s.student_section||'')===TeacherFormsUI.studentSectionFilter; });
+
   const myForms = subs.filter(function(s){ return s.created_by===State.user.id; });
   const formsByStudent = {}, formsByStudentId = {};
   myForms.forEach(function(s){
@@ -9301,7 +9307,7 @@ async function screenCoordinatorMyStudents(){
   const recsByStudentName = {};
   (pendingRecs||[]).forEach(function(r){ recsByStudentName[r.student_name] = r; });
 
-  const studentRows = myStudents.map(function(s){
+  const studentRows = filteredCoordStudents.map(function(s){
     const formsForSt = formsByStudentId[s.id] || formsByStudent[s.full_name] || [];
     const badges = formsForSt.map(function(f){
       const def = formDef(f.form_type);
@@ -9378,9 +9384,20 @@ async function screenCoordinatorMyStudents(){
     '</div>' +
     (TeacherFormsUI.studentsCollapsed ? '' :
       (myStudents.length ? (
-        '<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">' +
           '<button class="btn btn-primary btn-sm" data-action="goExamAnalysis">تحليل اختبار</button>' +
           '<button class="btn btn-ghost btn-sm" data-action="coordGoGroupPlan">خطة علاجية جماعية</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">' +
+          '<select id="coordStGrade" class="input" style="max-width:150px;">' +
+            '<option value="">— كل الصفوف —</option>' +
+            coordStGrades.map(function(g){ return '<option value="'+esc(g)+'"'+(TeacherFormsUI.studentGradeFilter===g?' selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+          '</select>' +
+          '<select id="coordStSection" class="input" style="max-width:130px;">' +
+            '<option value="">— كل الشعب —</option>' +
+            coordStSections.map(function(sec){ return '<option value="'+esc(sec)+'"'+(TeacherFormsUI.studentSectionFilter===sec?' selected':'')+'>'+esc(sec)+'</option>'; }).join('') +
+          '</select>' +
+          '<span style="color:var(--muted);font-size:12px;">'+filteredCoordStudents.length+' / '+myStudents.length+' طالب</span>' +
         '</div>' +
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
           '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
@@ -9397,6 +9414,10 @@ function bindCoordinatorMyStudents(){
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
     el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); });
   });
+  var coordGradeEl = document.getElementById('coordStGrade');
+  if (coordGradeEl) coordGradeEl.addEventListener('change', async function(){ TeacherFormsUI.studentGradeFilter = this.value; await render(); });
+  var coordSectionEl = document.getElementById('coordStSection');
+  if (coordSectionEl) coordSectionEl.addEventListener('change', async function(){ TeacherFormsUI.studentSectionFilter = this.value; await render(); });
   document.querySelectorAll('[data-action="openTaskDetail"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
   });
