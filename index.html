@@ -2343,7 +2343,11 @@ const DB = {
   async bulkDeleteStudents(ids){
     if (!ids || !ids.length) return true;
     if (isRemote()){
-      await remoteFetch('students?id=in.(' + ids.map(encodeURIComponent).join(',') + ')', { method:'DELETE' });
+      const CHUNK = 100;
+      for (let i = 0; i < ids.length; i += CHUNK){
+        const chunk = ids.slice(i, i + CHUNK);
+        await remoteFetch('students?id=in.(' + chunk.map(encodeURIComponent).join(',') + ')', { method:'DELETE', timeout: 30000 });
+      }
       return true;
     }
     let list = JSON.parse(localStorage.getItem(LS_STUDENTS) || '[]');
@@ -13089,13 +13093,23 @@ function bindAdminStudents(){
   if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', async function(){
     const ids = AdminStudentUI.selectedIds.slice();
     if (!ids.length) return;
-    if (!confirm('هل تريد حذف '+ids.length+' طالبًا محددًا؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    const confirmWord = window.prompt('ستحذف '+ids.length+' طالبًا نهائياً. لا يمكن التراجع.\n\nاكتب كلمة "حذف" للتأكيد:');
+    if (!confirmWord || confirmWord.trim() !== 'حذف') { if (confirmWord !== null) toast('الحذف ملغى — الكلمة غير صحيحة.'); return; }
+    bulkDeleteBtn.disabled = true;
+    const CHUNK = 100;
+    const total = ids.length;
+    let deleted = 0;
     try{
-      await DB.bulkDeleteStudents(ids);
+      for (let i = 0; i < ids.length; i += CHUNK){
+        const chunk = ids.slice(i, i + CHUNK);
+        await remoteFetch('students?id=in.(' + chunk.map(encodeURIComponent).join(',') + ')', { method:'DELETE', timeout: 30000 });
+        deleted += chunk.length;
+        bulkDeleteBtn.textContent = 'جارٍ الحذف… ' + deleted + '/' + total;
+      }
       invalidateStudentRosterData(); invalidateTeacherScreenData(); invalidateAdminCache();
-      toast('تم حذف '+ids.length+' طالبًا.');
+      toast('تم حذف '+total+' طالبًا بنجاح.');
       AdminStudentUI.selectedIds = []; render(); bindAdminStudents();
-    }catch(e){ toast(arabicError(e)); }
+    }catch(e){ toast(arabicError(e)); bulkDeleteBtn.disabled = false; bulkDeleteBtn.textContent = 'حذف المحددين'; }
   });
 
   const openAssignBtn = document.querySelector('[data-action="openAdminStudentAssign"]');
