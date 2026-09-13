@@ -1651,6 +1651,10 @@ const DB = {
     const rows = await remoteFetch(path, { range: '0-199' });
     return rows || [];
   },
+  async deleteLoginLogs(school){
+    if (!isRemote()) return;
+    await remoteFetch('login_logs?school=eq.' + encodeURIComponent(school), { method:'DELETE' });
+  },
   async listSubmissions(filter){
     filter = filter || {};
     if (isRemote()){
@@ -14782,7 +14786,19 @@ function bindGlobalAction(el){
     AdminLoginLogUI.open = true; render(); bindDashboard();
   }); }
   else if (action==='closeLoginLogModal'){ el.addEventListener('click', function(){ AdminLoginLogUI.open=false; render(); bindDashboard(); }); }
-  else if (action==='clearLoginLogBadge'){ el.addEventListener('click', function(){ setLoginLogSeen(); AdminLoginLogUI.open=false; render(); bindDashboard(); }); }
+  else if (action==='clearLoginLogBadge'){ el.addEventListener('click', async function(){
+    if (!confirm('هل تريد حذف جميع سجلات الدخول نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+    this.disabled = true;
+    try{
+      await DB.deleteLoginLogs(State.user.school);
+      AdminLoginLogUI.logs = [];
+      AdminLoginLogUI._fetchedAt = Date.now();
+      setLoginLogSeen();
+      toast('تم حذف سجلات الدخول.');
+    }catch(e){ toast(arabicError(e)); }
+    finally{ this.disabled = false; }
+    AdminLoginLogUI.open = false; render(); bindDashboard();
+  }); }
 }
 
 /* ---------------------- نقطة الانطلاق ---------------------- */
