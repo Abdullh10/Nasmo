@@ -4509,8 +4509,8 @@ function taskComposeModal(teachers){
 }
 function bindCoordinatorTasks(){
   const newBtn = document.querySelector('[data-action="newTask"]');
-  if (newBtn) newBtn.addEventListener('click', async function(){ TaskUI.modalOpen = true; await render(); bindCoordinatorTasks(); });
-  const closeModal = async function(){ TaskUI.modalOpen = false; await render(); bindCoordinatorTasks(); };
+  if (newBtn) newBtn.addEventListener('click', async function(){ TaskUI.modalOpen = true; await render(); });
+  const closeModal = async function(){ TaskUI.modalOpen = false; await render(); };
   const closeBtn = document.querySelector('[data-action="closeTaskModal"]');
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   const closeBg = document.querySelector('[data-action="closeTaskModalBg"]');
@@ -4536,7 +4536,7 @@ function bindCoordinatorTasks(){
       try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:teacherId, type:'general', title:'تم تكليفك بمهمة جديدة: '+title, body:(description||title) }); invalidateNotifCache(); }catch(e){}
       toast('تم إرسال المهمة إلى المعلم.');
       TaskUI.modalOpen = false;
-      await render(); bindCoordinatorTasks();
+      await render();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="viewTask"]').forEach(function(el){
@@ -4545,7 +4545,7 @@ function bindCoordinatorTasks(){
   document.querySelectorAll('[data-action="deleteTask"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه المهمة نهائيًا؟')) return;
-      try{ await DB.deleteTask(el.getAttribute('data-id')); invalidatePendingCache(); invalidateAllScreenCaches(); toast('تم حذف المهمة.'); await render(); bindCoordinatorTasks(); }
+      try{ await DB.deleteTask(el.getAttribute('data-id')); invalidatePendingCache(); invalidateAllScreenCaches(); toast('تم حذف المهمة.'); await render(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -4679,20 +4679,20 @@ function bindCoordinatorVisits(){
   });
   const newBtn = document.querySelector('[data-action="newVisitSchedule"]');
   function _saveVisitDraft(){ try { localStorage.setItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id, JSON.stringify(VisitsUI.draft)); } catch(e){} }
-  if (newBtn) newBtn.addEventListener('click', async function(){ VisitsUI.draft = { rows:[blankVisitRow()] }; _saveVisitDraft(); await render(); bindCoordinatorVisits(); });
+  if (newBtn) newBtn.addEventListener('click', async function(){ VisitsUI.draft = { rows:[blankVisitRow()] }; _saveVisitDraft(); await render(); });
   const cancelBtn = document.querySelector('[data-action="cancelVisitDraft"]');
   if (cancelBtn) cancelBtn.addEventListener('click', async function(){
     if (!confirm('هل تريد إلغاء هذا الجدول؟ ستفقد كل الصفوف التي أدخلتها.')) return;
-    VisitsUI.draft = null; await render(); bindCoordinatorVisits();
+    VisitsUI.draft = null; await render();
   });
   const addBtn = document.querySelector('[data-action="addVisitRow"]');
-  if (addBtn) addBtn.addEventListener('click', async function(){ VisitsUI.draft.rows.push(blankVisitRow()); _saveVisitDraft(); await render(); bindCoordinatorVisits(); });
+  if (addBtn) addBtn.addEventListener('click', async function(){ VisitsUI.draft.rows.push(blankVisitRow()); _saveVisitDraft(); await render(); });
   document.querySelectorAll('[data-action="removeVisitRow"]').forEach(function(el){
     el.addEventListener('click', async function(){
       const idx = +el.getAttribute('data-idx');
       VisitsUI.draft.rows.splice(idx, 1);
       if (!VisitsUI.draft.rows.length) VisitsUI.draft.rows.push(blankVisitRow());
-      _saveVisitDraft(); await render(); bindCoordinatorVisits();
+      _saveVisitDraft(); await render();
     });
   });
   document.querySelectorAll('[data-action="visitFieldChange"]').forEach(function(el){
@@ -4722,13 +4722,13 @@ function bindCoordinatorVisits(){
       const visitedIds = [...new Set(rows.map(function(r){ return r.visitingTeacherId; }).concat(rows.map(function(r){ return r.visitedTeacherId; })))];
       visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); /* push handled inside createNotification */ });
       toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
-      VisitsUI.draft = null; localStorage.removeItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id); await render(); bindCoordinatorVisits();
+      VisitsUI.draft = null; localStorage.removeItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id); await render();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="deleteVisitSchedule"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا الجدول؟ سيختفي فورًا من شاشات جميع المعلمين.')) return;
-      try{ await DB.deleteVisitSchedule(el.getAttribute('data-id')); toast('تم حذف الجدول.'); await render(); bindCoordinatorVisits(); }
+      try{ await DB.deleteVisitSchedule(el.getAttribute('data-id')); toast('تم حذف الجدول.'); await render(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -4835,10 +4835,10 @@ function bindCoordinatorDemoLessons(){
   if (openBtn) openBtn.addEventListener('click', async function(){
     DemoLessonUI.modalOpen = true;
     DemoLessonUI.draft = blankDemoLesson();
-    await render(); bindCoordinatorDemoLessons();
+    await render();
   });
   document.querySelectorAll('[data-action="closeDemoModal"]').forEach(function(el){
-    el.addEventListener('click', async function(){ DemoLessonUI.modalOpen = false; DemoLessonUI.draft = null; await render(); bindCoordinatorDemoLessons(); });
+    el.addEventListener('click', async function(){ DemoLessonUI.modalOpen = false; DemoLessonUI.draft = null; await render(); });
   });
   const communitySelect = document.getElementById('dlCommunity');
   if (communitySelect && DemoLessonUI.draft) {
@@ -4846,7 +4846,7 @@ function bindCoordinatorDemoLessons(){
       DemoLessonUI.draft.communityId = this.value;
       DemoLessonUI.draft.teacherId = '';
       DemoLessonUI.draft.teacherName = '';
-      await render(); bindCoordinatorDemoLessons();
+      await render();
     });
   }
   const saveBtn = document.querySelector('[data-action="saveDemoLesson"]');
@@ -4885,13 +4885,13 @@ function bindCoordinatorDemoLessons(){
       principals.forEach(function(u){ notifTargets.push(u.id); });
       notifTargets.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'حصة توضيحية جديدة', body:notifBody }).catch(function(){}); /* push handled inside createNotification */ });
       toast('تم تسجيل الحصة التوضيحية وإرسال الإشعارات.');
-      DemoLessonUI.modalOpen = false; DemoLessonUI.draft = null; await render(); bindCoordinatorDemoLessons();
+      DemoLessonUI.modalOpen = false; DemoLessonUI.draft = null; await render();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
   document.querySelectorAll('[data-action="deleteDemoLesson"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه الحصة التوضيحية؟')) return;
-      try{ await DB.deleteTask(el.getAttribute('data-id')); toast('تم حذف الحصة التوضيحية.'); await render(); bindCoordinatorDemoLessons(); }
+      try{ await DB.deleteTask(el.getAttribute('data-id')); toast('تم حذف الحصة التوضيحية.'); await render(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -5068,8 +5068,8 @@ function goalComposeModal(draft, members){
 }
 function bindCoordinatorGoals(){
   const newBtn = document.querySelector('[data-action="newGoal"]');
-  if (newBtn) newBtn.addEventListener('click', async function(){ GoalsUI.modalOpen = true; GoalsUI.editId = null; GoalsUI.draft = blankGoalDraft(); await render(); bindCoordinatorGoals(); });
-  const closeModal = async function(){ GoalsUI.modalOpen = false; GoalsUI.editId = null; GoalsUI.draft = null; await render(); bindCoordinatorGoals(); };
+  if (newBtn) newBtn.addEventListener('click', async function(){ GoalsUI.modalOpen = true; GoalsUI.editId = null; GoalsUI.draft = blankGoalDraft(); await render(); });
+  const closeModal = async function(){ GoalsUI.modalOpen = false; GoalsUI.editId = null; GoalsUI.draft = null; await render(); };
   const closeBtn = document.querySelector('[data-action="closeGoalModal"]');
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   const closeBg = document.querySelector('[data-action="closeGoalModalBg"]');
@@ -5089,20 +5089,20 @@ function bindCoordinatorGoals(){
       const goals = (await DB.listGoals({ school: State.user.school })).filter(function(g){ return g.community_id===State.user.community_id; });
       const goal = goals.find(function(g){ return g.id===id; });
       GoalsUI.modalOpen = true; GoalsUI.editId = id; GoalsUI.draft = goalDraftFrom(goal||{}); GoalsUI._prevMemberIds = (goal&&goal.assigned_member_ids)||[]; GoalsUI._principalStatus = (goal&&goal.principal_status)||null;
-      await render(); bindCoordinatorGoals();
+      await render();
     });
   });
   document.querySelectorAll('[data-action="deleteGoal"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('سيتم حذف هذا الهدف نهائيًا. هل تريد الاستمرار؟')) return;
-      try{ await DB.deleteGoal(el.getAttribute('data-id')); toast('تم حذف الهدف.'); await render(); bindCoordinatorGoals(); }catch(e){ toast(arabicError(e)); }
+      try{ await DB.deleteGoal(el.getAttribute('data-id')); _coordGoalsData = null; toast('تم حذف الهدف.'); await render(); }catch(e){ toast(arabicError(e)); }
     });
   });
   const glStatusEl = document.getElementById('glStatus');
   if (glStatusEl) glStatusEl.addEventListener('change', async function(){
     syncGoalDraftFromForm();
     GoalsUI.draft.status = glStatusEl.value;
-    await render(); bindCoordinatorGoals();
+    await render();
   });
   document.querySelectorAll('.goalMemberChk').forEach(function(el){
     el.addEventListener('change', function(){
@@ -5125,7 +5125,7 @@ function bindCoordinatorGoals(){
         const url = await uploadFileToStorage(file);
         GoalsUI.draft.evidence_files = GoalsUI.draft.evidence_files || [];
         GoalsUI.draft.evidence_files.push({ name:file.name, type:file.type, url:url });
-        await render(); bindCoordinatorGoals();
+        await render();
       }catch(err){ toast(arabicError(err)); }
     }
   });
@@ -5137,19 +5137,20 @@ function bindCoordinatorGoals(){
       const removed = (GoalsUI.draft.evidence_files||[])[idx];
       if (removed) deleteFileFromStorage(removed.url);
       GoalsUI.draft.evidence_files.splice(idx, 1);
-      await render(); bindCoordinatorGoals();
+      await render();
     });
   });
   const saveBtn = document.querySelector('[data-action="saveGoal"]');
   if (saveBtn) saveBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
     syncGoalDraftFromForm();
     const d = GoalsUI.draft;
     const title = d.title.trim();
-    if (!title){ toast('يرجى إدخال عنوان الهدف.'); return; }
+    if (!title){ toast('يرجى إدخال عنوان الهدف.'); this.disabled = false; return; }
     if ((d.baseline_value !== '' && isNaN(Number(d.baseline_value))) ||
         (d.target_value  !== '' && isNaN(Number(d.target_value)))  ||
         (d.current_value !== '' && isNaN(Number(d.current_value)))) {
-      toast('قيم الأساس والهدف والحالي يجب أن تكون أرقاماً.'); return;
+      toast('قيم الأساس والهدف والحالي يجب أن تكون أرقاماً.'); this.disabled = false; return;
     }
     const patch = {
       title:title, semester:d.semester, measure_unit:d.measure_unit.trim()||null, category:d.category,
@@ -5181,8 +5182,9 @@ function bindCoordinatorGoals(){
         });
       }
       GoalsUI.modalOpen = false; GoalsUI.editId = null; GoalsUI.draft = null;
-      await render(); bindCoordinatorGoals();
-    }catch(e){ toast(arabicError(e)); }
+      _coordGoalsData = null;
+      await render();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 }
 
@@ -5498,7 +5500,7 @@ function goalReviewModalHtml(g){
 }
 function bindPrincipalReview(){
   document.querySelectorAll('[data-action="reviewFilter"]').forEach(function(el){
-    el.addEventListener('click', async function(){ ReviewUI.filter = el.getAttribute('data-val'); await render(); bindPrincipalReview(); });
+    el.addEventListener('click', async function(){ ReviewUI.filter = el.getAttribute('data-val'); await render(); });
   });
   var prSearch = document.getElementById('pr-search');
   if (prSearch) prSearch.addEventListener('input', function(){
@@ -5515,9 +5517,9 @@ function bindPrincipalReview(){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
   });
   document.querySelectorAll('[data-action="reviewGoal"]').forEach(function(el){
-    el.addEventListener('click', async function(){ PrincipalReviewUI.goalReviewId = el.getAttribute('data-id'); await render(); bindPrincipalReview(); });
+    el.addEventListener('click', async function(){ PrincipalReviewUI.goalReviewId = el.getAttribute('data-id'); await render(); });
   });
-  const closeModal = async function(){ PrincipalReviewUI.goalReviewId = null; await render(); bindPrincipalReview(); };
+  const closeModal = async function(){ PrincipalReviewUI.goalReviewId = null; await render(); };
   const closeBtn = document.querySelector('[data-action="closeGoalReviewModal"]');
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   const closeBg = document.querySelector('[data-action="closeGoalReviewModalBg"]');
@@ -5534,7 +5536,7 @@ function bindPrincipalReview(){
       }
       toast('تم اعتماد وتقييم الهدف.');
       PrincipalReviewUI.goalReviewId = null;
-      await render(); bindPrincipalReview();
+      await render();
     }catch(e){ toast(arabicError(e)); }
   });
   const returnBtn = document.querySelector('[data-action="returnGoal"]');
@@ -5550,7 +5552,7 @@ function bindPrincipalReview(){
       }
       toast('تم إرجاع الهدف إلى المنسق للتعديل.');
       PrincipalReviewUI.goalReviewId = null;
-      await render(); bindPrincipalReview();
+      await render();
     }catch(e){ toast(arabicError(e)); }
   });
 }
@@ -5687,9 +5689,9 @@ async function screenPrincipalDemoLessons(){
 }
 function bindPrincipalDemoLessons(){
   const coordSel = document.getElementById('pdlCoordFilter');
-  if (coordSel) coordSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.coordFilter = this.value; await render(); bindPrincipalDemoLessons(); });
+  if (coordSel) coordSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.coordFilter = this.value; await render(); });
   const statusSel = document.getElementById('pdlStatusFilter');
-  if (statusSel) statusSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.statusFilter = this.value; await render(); bindPrincipalDemoLessons(); });
+  if (statusSel) statusSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.statusFilter = this.value; await render(); });
 }
 async function screenPrincipalGifted(){
   const reports = await DB.listGiftedReports(State.user.school, { forPrincipal: true }).catch(function(){ return []; });
@@ -5710,7 +5712,7 @@ async function screenPrincipalGifted(){
 function bindPrincipalGifted(){
   var _closeGiftedReview = async function(){
     GiftedReviewUI = { modalOpen: false, report: null };
-    await render(); bindPrincipalGifted();
+    await render();
   };
   document.querySelectorAll('[data-action="openGiftedReview"]').forEach(function(el){
     el.addEventListener('click', async function(){
@@ -5719,7 +5721,7 @@ function bindPrincipalGifted(){
       var report = reports.find(function(r){ return r.id === id; });
       if (!report) return;
       GiftedReviewUI = { modalOpen: true, report: report };
-      await render(); bindPrincipalGifted();
+      await render();
     });
   });
   document.querySelectorAll('[data-action="closeGiftedReview"]').forEach(function(el){ el.addEventListener('click', _closeGiftedReview); });
@@ -5734,7 +5736,7 @@ function bindPrincipalGifted(){
       await DB.updateGiftedReport(GiftedReviewUI.report.id, patch);
       toast('تم حفظ القرار بنجاح.');
       GiftedReviewUI = { modalOpen: false, report: null };
-      await render(); bindPrincipalGifted();
+      await render();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 }
@@ -6455,7 +6457,7 @@ async function openObservationModal(students){
       }catch(ne){ console.warn('[obs notify]', ne.message); }
       toast('تم حفظ الملاحظة وإبلاغ المرشد'+(sev==='urgent'?' والمدير':'')+'.');
       div.remove();
-      await render(); bindTeacherTasks();
+      await render();
     }catch(e){ toast('فشل الحفظ: '+e.message); btn.disabled=false; btn.textContent='حفظ الملاحظة'; }
   });
 }
@@ -8521,33 +8523,33 @@ function bindCounselorCases(){
     el.addEventListener('click', function(){
       const st = el.getAttribute('data-status');
       CounselorUI.statusFilter = CounselorUI.statusFilter===st ? '' : st;
-      render(); bindCounselorCases();
+      render();
     });
   });
   document.querySelectorAll('[data-action="counselorTab"]').forEach(function(el){
-    el.addEventListener('click', function(){ CounselorUI.tab = el.getAttribute('data-tab'); render(); bindCounselorCases(); });
+    el.addEventListener('click', function(){ CounselorUI.tab = el.getAttribute('data-tab'); render(); });
   });
   document.querySelectorAll('[data-action="counselorPriorityFilter"]').forEach(function(el){
     el.addEventListener('click', function(){
       var p = el.getAttribute('data-priority');
       CounselorUI.priorityFilter = CounselorUI.priorityFilter===p ? '' : p;
-      CounselorUI.tab = 'cases'; render(); bindCounselorCases();
+      CounselorUI.tab = 'cases'; render();
     });
   });
   document.querySelectorAll('[data-action="viewStudentProfile"]').forEach(function(el){
     el.addEventListener('click', function(){
       CounselorUI.studentProfile = el.getAttribute('data-name');
-      CounselorUI.tab = 'profile'; render(); bindCounselorCases();
+      CounselorUI.tab = 'profile'; render();
     });
   });
   const statusFilter = document.getElementById('caseStatusFilter');
-  if (statusFilter) statusFilter.addEventListener('change', function(){ CounselorUI.statusFilter = this.value; render(); bindCounselorCases(); });
+  if (statusFilter) statusFilter.addEventListener('change', function(){ CounselorUI.statusFilter = this.value; render(); });
   const gradeFilter = document.getElementById('caseGradeFilter');
-  if (gradeFilter) gradeFilter.addEventListener('change', function(){ CounselorUI.gradeFilter = this.value; render(); bindCounselorCases(); });
+  if (gradeFilter) gradeFilter.addEventListener('change', function(){ CounselorUI.gradeFilter = this.value; render(); });
   const priorityFilterEl = document.getElementById('casePriorityFilter');
-  if (priorityFilterEl) priorityFilterEl.addEventListener('change', function(){ CounselorUI.priorityFilter = this.value; render(); bindCounselorCases(); });
+  if (priorityFilterEl) priorityFilterEl.addEventListener('change', function(){ CounselorUI.priorityFilter = this.value; render(); });
   const categoryFilterEl = document.getElementById('caseCategoryFilter');
-  if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); bindCounselorCases(); });
+  if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); });
 
   document.querySelectorAll('[data-action="counselPreset"]').forEach(function(el){
     el.addEventListener('change', function(){
@@ -8560,7 +8562,7 @@ function bindCounselorCases(){
     });
   });
   /* gifted review actions (counselor) */
-  var _closeGiftedReviewCounselor = async function(){ GiftedReviewUI = { modalOpen: false, report: null }; await render(); bindCounselorCases(); };
+  var _closeGiftedReviewCounselor = async function(){ GiftedReviewUI = { modalOpen: false, report: null }; await render(); };
   document.querySelectorAll('[data-action="openGiftedReview"]').forEach(function(el){
     el.addEventListener('click', async function(){
       var id = el.getAttribute('data-id');
@@ -8568,7 +8570,7 @@ function bindCounselorCases(){
       var report = reports.find(function(r){ return r.id === id; });
       if (!report) return;
       GiftedReviewUI = { modalOpen: true, report: report };
-      await render(); bindCounselorCases();
+      await render();
     });
   });
   document.querySelectorAll('[data-action="closeGiftedReview"]').forEach(function(el){ el.addEventListener('click', _closeGiftedReviewCounselor); });
@@ -8583,23 +8585,23 @@ function bindCounselorCases(){
       await DB.updateGiftedReport(GiftedReviewUI.report.id, patch);
       toast('تم حفظ الإجراء بنجاح.');
       GiftedReviewUI = { modalOpen: false, report: null };
-      await render(); bindCounselorCases();
+      await render();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 
   const addBtn = document.querySelector('[data-action="addCase"]');
-  if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); bindCounselorCases(); });
+  if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); });
 
-  const closeModal = function(){ CounselorUI.modalOpen=false; CounselorUI.editingId=null; render(); bindCounselorCases(); };
+  const closeModal = function(){ CounselorUI.modalOpen=false; CounselorUI.editingId=null; render(); };
   document.querySelectorAll('[data-action="closeCaseModal"]').forEach(function(el){ el.addEventListener('click', closeModal); });
 
   document.querySelectorAll('[data-action="openCase"]').forEach(function(el){
-    el.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=el.getAttribute('data-id'); render(); bindCounselorCases(); });
+    el.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=el.getAttribute('data-id'); render(); });
   });
   document.querySelectorAll('[data-action="deleteCase"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذه الحالة الإرشادية نهائياً؟')) return;
-      try{ await DB.deleteCounselingCase(el.getAttribute('data-id')); invalidateCounselorData(); toast('تم حذف الحالة.'); render(); bindCounselorCases(); }
+      try{ await DB.deleteCounselingCase(el.getAttribute('data-id')); invalidateCounselorData(); toast('تم حذف الحالة.'); render(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
@@ -8809,7 +8811,7 @@ function bindCounselorCases(){
         parent_phone: (document.getElementById('caseParentPhone')||{}).value||'',
         close_summary: ''
       };
-      try{ await DB.createCounselingCase(obj); invalidateCounselorData(); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      try{ await DB.createCounselingCase(obj); invalidateCounselorData(); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
     } else {
       saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
@@ -8833,7 +8835,7 @@ function bindCounselorCases(){
         counseling_goal:counselingGoal, counseling_interventions:counselingInterventions, counseling_progress:counselingProgress,
         category:category, priority:priority, next_session_date:nextSessionDate };
       patch.close_summary = (newStatus === 'open' || newStatus === 'in_progress') ? (c.close_summary||'') : closeSummary;
-      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); invalidateCounselorData(); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); bindCounselorCases(); }
+      try{ await DB.updateCounselingCase(CounselorUI.editingId, patch); invalidateCounselorData(); toast('تم الحفظ.'); CounselorUI.modalOpen=false; render(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'حفظ التعديلات'; }
     }
   });
@@ -9281,6 +9283,12 @@ async function screenCoordinatorMyStudents(){
     return (a.grade||a.student_grade||'').localeCompare(b.grade||b.student_grade||'','ar') || (a.full_name||'').localeCompare(b.full_name||'','ar');
   });
 
+  const coordStGrades = myStudents.map(function(s){ return s.grade||s.student_grade||''; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  const coordStSections = myStudents.map(function(s){ return s.section||s.student_section||''; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; }).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  let filteredCoordStudents = myStudents;
+  if (TeacherFormsUI.studentGradeFilter) filteredCoordStudents = filteredCoordStudents.filter(function(s){ return (s.grade||s.student_grade||'')===TeacherFormsUI.studentGradeFilter; });
+  if (TeacherFormsUI.studentSectionFilter) filteredCoordStudents = filteredCoordStudents.filter(function(s){ return (s.section||s.student_section||'')===TeacherFormsUI.studentSectionFilter; });
+
   const myForms = subs.filter(function(s){ return s.created_by===State.user.id; });
   const formsByStudent = {}, formsByStudentId = {};
   myForms.forEach(function(s){
@@ -9299,7 +9307,7 @@ async function screenCoordinatorMyStudents(){
   const recsByStudentName = {};
   (pendingRecs||[]).forEach(function(r){ recsByStudentName[r.student_name] = r; });
 
-  const studentRows = myStudents.map(function(s){
+  const studentRows = filteredCoordStudents.map(function(s){
     const formsForSt = formsByStudentId[s.id] || formsByStudent[s.full_name] || [];
     const badges = formsForSt.map(function(f){
       const def = formDef(f.form_type);
@@ -9376,9 +9384,20 @@ async function screenCoordinatorMyStudents(){
     '</div>' +
     (TeacherFormsUI.studentsCollapsed ? '' :
       (myStudents.length ? (
-        '<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">' +
           '<button class="btn btn-primary btn-sm" data-action="goExamAnalysis">تحليل اختبار</button>' +
           '<button class="btn btn-ghost btn-sm" data-action="coordGoGroupPlan">خطة علاجية جماعية</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">' +
+          '<select id="coordStGrade" class="input" style="max-width:150px;">' +
+            '<option value="">— كل الصفوف —</option>' +
+            coordStGrades.map(function(g){ return '<option value="'+esc(g)+'"'+(TeacherFormsUI.studentGradeFilter===g?' selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+          '</select>' +
+          '<select id="coordStSection" class="input" style="max-width:130px;">' +
+            '<option value="">— كل الشعب —</option>' +
+            coordStSections.map(function(sec){ return '<option value="'+esc(sec)+'"'+(TeacherFormsUI.studentSectionFilter===sec?' selected':'')+'>'+esc(sec)+'</option>'; }).join('') +
+          '</select>' +
+          '<span style="color:var(--muted);font-size:12px;">'+filteredCoordStudents.length+' / '+myStudents.length+' طالب</span>' +
         '</div>' +
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
           '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
@@ -9393,8 +9412,12 @@ async function screenCoordinatorMyStudents(){
 }
 function bindCoordinatorMyStudents(){
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); bindCoordinatorMyStudents(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); });
   });
+  var coordGradeEl = document.getElementById('coordStGrade');
+  if (coordGradeEl) coordGradeEl.addEventListener('change', async function(){ TeacherFormsUI.studentGradeFilter = this.value; await render(); });
+  var coordSectionEl = document.getElementById('coordStSection');
+  if (coordSectionEl) coordSectionEl.addEventListener('change', async function(){ TeacherFormsUI.studentSectionFilter = this.value; await render(); });
   document.querySelectorAll('[data-action="openTaskDetail"]').forEach(function(el){
     el.addEventListener('click', function(){ go('taskDetail', { taskId: el.getAttribute('data-id') }); });
   });
@@ -9416,7 +9439,7 @@ function bindCoordinatorMyStudents(){
           }
         }catch(e2){}
         toast('تم الإغلاق بالعلم.');
-        await render(); bindCoordinatorMyStudents();
+        await render();
       }catch(e){ toast(arabicError(e)); }
     });
   });
@@ -9440,7 +9463,7 @@ function bindCoordinatorMyStudents(){
           }
         }catch(e2){}
         toast('تم إرجاع التوصية للمرشد.');
-        await render(); bindCoordinatorMyStudents();
+        await render();
       }catch(e){ toast(arabicError(e)); }
     });
   });
@@ -10543,10 +10566,10 @@ function bindTeacherTasks(){
 
   /* تبويبات لوحة المعلم */
   document.querySelectorAll('[data-action="teacherDashTab"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.dashTab = el.getAttribute('data-tab'); await render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.dashTab = el.getAttribute('data-tab'); await render(); });
   });
   document.querySelectorAll('[data-action="teacherFormsTab"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); await render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); await render(); });
   });
   document.querySelectorAll('[data-action="openTeacherSession"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -10561,14 +10584,14 @@ function bindTeacherTasks(){
 
   /* طي/فتح قائمة الطلاب */
   document.querySelectorAll('[data-action="toggleStudentList"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); bindTeacherTasks(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.studentsCollapsed = (el.getAttribute('data-st-val') === 'true'); await render(); });
   });
 
   /* فلتر جدول الطلاب */
   const stGradeEl = document.getElementById('teacherStGrade');
-  if (stGradeEl) stGradeEl.addEventListener('change', async function(){ TeacherFormsUI.studentGradeFilter = this.value; await render(); bindTeacherTasks(); });
+  if (stGradeEl) stGradeEl.addEventListener('change', async function(){ TeacherFormsUI.studentGradeFilter = this.value; await render(); });
   const stSectionEl = document.getElementById('teacherStSection');
-  if (stSectionEl) stSectionEl.addEventListener('change', async function(){ TeacherFormsUI.studentSectionFilter = this.value; await render(); bindTeacherTasks(); });
+  if (stSectionEl) stSectionEl.addEventListener('change', async function(){ TeacherFormsUI.studentSectionFilter = this.value; await render(); });
 
   /* ملف الطالب */
   document.querySelectorAll('[data-action="openStudentProfile"]').forEach(function(el){
@@ -10577,7 +10600,7 @@ function bindTeacherTasks(){
       _teacherStudentProfileId = el.getAttribute('data-id') || null;
       invalidateTeacherScreenData();
       TeacherFormsUI.dashTab = 'profile';
-      await render(); bindTeacherTasks();
+      await render();
     });
   });
 
@@ -10588,7 +10611,7 @@ function bindTeacherTasks(){
     el.addEventListener('click', async function(){
       var name = el.getAttribute('data-student');
       _teacherReferralExpanded = (_teacherReferralExpanded === name) ? null : name;
-      await render(); bindTeacherTasks();
+      await render();
     });
   });
 
@@ -10598,7 +10621,7 @@ function bindTeacherTasks(){
     rawEl.parentNode.replaceChild(el, rawEl);
     el.addEventListener('click', async function(){
       _teacherReferralSort = el.getAttribute('data-filter');
-      await render(); bindTeacherTasks();
+      await render();
     });
   });
 
@@ -10613,7 +10636,7 @@ function bindTeacherTasks(){
       try{
         await DB.acknowledgeRec(id);
         toast('تم تسجيل استلامك لرد المرشد.');
-        await render(); bindTeacherTasks();
+        await render();
       }catch(e){ toast('فشل: '+e.message); el.disabled=false; el.textContent='✓ تسلّمت الرد'; }
     });
   });
@@ -10664,7 +10687,7 @@ function bindTeacherTasks(){
     TeacherFormsUI.dashTab = 'main';
     _teacherStudentProfile = null; _teacherStudentProfileId = null;
     invalidateTeacherScreenData();
-    await render(); bindTeacherTasks();
+    await render();
   });
 
   /* ملاحظات الطالب — تفويض الأحداث */
@@ -10776,7 +10799,7 @@ function bindTeacherTasks(){
           }
         }catch(e2){}
         toast('تم الإغلاق بالعلم.');
-        await render(); bindTeacherTasks();
+        await render();
       }catch(e){ toast(arabicError(e)); }
     });
   });
@@ -10801,7 +10824,7 @@ function bindTeacherTasks(){
           }
         }catch(e2){ /* إرسال الإشعار اختياري */ }
         toast('تم إرجاع التوصية للمرشد.');
-        await render(); bindTeacherTasks();
+        await render();
       }catch(e){ toast(arabicError(e)); }
     });
   });
@@ -10822,14 +10845,14 @@ function bindTeacherTasks(){
     GiftedUI.modalOpen = true;
     GiftedUI.selectedCounselorId = '';
     try{ GiftedUI.counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&order=full_name.asc') || []; }catch(e){ GiftedUI.counselors = []; }
-    await render(); bindTeacherTasks();
+    await render();
   });
 
   /* رعاية الموهوبين — إغلاق النافذة */
   const closeGiftedBtn = document.querySelector('[data-action="closeGiftedModal"]');
   if (closeGiftedBtn) closeGiftedBtn.addEventListener('click', async function(){
     GiftedUI.modalOpen = false;
-    await render(); bindTeacherTasks();
+    await render();
   });
   /* فلترة متتالية في نافذة الموهوبين: الصف → الشعبة → الطالب */
   var giftedGradeSelEl   = document.getElementById('giftedGradeSel');
@@ -10868,7 +10891,7 @@ function bindTeacherTasks(){
   const closeGiftedBg = document.querySelector('[data-action="closeGiftedModalBg"]');
   if (closeGiftedBg) closeGiftedBg.addEventListener('click', async function(){
     GiftedUI.modalOpen = false;
-    await render(); bindTeacherTasks();
+    await render();
   });
 
   /* رعاية الموهوبين — إرسال الإشعار */
@@ -10949,7 +10972,7 @@ function bindTeacherTasks(){
       invalidateNotifCache();
       GiftedUI.modalOpen = false;
       toast('تم توثيق بلاغ الموهبة وإرسال الإشعارات بنجاح.');
-      await render(); bindTeacherTasks();
+      await render();
     }catch(e){ toast(arabicError(e)); sendGiftedBtn.disabled = false; }
   });
 
@@ -10958,17 +10981,17 @@ function bindTeacherTasks(){
     btn.addEventListener('click', async function(){
       TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
       TeacherInitiativeUI.modalOpen = true;
-      await render(); bindTeacherTasks();
+      await render();
     });
   });
   var closeInitBtn = document.querySelector('[data-action="closeInitiativeModal"]');
   if (closeInitBtn) closeInitBtn.addEventListener('click', async function(){
     TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
-    await render(); bindTeacherTasks();
+    await render();
   });
   var initModalBg = document.querySelector('[data-action="closeInitiativeModalBg"]');
   if (initModalBg) initModalBg.addEventListener('click', async function(e){
-    if (e.target === initModalBg){ TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null; await render(); bindTeacherTasks(); }
+    if (e.target === initModalBg){ TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null; await render(); }
   });
   document.querySelectorAll('[data-action="editInitiativeDraft"]').forEach(function(btn){
     btn.addEventListener('click', async function(){
@@ -10978,7 +11001,7 @@ function bindTeacherTasks(){
       TeacherInitiativeUI.editId = sid;
       TeacherInitiativeUI.editData = sub.payload || {};
       TeacherInitiativeUI.modalOpen = true;
-      await render(); bindTeacherTasks();
+      await render();
     });
   });
 
@@ -11075,7 +11098,7 @@ function bindTeacherTasks(){
       TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
       toast(targetStatus==='pending' ? 'تم إرسال المبادرة للمدير للاعتماد.' : 'تم حفظ المسودة.');
       TeacherFormsUI.dashTab = 'myInitiatives';
-      await render(); bindTeacherTasks();
+      await render();
     }catch(e){ toast(arabicError(e)); }
   }
 
@@ -14579,7 +14602,7 @@ async function screenView(id){
         body +
         '<div class="sig-footer">' +
           '<div><div class="who">توقيع المُعد: '+esc(s.created_by_name)+'</div>'+buildSignaturePad('v_prep', s.preparer_signature, true)+'</div>' +
-          '<div><div class="who">اعتماد مدير المدرسة</div>'+buildSignaturePad('v_principal', s.principal_signature, true)+(s.approved_at?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">اعتُمد بتاريخ '+fmtDateTime(s.approved_at)+'</div>':'')+'</div>' +
+          '<div><div class="who">'+(s.status==='approved' && s.principal_comment ? esc(s.principal_comment) : 'اعتماد مدير المدرسة')+'</div>'+buildSignaturePad('v_principal', s.principal_signature, true)+(s.approved_at?'<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">اعتُمد بتاريخ '+fmtDateTime(s.approved_at)+'</div>':'')+'</div>' +
         '</div>' +
       '</div>' +
       evalBlock +
@@ -14665,7 +14688,7 @@ async function screenReview(id){
         '<div class="sig-footer"><div><div class="who">توقيع المُعد</div>'+buildSignaturePad('rv_prep', s.preparer_signature, true)+'</div></div>' +
       '</div>' +
       '<div class="review-panel no-print">' +
-        '<h3>اعتماد مدير المدرسة</h3>' +
+        '<h3>'+(State.user.role==='vice_principal' ? 'اعتماد بالنيابة عن مدير المدرسة' : 'اعتماد مدير المدرسة')+'</h3>' +
         '<div class="review-grid">' +
           '<div class="field">' +
             '<label style="margin-bottom:8px;display:block;">قائمة المراجعة الإشرافية</label>' +
@@ -14678,7 +14701,7 @@ async function screenReview(id){
           '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
           '<div class="field"><label>التقييم عند الاعتماد (من 0 إلى 100)</label>'+ratingInputHtml('reviewRating', s.principal_rating)+'</div>' +
           '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
-          '<div class="field"><label>التوقيع الإلكتروني لمدير المدرسة</label>' + buildSignaturePad('approve', null, false) + '</div>' +
+          '<div class="field"><label>'+(State.user.role==='vice_principal' ? 'التوقيع الإلكتروني (بالنيابة عن مدير المدرسة)' : 'التوقيع الإلكتروني لمدير المدرسة')+'</label>' + buildSignaturePad('approve', null, false) + '</div>' +
           '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
           '<button class="btn btn-danger btn-block" data-action="returnSub">إرجاع للتعديل</button>' +
         '</div>' +
@@ -14703,7 +14726,10 @@ function bindReview(){
     try{ principalSigUrl = await uploadSignatureToStorage(pad.toDataUrl()); }
     catch(sigErr){ toast('تعذّر رفع التوقيع: ' + (sigErr.message||'')); this.disabled = false; return; }
     try{
-      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment:null, principal_rating: rating, principal_note: note||null });
+      const _approverNote = State.user.role==='vice_principal'
+        ? 'بالنيابة عن مدير المدرسة (' + (State.user.full_name||State.user.name||'') + ')'
+        : 'اعتمد: ' + (State.user.full_name||State.user.name||'');
+      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment: _approverNote, principal_rating: rating, principal_note: note||null });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); invalidateNotifCache(); }catch(e){}
