@@ -13553,7 +13553,7 @@ async function screenEditor(){
     case 'plcSelfEval': body = renderPlcSelfEval(EditorState.data, readonly); break;
     case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly, teachers); break;
     case 'behavioralPlan': body = renderBehavioralPlan(EditorState.data, readonly, students); break;
-    case 'teacherInitiative': body = renderTeacherInitiative(EditorState.data); break;
+    case 'teacherInitiative': body = renderTeacherInitiative(EditorState.data, readonly); break;
   }
 
   const returnBox = EditorState.status==='returned' && EditorState.returnComment
@@ -14099,34 +14099,100 @@ function renderMotivation(d, ro){
   );
 }
 
-function renderTeacherInitiative(d){
+function renderTeacherInitiative(d, ro){
   d = d || {};
   var ev = d.evidenceType||'description';
-  var evLabel = ev==='url' ? 'رابط Drive/OneDrive' : ev==='procedure' ? 'وصف إجراء التنفيذ' : ev==='file' ? 'ملف الشاهد' : 'وصف الشاهد';
-  var evidenceHtml;
-  if (ev==='file' && d.evidenceContent){
-    var isImg = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(d.evidenceContent);
-    evidenceHtml = isImg
-      ? '<img src="'+esc(d.evidenceContent)+'" style="max-width:100%;max-height:320px;border-radius:6px;margin-top:4px;" alt="شاهد المبادرة">'
-      : '<a href="'+esc(d.evidenceContent)+'" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:4px;">📄 عرض الملف</a>';
-  } else if ((ev==='url') && d.evidenceContent){
-    evidenceHtml = '<a href="'+esc(d.evidenceContent)+'" target="_blank" style="color:#0F766E;word-break:break-all;">'+esc(d.evidenceContent)+'</a>';
-  } else {
-    evidenceHtml = '<div class="read-val" style="white-space:pre-wrap;line-height:1.7;">'+esc(d.evidenceContent||'—')+'</div>';
+
+  /* ---- read-only view (principal review / submission view) ---- */
+  if (ro){
+    var evLabel = ev==='url' ? 'رابط Drive/OneDrive' : ev==='procedure' ? 'وصف إجراء التنفيذ' : ev==='file' ? 'ملف الشاهد' : 'وصف الشاهد';
+    var evidenceHtml;
+    if (ev==='file' && d.evidenceContent){
+      var isImg = /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(d.evidenceContent);
+      evidenceHtml = isImg
+        ? '<img src="'+esc(d.evidenceContent)+'" style="max-width:100%;max-height:320px;border-radius:6px;margin-top:4px;" alt="شاهد المبادرة">'
+        : '<a href="'+esc(d.evidenceContent)+'" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:4px;">📄 عرض الملف</a>';
+    } else if (ev==='url' && d.evidenceContent){
+      evidenceHtml = '<a href="'+esc(d.evidenceContent)+'" target="_blank" style="color:#0F766E;word-break:break-all;">'+esc(d.evidenceContent)+'</a>';
+    } else {
+      evidenceHtml = '<div class="read-val" style="white-space:pre-wrap;line-height:1.7;">'+esc(d.evidenceContent||'—')+'</div>';
+    }
+    return (
+      '<div class="field-grid cols-2">' +
+        '<div class="field"><label>عنوان المبادرة</label><div class="read-val">'+esc(d.initiativeTitle||'—')+'</div></div>' +
+        '<div class="field"><label>نوع المبادرة</label><div class="read-val">'+esc(d.initiativeType||'—')+'</div></div>' +
+      '</div>' +
+      '<div class="field-grid cols-2">' +
+        '<div class="field"><label>الفئة المستفيدة</label><div class="read-val">'+esc(d.targetGroup||'—')+'</div></div>' +
+        '<div class="field"><label>تاريخ التنفيذ</label><div class="read-val">'+esc(d.executionDate||'—')+'</div></div>' +
+      '</div>' +
+      (d.estimatedBeneficiaries ? '<div class="field"><label>عدد المستفيدين المتوقع</label><div class="read-val">'+esc(String(d.estimatedBeneficiaries))+'</div></div>' : '') +
+      (d.description ? '<div class="field"><label>وصف المبادرة وأهدافها</label><div class="read-val" style="white-space:pre-wrap;line-height:1.7;">'+esc(d.description)+'</div></div>' : '') +
+      '<div class="field"><label>'+evLabel+'</label>'+evidenceHtml+'</div>' +
+      (d.expectedOutcome ? '<div class="field"><label>النتيجة المتوقعة</label><div class="read-val" style="white-space:pre-wrap;line-height:1.7;">'+esc(d.expectedOutcome)+'</div></div>' : '')
+    );
   }
+
+  /* ---- edit mode ---- */
+  var INIT_TYPES = ['تعليمية','إثرائية','تحفيزية','اجتماعية','بيئية','صحية','أخرى'];
+  var typeOpts = INIT_TYPES.map(function(t){
+    return '<option value="'+t+'" '+(d.initiativeType===t?'selected':'')+'>'+t+'</option>';
+  }).join('');
+
+  function _radio(val, lbl){
+    return '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;">' +
+      '<input type="radio" name="editorEvidenceType" data-action="setRadio" data-group="evidenceType" data-val="'+val+'" '+(ev===val?'checked':'')+' style="accent-color:#0F766E;">' +
+      lbl+'</label>';
+  }
+
+  var evidenceInput;
+  if (ev === 'file'){
+    evidenceInput =
+      '<div class="field" id="editorInitFileWrap">' +
+        '<label>ارفع ملف الشاهد (صورة، PDF، Word) <span style="color:var(--danger)">*</span></label>' +
+        (d.evidenceContent ? '<div style="margin-bottom:8px;font-size:12.5px;color:var(--muted);">ملف مرفق: <a href="'+esc(d.evidenceContent)+'" target="_blank" style="color:#0F766E;">عرض الملف الحالي</a></div>' : '') +
+        '<input type="file" id="editorInitFileInput" accept="image/*,.pdf,.doc,.docx" style="display:none;">' +
+        '<button type="button" class="btn btn-ghost btn-sm" id="editorInitFilePickBtn" style="width:100%;border:2px dashed var(--border);border-radius:8px;padding:18px;color:var(--muted);">📎 اختر ملفاً أو اسحبه هنا<br><span style="font-size:11px;">(صورة أو PDF أو Word، حتى 20MB)</span></button>' +
+        '<div id="editorInitFileStatus" style="font-size:12.5px;margin-top:6px;color:var(--muted);"></div>' +
+        '<input type="hidden" id="editorInitFileUrl" value="'+esc(d.evidenceContent||'')+'">' +
+      '</div>';
+  } else if (ev === 'url'){
+    evidenceInput =
+      '<div class="field"><label>رابط OneDrive / Drive <span style="color:var(--danger)">*</span></label>' +
+        '<input class="input" data-field="evidenceContent" type="url" placeholder="https://..." value="'+esc(d.evidenceContent||'')+'">' +
+      '</div>';
+  } else {
+    var evPlh = ev==='procedure' ? 'صف خطوات إجراء التنفيذ بالتفصيل…' : 'صف الدليل الذي يثبت تنفيذ المبادرة…';
+    var evLbl = ev==='procedure' ? 'وصف إجراء التنفيذ' : 'وصف الشاهد';
+    evidenceInput =
+      '<div class="field"><label>'+evLbl+' <span style="color:var(--danger)">*</span></label>' +
+        '<textarea class="input" data-field="evidenceContent" rows="3" placeholder="'+evPlh+'" style="resize:vertical;">'+esc(d.evidenceContent||'')+'</textarea>' +
+      '</div>';
+  }
+
   return (
-    '<div class="field-grid cols-2">' +
-      '<div class="field"><label>عنوان المبادرة</label><div class="read-val">'+esc(d.initiativeTitle||'—')+'</div></div>' +
-      '<div class="field"><label>نوع المبادرة</label><div class="read-val">'+esc(d.initiativeType||'—')+'</div></div>' +
+    inputField('عنوان المبادرة', 'initiativeTitle', d.initiativeTitle||'', { placeholder: 'مثال: مبادرة تحسين مهارات القراءة للصف الثاني' }) +
+    '<div class="field"><label>نوع المبادرة</label>' +
+      '<select class="input" data-field="initiativeType">' +
+        '<option value="">— اختر نوع المبادرة —</option>' + typeOpts +
+      '</select>' +
     '</div>' +
     '<div class="field-grid cols-2">' +
-      '<div class="field"><label>الفئة المستفيدة</label><div class="read-val">'+esc(d.targetGroup||'—')+'</div></div>' +
-      '<div class="field"><label>تاريخ التنفيذ</label><div class="read-val">'+esc(d.executionDate||'—')+'</div></div>' +
+      inputField('الفئة المستفيدة', 'targetGroup', d.targetGroup||'', { placeholder: 'مثال: طلاب الصف الثالث' }) +
+      inputField('عدد المستفيدين المتوقع', 'estimatedBeneficiaries', d.estimatedBeneficiaries||'', { type: 'number', placeholder: 'مثال: 30' }) +
     '</div>' +
-    (d.estimatedBeneficiaries ? '<div class="field"><label>عدد المستفيدين المتوقع</label><div class="read-val">'+esc(String(d.estimatedBeneficiaries))+'</div></div>' : '') +
-    (d.description ? '<div class="field"><label>وصف المبادرة وأهدافها</label><div class="read-val" style="white-space:pre-wrap;line-height:1.7;">'+esc(d.description)+'</div></div>' : '') +
-    '<div class="field"><label>'+evLabel+'</label>'+evidenceHtml+'</div>' +
-    (d.expectedOutcome ? '<div class="field"><label>النتيجة المتوقعة</label><div class="read-val" style="white-space:pre-wrap;line-height:1.7;">'+esc(d.expectedOutcome)+'</div></div>' : '')
+    inputField('تاريخ التنفيذ', 'executionDate', d.executionDate||'', { type: 'date' }) +
+    inputField('وصف المبادرة وأهدافها', 'description', d.description||'', { type: 'textarea', placeholder: 'اشرح فكرة المبادرة وما تسعى لتحقيقه…' }) +
+    '<div class="field"><label>نوع الشاهد / الدليل <span style="color:var(--danger)">*</span></label>' +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;">' +
+        _radio('description','وصف تفصيلي') +
+        _radio('url','رابط OneDrive') +
+        _radio('procedure','وصف إجراء') +
+        _radio('file','ملف (صورة / PDF / Word)') +
+      '</div>' +
+    '</div>' +
+    evidenceInput +
+    inputField('النتيجة المتوقعة', 'expectedOutcome', d.expectedOutcome||'', { type: 'textarea', placeholder: 'ما النتيجة التي تتوقع تحقيقها؟' })
   );
 }
 
@@ -14486,6 +14552,34 @@ function bindEditor(){
     if (this.disabled) return; this.disabled = true;
     try{ await persistEditor('approved'); } finally{ this.disabled = false; }
   });
+
+  /* رفع ملف الشاهد لنموذج توثيق مبادرة تعليمية (محرر المنسق) */
+  var _editorInitPickBtn = document.getElementById('editorInitFilePickBtn');
+  var _editorInitFileInput = document.getElementById('editorInitFileInput');
+  if (_editorInitPickBtn && _editorInitFileInput){
+    _editorInitPickBtn.addEventListener('click', function(){ _editorInitFileInput.click(); });
+    _editorInitFileInput.addEventListener('change', async function(){
+      var file = _editorInitFileInput.files[0];
+      if (!file) return;
+      if (file.size > 20 * 1024 * 1024){ toast('حجم الملف يتجاوز 20MB.'); return; }
+      var statusEl = document.getElementById('editorInitFileStatus');
+      if (statusEl) statusEl.textContent = 'جاري الرفع…';
+      _editorInitPickBtn.disabled = true;
+      try {
+        var url = await uploadFileToStorage(file);
+        setPath(EditorState.data, 'evidenceContent', url);
+        var hiddenUrl = document.getElementById('editorInitFileUrl');
+        if (hiddenUrl) hiddenUrl.value = url;
+        if (statusEl) statusEl.innerHTML = '✅ تم الرفع: <a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer" style="color:#0F766E;">عرض الملف</a>';
+        _editorInitPickBtn.textContent = '✅ '+file.name+' — تغيير';
+        _editorInitPickBtn.style.color = '#0F766E';
+      } catch(e){
+        if (statusEl) statusEl.textContent = 'فشل الرفع: '+arabicError(e);
+      } finally {
+        _editorInitPickBtn.disabled = false;
+      }
+    });
+  }
 }
 
 async function persistEditor(targetStatus){
@@ -14572,7 +14666,7 @@ async function screenView(id){
     case 'plcSelfEval': body = renderPlcSelfEval(s.payload, true); break;
     case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
     case 'behavioralPlan': body = renderBehavioralPlan(s.payload, true); break;
-    case 'teacherInitiative': body = renderTeacherInitiative(s.payload); break;
+    case 'teacherInitiative': body = renderTeacherInitiative(s.payload, true); break;
   }
   const stamp = s.status==='approved' ? (
     '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
@@ -14680,7 +14774,7 @@ async function screenReview(id){
     case 'plcSelfEval': body = renderPlcSelfEval(s.payload, true); break;
     case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
     case 'behavioralPlan': body = renderBehavioralPlan(s.payload, true); break;
-    case 'teacherInitiative': body = renderTeacherInitiative(s.payload); break;
+    case 'teacherInitiative': body = renderTeacherInitiative(s.payload, true); break;
   }
   return (
     '<div class="sheet-bar no-print"><div style="display:flex;gap:8px;align-items:center;"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></div>' +
