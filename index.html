@@ -1653,7 +1653,20 @@ const DB = {
   },
   async deleteLoginLogs(school){
     if (!isRemote()) return;
-    await remoteFetch('login_logs?school=eq.' + encodeURIComponent(school), { method:'DELETE' });
+    const svcKey = getSvcKey();
+    const authKey = svcKey || AUTH.accessToken || CONFIG.SUPABASE_ANON_KEY;
+    const res = await fetch(CONFIG.SUPABASE_URL + '/rest/v1/login_logs?school=eq.' + encodeURIComponent(school), {
+      method: 'DELETE',
+      headers: {
+        'apikey': svcKey || CONFIG.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + authKey,
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!res.ok && res.status !== 204){
+      let msg = ''; try{ const j = await res.json(); msg = j.message || j.hint || ''; }catch(e2){}
+      throw new Error('فشل حذف السجلات (' + res.status + ')' + (msg ? ': ' + msg : ''));
+    }
   },
   async listSubmissions(filter){
     filter = filter || {};
