@@ -14606,19 +14606,20 @@ async function persistEditor(targetStatus){
     });
   }
 
-  /* رفع التوقيعات لـ Storage بدلاً من تخزينها كـ base64 في DB */
+  /* رفع التوقيعات بالتوازي بدلاً من التسلسل */
   try{
+    const _sigJobs = [];
     if (EditorState.prepSig && EditorState.prepSig.startsWith('data:')){
-      EditorState.prepSig = await uploadSignatureToStorage(EditorState.prepSig);
+      _sigJobs.push(uploadSignatureToStorage(EditorState.prepSig).then(function(u){ EditorState.prepSig = u; }));
     }
     if (Array.isArray(EditorState.data.sessions)){
-      for (var _si = 0; _si < EditorState.data.sessions.length; _si++){
-        const _sess = EditorState.data.sessions[_si];
+      EditorState.data.sessions.forEach(function(_sess){
         if (_sess.sig && _sess.sig.startsWith('data:')){
-          _sess.sig = await uploadSignatureToStorage(_sess.sig);
+          _sigJobs.push(uploadSignatureToStorage(_sess.sig).then(function(u){ _sess.sig = u; }));
         }
-      }
+      });
     }
+    await Promise.all(_sigJobs);
   }catch(sigErr){ toast('تعذّر رفع التوقيع: ' + (sigErr.message||'')); return; }
 
   const payload = {
@@ -14629,9 +14630,27 @@ async function persistEditor(targetStatus){
     submitted_at: targetStatus==='pending' ? nowIso() : null, approved_at: EditorState.approved_at || null
   };
   try{
-    if (EditorState.id){ await DB.updateSubmission(EditorState.id, payload); }
-    else { const created = await DB.createSubmission(payload); EditorState.id = created.id; }
-    invalidateAllScreenCaches();
+    var _savedRow;
+    if (EditorState.id){ _savedRow = await DB.updateSubmission(EditorState.id, payload); }
+    else { _savedRow = await DB.createSubmission(payload); if(_savedRow) EditorState.id = _savedRow.id; }
+
+    /* تحديث جراحي للكاش بدلاً من مسحه كاملاً */
+    if (_savedRow){
+      const _submPath = 'submissions?order=created_at.desc&school=eq.' + encodeURIComponent(EditorState.school);
+      function _patchSubsCache(list){
+        if (!list) return;
+        const idx = list.findIndex(function(s){ return s.id === _savedRow.id; });
+        if (idx > -1) list[idx] = _savedRow; else list.unshift(_savedRow);
+        try{ _fcWrite(_submPath, list); }catch(e){}
+      }
+      _patchSubsCache(_teacherScreenData && _teacherScreenData.subs);
+      _patchSubsCache(_coordScreenData && _coordScreenData.subs);
+      /* اكتفِ بمسح كاشات الشاشات الأخرى غير المعتمدة على subs */
+      _counselorCasesData = null; _coordTasksData = null; _coordVisitsData = null; _coordGoalsData = null;
+    } else {
+      invalidateAllScreenCaches();
+    }
+
     if (targetStatus === 'pending'){
       invalidatePendingCache();
       const fTitle = (formDef(EditorState.formType)||{}).title || 'نموذج';
