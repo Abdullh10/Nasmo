@@ -956,7 +956,7 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 -- alter table practice_shares drop constraint if exists practice_shares_principal_rating_check;
 -- alter table practice_shares add constraint practice_shares_principal_rating_check check (principal_rating between 0 and 100);
 
--- ميزة "حساب المرشد الطلابي" — نفّذ هذه الأوامر مرة واحدة في SQL Editor:
+-- ميزة "حساب الموجه الطلابي" — نفّذ هذه الأوامر مرة واحدة في SQL Editor:
 -- 1) توسيع قيود الدور في جدول profiles:
 -- alter table profiles drop constraint if exists profiles_role_check;
 -- alter table profiles add constraint profiles_role_check check (role in ('coordinator','principal','teacher','admin','counselor'));
@@ -2720,7 +2720,7 @@ function selfEvalAvgScore(payload){
 function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
-const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', vice_principal:'وكيل المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'مرشد طلابي', super_admin:'سوبر أدمن' };
+const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', vice_principal:'وكيل المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'موجه طلابي', super_admin:'سوبر أدمن' };
 function isPrincipal(u){ return u && (u.role==='principal' || u.role==='vice_principal'); }
 
 /* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
@@ -3399,7 +3399,7 @@ let _coordTasksData = null, _coordTasksDataAt = 0;
 let _coordVisitsData = null, _coordVisitsDataAt = 0;
 let _coordGoalsData = null, _coordGoalsDataAt = 0;
 const COORD_TAB_TTL_MS = 60000;
-/* كاش بيانات لوحة المرشد الطلابي */
+/* كاش بيانات لوحة الموجه الطلابي */
 let _counselorCasesData = null, _counselorCasesDataAt = 0;
 const COUNSELOR_TTL_MS = 60000;
 function invalidateCounselorData(){ _counselorCasesData = null; }
@@ -6109,7 +6109,7 @@ function bindPracticeBank(){
   });
 }
 
-/* ---------------------- نموذج إحالة للمرشد الطلابي ---------------------- */
+/* ---------------------- نموذج إحالة للموجه الطلابي ---------------------- */
 const REFERRAL_REASONS = [
   'النوم داخل الحصة',
   'التأخر المتكرر',
@@ -6131,7 +6131,7 @@ function openCounselorReferralModal(students){
   // students = [{name, grade, section}]
   DB.listUsers({ school: State.user.school }).then(function(users){
     const counselors = (users||[]).filter(function(u){ return u.role==='counselor'; });
-    if (!counselors.length){ toast('لا يوجد مرشد طلابي مسجّل في هذه المدرسة.'); return; }
+    if (!counselors.length){ toast('لا يوجد موجه طلابي مسجّل في هذه المدرسة.'); return; }
     removeCounselorReferralModal();
     const now = new Date();
     const dayNames = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
@@ -6157,7 +6157,7 @@ function openCounselorReferralModal(students){
         /* header */
         '<div style="background:color-mix(in srgb,var(--navy) 12%,var(--surface));border-radius:16px 16px 0 0;padding:18px 22px;color:var(--navy);border-bottom:1px solid var(--border);">' +
           '<div style="font-size:11px;opacity:.75;margin-bottom:2px;letter-spacing:.5px;font-weight:600;">نموذج رسمي</div>' +
-          '<div style="font-size:18px;font-weight:800;">إحالة للمرشد الطلابي</div>' +
+          '<div style="font-size:18px;font-weight:800;">إحالة للموجه الطلابي</div>' +
           '<div style="font-size:12px;opacity:.8;margin-top:4px;">'+esc(todayDay)+' · '+fmtDate(todayDate)+'</div>' +
         '</div>' +
         '<div style="padding:22px 24px;">' +
@@ -6174,9 +6174,9 @@ function openCounselorReferralModal(students){
             '<div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600;">الطالب / الطلاب</div>' +
             studentRows +
           '</div>' +
-          /* المرشد */
+          /* الموجه */
           '<div class="field" style="margin-bottom:14px;">' +
-            '<label style="font-size:12px;color:var(--text);font-weight:600;">المرشد الطلابي المحال إليه <span style="color:var(--danger)">*</span></label>' +
+            '<label style="font-size:12px;color:var(--text);font-weight:600;">الموجه الطلابي المحال إليه <span style="color:var(--danger)">*</span></label>' +
             '<select class="input" id="crmCounselorSel" style="margin-top:4px;">'+opts+'</select>' +
           '</div>' +
           /* سبب الإحالة */
@@ -6195,7 +6195,7 @@ function openCounselorReferralModal(students){
           '<div class="field" style="margin-bottom:14px;">' +
             '<label style="font-size:12px;color:var(--text);font-weight:600;">ما الإجراء الذي اتخذته قبل التحويل؟ <span style="color:var(--danger)">*</span></label>' +
             '<div id="crmPreReferralWrap" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;">' +
-              ['التحدث مع الطالب بشكل فردي','التواصل مع ولي الأمر (هاتفياً)','التواصل مع ولي الأمر (كتابياً)','تعديل مكان جلوس الطالب','الإنذار الشفهي','الإنذار الكتابي','تحويل للوكيل / الإدارة','تقديم دعم أكاديمي إضافي داخل الفصل','إشراك الطالب في أنشطة جماعية','التنسيق مع بقية معلمي الطالب','تحديد أهداف سلوكية مع الطالب','الاستشارة غير الرسمية مع المرشد سابقاً','توثيق السلوك في سجل خاص','تحويل للرعاية الصحية المدرسية','تكليف الطالب بأدوار إيجابية داخل الفصل']
+              ['التحدث مع الطالب بشكل فردي','التواصل مع ولي الأمر (هاتفياً)','التواصل مع ولي الأمر (كتابياً)','تعديل مكان جلوس الطالب','الإنذار الشفهي','الإنذار الكتابي','تحويل للوكيل / الإدارة','تقديم دعم أكاديمي إضافي داخل الفصل','إشراك الطالب في أنشطة جماعية','التنسيق مع بقية معلمي الطالب','تحديد أهداف سلوكية مع الطالب','الاستشارة غير الرسمية مع الموجه سابقاً','توثيق السلوك في سجل خاص','تحويل للرعاية الصحية المدرسية','تكليف الطالب بأدوار إيجابية داخل الفصل']
                 .map(function(a){ return '<label style="display:flex;align-items:flex-start;gap:6px;font-size:12.5px;cursor:pointer;"><input type="checkbox" class="crm-pre-action" value="'+a+'" style="margin-top:2px;flex-shrink:0;">'+a+'</label>'; }).join('') +
             '</div>' +
           '</div>' +
@@ -6227,14 +6227,14 @@ function openCounselorReferralModal(students){
       /* بناء نص الإحالة الرسمي */
       function buildReferralText(student){
         return [
-          'نموذج إحالة للمرشد الطلابي',
+          'نموذج إحالة للموجه الطلابي',
           '─────────────────────────',
           'اليوم والتاريخ : '+todayDay+' — '+fmtDate(todayDate),
           'المُحيل        : '+esc(State.user.full_name||''),
           'الطالب         : '+esc(student.name)+' | الصف: '+esc(student.grade||'—')+' / الشعبة: '+esc(student.section||'—'),
           'سبب الإحالة   : '+(selectedReason==='أخرى'?otherText.trim():selectedReason),
           '─────────────────────────',
-          'المرشد المحال إليه: '+(counselor?counselor.full_name:''),
+          'الموجه المحال إليه: '+(counselor?counselor.full_name:''),
         ].join('\n');
       }
       try{
@@ -6256,11 +6256,11 @@ function openCounselorReferralModal(students){
           const notifBody = 'أحال إليك '+State.user.full_name+' ('+students.length+') طالب للمتابعة الإرشادية.\nسبب الإحالة: '+(selectedReason==='أخرى'?otherText.trim():selectedReason);
           try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorId, type:'general', title:'إحالة طلاب جدد إليك', body:notifBody }); }catch(e){}
         }
-        toast('تمت إحالة '+students.length+' طالب للمرشد '+(counselor?counselor.full_name:'')+' بنجاح.');
+        toast('تمت إحالة '+students.length+' طالب للموجه '+(counselor?counselor.full_name:'')+' بنجاح.');
         removeCounselorReferralModal();
       }catch(e){ toast('فشلت الإحالة: '+e.message); btn.disabled=false; btn.textContent='إرسال الإحالة'; }
     });
-  }).catch(function(e){ toast('فشل تحميل المرشدين: '+e.message); });
+  }).catch(function(e){ toast('فشل تحميل الموجهين: '+e.message); });
 }
 function removeCounselorReferralModal(){
   const el = document.getElementById('crm-overlay');
@@ -6294,7 +6294,7 @@ async function openObservationModal(students){
     return;
   }
   const today = new Date().toISOString().slice(0,10);
-  /* جلب المرشدين الطلابيين مسبقاً */
+  /* جلب الموجهين الطلابيين مسبقاً */
   let _obsCounselors = [];
   try { _obsCounselors = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='counselor'; }); } catch(e){}
   const obsGrades = [];
@@ -6356,19 +6356,19 @@ async function openObservationModal(students){
           '<label style="font-size:12px;font-weight:600;color:var(--text);">تفاصيل الملاحظة</label>' +
           '<textarea class="input" id="obsDesc" rows="3" style="margin-top:4px;resize:vertical;" placeholder="صِف ما لاحظته بشكل مختصر…"></textarea>' +
         '</div>' +
-        /* اختيار المرشد */
+        /* اختيار الموجه */
         (showCounselorSel ? (
           '<div class="field" style="margin-bottom:14px;">' +
-            '<label style="font-size:12px;font-weight:600;color:var(--text);">المرشد الطلابي المُبلَّغ <span style="color:var(--danger)">*</span></label>' +
+            '<label style="font-size:12px;font-weight:600;color:var(--text);">الموجه الطلابي المُبلَّغ <span style="color:var(--danger)">*</span></label>' +
             '<select class="input" id="obsCounselorSel" style="margin-top:4px;">' +
-              '<option value="">— اختر المرشد الطلابي —</option>' + counselorOpts +
+              '<option value="">— اختر الموجه الطلابي —</option>' + counselorOpts +
             '</select>' +
           '</div>'
         ) : '') +
         /* إشعار من؟ */
         '<div style="background:color-mix(in srgb,var(--primary,#2563eb) 8%,var(--surface,#f8fafc));border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12.5px;">' +
           '<div style="font-weight:700;margin-bottom:6px;color:var(--text);">سيتم إبلاغ:</div>' +
-          '<div>✅ المرشد الطلابي '+(showCounselorSel ? '(المحدد)' : '(دائماً)')+'</div>' +
+          '<div>✅ الموجه الطلابي '+(showCounselorSel ? '(المحدد)' : '(دائماً)')+'</div>' +
           '<div id="obsUrgentNote" style="color:var(--danger,#dc2626);display:none;margin-top:3px;">🔴 المدير (لأن الملاحظة عاجلة)</div>' +
         '</div>' +
         /* أزرار */
@@ -6431,7 +6431,7 @@ async function openObservationModal(students){
     if (!document.getElementById('obsSectionSel').value){ toast('يرجى اختيار الشعبة.'); return; }
     if (!studentName){ toast('يرجى اختيار الطالب.'); return; }
     if (!obsType){ toast('يرجى اختيار نوع الملاحظة.'); return; }
-    if (showCounselorSel && !(document.getElementById('obsCounselorSel')||{}).value){ toast('يرجى اختيار المرشد الطلابي.'); return; }
+    if (showCounselorSel && !(document.getElementById('obsCounselorSel')||{}).value){ toast('يرجى اختيار الموجه الطلابي.'); return; }
     const grade   = document.getElementById('obsGradeSel').value + ' / ' + document.getElementById('obsSectionSel').value;
     const desc    = document.getElementById('obsDesc').value.trim();
     const sev     = (document.querySelector('input[name="obsSev"]:checked')||{value:'info'}).value;
@@ -6450,14 +6450,14 @@ async function openObservationModal(students){
         status: 'open',
         observation_date: today
       });
-      /* إشعار المرشد */
+      /* إشعار الموجه */
       try{
-        /* تحديد المرشد: من القائمة المنسدلة أو الوحيد تلقائياً */
+        /* تحديد الموجه: من القائمة المنسدلة أو الوحيد تلقائياً */
         var selCounselorId = showCounselorSel
           ? (document.getElementById('obsCounselorSel')||{}).value || ''
           : (_obsCounselors[0] ? _obsCounselors[0].id : '');
         if (!selCounselorId && showCounselorSel){
-          toast('يرجى اختيار المرشد الطلابي قبل الحفظ.');
+          toast('يرجى اختيار الموجه الطلابي قبل الحفظ.');
           btn.disabled=false; btn.textContent='حفظ الملاحظة'; return;
         }
         const counselor = _obsCounselors.find(function(c){ return c.id===selCounselorId; }) || _obsCounselors[0];
@@ -6472,7 +6472,7 @@ async function openObservationModal(students){
           }
         }
       }catch(ne){ console.warn('[obs notify]', ne.message); }
-      toast('تم حفظ الملاحظة وإبلاغ المرشد'+(sev==='urgent'?' والمدير':'')+'.');
+      toast('تم حفظ الملاحظة وإبلاغ الموجه'+(sev==='urgent'?' والمدير':'')+'.');
       div.remove();
       await render();
     }catch(e){ toast('فشل الحفظ: '+e.message); btn.disabled=false; btn.textContent='حفظ الملاحظة'; }
@@ -6561,7 +6561,7 @@ async function screenStudentRoster(){
             ? '<button class="btn btn-ghost btn-sm" data-action="editStudent" data-id="'+s.id+'">تعديل</button>' +
               '<button class="btn btn-danger btn-sm" data-action="deleteStudent" data-id="'+s.id+'">حذف</button>'
             : '<button class="btn btn-ghost btn-sm" data-action="newPlanForStudent" data-id="'+s.id+'" data-plan="individualAgreement" '+dName+'>خطة فردية</button>' +
-              (State.user.role !== 'counselor' ? '<button class="btn btn-ghost btn-sm" data-action="referStudentCounselor" data-id="'+s.id+'" '+dName+'>إحالة للمرشد الطلابي</button>' : '')
+              (State.user.role !== 'counselor' ? '<button class="btn btn-ghost btn-sm" data-action="referStudentCounselor" data-id="'+s.id+'" '+dName+'>إحالة للموجه الطلابي</button>' : '')
           ) +
         '</td>' +
       '</tr>'
@@ -6712,7 +6712,7 @@ function bindStudentRoster(){
     });
   });
 
-  /* إرسال للمرشد الطلابي من سجل الطلاب */
+  /* إرسال للموجه الطلابي من سجل الطلاب */
   document.querySelectorAll('[data-action="referStudentCounselor"]').forEach(function(el){
     el.addEventListener('click', function(){
       openCounselorReferralModal([{
@@ -7395,7 +7395,7 @@ async function screenAdminSettings(){
     '-- 6) إضافة عمود قائمة المدارس لجدول site_settings (لعرضها في صفحة الدخول)',
     "alter table site_settings add column if not exists schools jsonb default '[]'::jsonb;",
     '',
-    '-- 7) أعمدة جديدة لحساب المرشد الطلابي',
+    '-- 7) أعمدة جديدة لحساب الموجه الطلابي',
     "alter table counseling_cases add column if not exists category text default 'other';",
     "alter table counseling_cases add column if not exists priority text default 'normal';",
     "alter table counseling_cases add column if not exists counseling_goal text default '';",
@@ -7742,7 +7742,7 @@ function bindAdminSettings(){
   });
 }
 /* ============================================================
-   حساب المرشد الطلابي
+   حساب الموجه الطلابي
    ============================================================ */
 let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
 
@@ -8066,7 +8066,7 @@ async function screenCounselorCases(){
   '</div>';
 
   return (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة المرشد الطلابي</h2>' +
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة الموجه الطلابي</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:16px;">'+esc(State.user.school)+'</div>' +
     '<div class="kpi-grid" style="margin-bottom:16px;">' +
       '<div class="kpi-card accent-pending" style="cursor:pointer;" data-action="counselorFilter" data-status="open"><div class="v">'+openCount+'</div><div class="l">مفتوحة</div></div>' +
@@ -8167,7 +8167,7 @@ function teacherReferralsTabHtml(cases){
 
     /* بادج الحالة */
     var badge = hasPending
-      ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 18%,transparent);color:var(--warning,#d97706);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">● رد المرشد – يحتاج مراجعة</span>'
+      ? '<span style="background:color-mix(in srgb,var(--warning,#d97706) 18%,transparent);color:var(--warning,#d97706);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">● رد الموجه – يحتاج مراجعة</span>'
       : allClosed
         ? '<span style="background:color-mix(in srgb,var(--muted) 15%,transparent);color:var(--muted);border-radius:20px;padding:2px 10px;font-size:11.5px;">مغلقة</span>'
         : '<span style="background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);color:var(--accent,#2563eb);border-radius:20px;padding:2px 10px;font-size:11.5px;">قيد الإجراء</span>';
@@ -8200,7 +8200,7 @@ function teacherReferralsTabHtml(cases){
             .map(function(c, idx){
               var hasResp = c.rec_status==='pending';
               var statusColor = hasResp ? 'var(--warning,#d97706)' : c.status==='closed' ? 'var(--muted)' : 'var(--accent,#2563eb)';
-              var statusText  = hasResp ? 'رد المرشد معلّق ●' : c.status==='closed' ? 'مغلقة' : 'قيد الإجراء';
+              var statusText  = hasResp ? 'رد الموجه معلّق ●' : c.status==='closed' ? 'مغلقة' : 'قيد الإجراء';
               return (
                 /* غلاف البطاقة الرسمية */
                 '<div style="border:1.5px solid color-mix(in srgb,'+statusColor+' 35%,transparent);border-radius:12px;overflow:hidden;margin-bottom:14px;">' +
@@ -8229,7 +8229,7 @@ function teacherReferralsTabHtml(cases){
                         '<div style="font-size:13px;font-weight:700;">'+esc(c.student_grade||'')+(c.student_section?' / '+esc(c.student_section):'')+'</div>' +
                       '</div>' : '') +
                       '<div style="background:var(--surface);border-radius:8px;padding:8px 12px;">' +
-                        '<div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">المرشد المحال إليه</div>' +
+                        '<div style="font-size:10.5px;color:var(--muted);margin-bottom:2px;">الموجه المحال إليه</div>' +
                         '<div style="font-size:13px;font-weight:700;">'+esc(c.counselor_name||'—')+'</div>' +
                       '</div>' +
                     '</div>' +
@@ -8251,12 +8251,12 @@ function teacherReferralsTabHtml(cases){
                         '</div>'
                       : '') +
 
-                    /* رد المرشد */
+                    /* رد الموجه */
                     (c.rec_for_teacher
                       ? '<div style="background:color-mix(in srgb,var(--warning,#d97706) 8%,var(--surface));border:1.5px solid color-mix(in srgb,var(--warning,#d97706) 40%,transparent);border-radius:10px;padding:14px 16px;margin-bottom:'+(hasResp?'12':'0')+'px;">' +
                           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
                             '<span style="font-size:16px;">📩</span>' +
-                            '<span style="font-size:12px;font-weight:800;color:var(--warning,#d97706);">رد المرشد الطلابي</span>' +
+                            '<span style="font-size:12px;font-weight:800;color:var(--warning,#d97706);">رد الموجه الطلابي</span>' +
                           '</div>' +
                           '<div style="font-size:13.5px;white-space:pre-wrap;line-height:1.8;font-family:inherit;">'+esc(c.rec_for_teacher)+'</div>' +
                         '</div>'
@@ -8282,7 +8282,7 @@ function teacherReferralsTabHtml(cases){
   });
 
   return '<div style="margin-top:4px;">' +
-    '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">📋 إحالاتي للمرشد الطلابي</div>' +
+    '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">📋 إحالاتي للموجه الطلابي</div>' +
     statsHtml + filterBar + cardsHtml +
   '</div>';
 }
@@ -8331,7 +8331,7 @@ function giftedReviewModalHtml(report, role){
   if (!report) return '';
   var isPrincipal = role === 'principal' || role === 'vice_principal';
   var decisionOpts = isPrincipal
-    ? ['اعتماد التحويل لبرامج الموهوبين','الإثراء داخل الفصل','ترشيح لمسابقة أو أولمبياد','التنسيق مع المرشد الطلابي','عقد اجتماع مع ولي الأمر','إحالة للتقييم المتخصص','أخرى']
+    ? ['اعتماد التحويل لبرامج الموهوبين','الإثراء داخل الفصل','ترشيح لمسابقة أو أولمبياد','التنسيق مع الموجه الطلابي','عقد اجتماع مع ولي الأمر','إحالة للتقييم المتخصص','أخرى']
     : ['إنشاء خطة رعاية موهوبين','التواصل مع ولي الأمر','إرسال ترشيح رسمي','إحالة للمختص','أخرى'];
   return (
     '<div class="modal-bg" data-action="closeGiftedReview">' +
@@ -8342,7 +8342,7 @@ function giftedReviewModalHtml(report, role){
           '<div style="color:var(--muted);">'+esc(report.student_grade||'')+(report.student_section?' / '+esc(report.student_section):'')+' — '+esc(report.talent_type)+'</div>' +
           (report.proposed_action ? '<div style="margin-top:6px;"><b>اقتراح المعلم:</b> '+esc(report.proposed_action)+'</div>' : '') +
         '</div>' +
-        '<div class="field"><label>'+(isPrincipal ? 'قرار مدير المدرسة' : 'إجراء المرشد الطلابي')+'</label>' +
+        '<div class="field"><label>'+(isPrincipal ? 'قرار مدير المدرسة' : 'إجراء الموجه الطلابي')+'</label>' +
           '<select class="input" id="giftedDecisionSel">' +
             '<option value="">— اختر —</option>' +
             decisionOpts.map(function(o){ return '<option value="'+esc(o)+'" '+(report.principal_decision===o?'selected':'')+'>'+esc(o)+'</option>'; }).join('') +
@@ -9363,7 +9363,7 @@ async function screenCoordinatorMyStudents(){
 
   const coordPendingRecsSection = (pendingRecs && pendingRecs.length) ? (
     '<div style="background:color-mix(in srgb,var(--teal) 10%,transparent);border:1.5px solid var(--teal);border-radius:12px;padding:14px 18px;margin-bottom:14px;">' +
-      '<div style="font-weight:700;font-size:13.5px;color:var(--teal);margin-bottom:12px;">📋 '+pendingRecs.length+' توصية إرشادية من المرشد بانتظار إجراءك</div>' +
+      '<div style="font-weight:700;font-size:13.5px;color:var(--teal);margin-bottom:12px;">📋 '+pendingRecs.length+' توصية إرشادية من الموجه بانتظار إجراءك</div>' +
       pendingRecs.map(function(r){
         return (
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;">' +
@@ -9461,13 +9461,13 @@ function bindCoordinatorMyStudents(){
     });
   });
 
-  /* توصيات إرشادية — إرجاع للمرشد */
+  /* توصيات إرشادية — إرجاع للموجه */
   document.querySelectorAll('[data-action="returnRec"]').forEach(function(el){
     el.addEventListener('click', async function(){
       var id = el.getAttribute('data-id');
       var studentName = el.getAttribute('data-name');
       var counselorName = el.getAttribute('data-counselor');
-      var note = prompt('ملاحظتك للمرشد '+(counselorName?'('+counselorName+')':'')+' بخصوص الطالب '+(studentName||'')+':');
+      var note = prompt('ملاحظتك للموجه '+(counselorName?'('+counselorName+')':'')+' بخصوص الطالب '+(studentName||'')+':');
       if (note === null) return;
       try{
         await DB.updateCounselingCase(id, { rec_status: 'returned', rec_return_note: note.trim() });
@@ -9479,7 +9479,7 @@ function bindCoordinatorMyStudents(){
             invalidateNotifCache();
           }
         }catch(e2){}
-        toast('تم إرجاع التوصية للمرشد.');
+        toast('تم إرجاع التوصية للموجه.');
         await render();
       }catch(e){ toast(arabicError(e)); }
     });
@@ -9561,8 +9561,8 @@ function refreshNotesList(studentName, items){
 async function sendStudentFileToCounselor(studentName){
   try{
     var counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor');
-    if (!counselors || !counselors.length){ toast('لم يتم العثور على مرشد طلابي في هذه المدرسة.'); return; }
-    /* عرض نافذة اختيار المرشد */
+    if (!counselors || !counselors.length){ toast('لم يتم العثور على موجه طلابي في هذه المدرسة.'); return; }
+    /* عرض نافذة اختيار الموجه */
     var existing = document.getElementById('counselorPickerOverlay');
     if (existing) existing.remove();
     var overlay = document.createElement('div');
@@ -9572,17 +9572,17 @@ async function sendStudentFileToCounselor(studentName){
       return '<button data-counselor-id="'+esc(c.id)+'" data-counselor-name="'+esc(c.full_name||'')+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;background:var(--bg-2,#f4f6f8);border:1.5px solid var(--border,#e5e7eb);border-radius:10px;cursor:pointer;font-size:13.5px;font-family:inherit;margin-bottom:8px;text-align:right;">' +
         '<span style="width:36px;height:36px;border-radius:50%;background:var(--primary,#1a56db);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0;">'+esc((c.full_name||'م').charAt(0))+'</span>' +
         '<span style="flex:1;font-weight:600;">'+esc(c.full_name||'—')+'</span>' +
-        '<span style="font-size:11.5px;color:var(--muted);">مرشد طلابي</span>' +
+        '<span style="font-size:11.5px;color:var(--muted);">موجه طلابي</span>' +
       '</button>';
     }).join('');
     overlay.innerHTML = (
       '<div style="background:var(--card,#fff);border-radius:14px;width:100%;max-width:400px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);direction:rtl;font-family:inherit;">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border,#e5e7eb);">' +
-          '<h3 style="margin:0;font-size:15px;">اختر المرشد الطلابي</h3>' +
+          '<h3 style="margin:0;font-size:15px;">اختر الموجه الطلابي</h3>' +
           '<button id="counselorPickerClose" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">✕</button>' +
         '</div>' +
         '<div style="padding:14px 16px;">' +
-          '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">سيتم إرسال ملف الطالب <b>'+esc(studentName)+'</b> إلى المرشد المختار.</div>' +
+          '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">سيتم إرسال ملف الطالب <b>'+esc(studentName)+'</b> إلى الموجه المختار.</div>' +
           listHtml +
         '</div>' +
       '</div>'
@@ -9601,10 +9601,10 @@ async function sendStudentFileToCounselor(studentName){
       var body = 'ملف الطالب: '+studentName+'\nالمعلم: '+(State.user.full_name||'')+'\n\nملاحظات المعلم:\n'+notesText;
       DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.email, target_type:'user', target_id:cId, type:'general', title:'ملف طالب: '+studentName, body:body })
         .then(function(){
-          toast('تم إرسال ملف الطالب إلى المرشد '+cName+' بنجاح.');
+          toast('تم إرسال ملف الطالب إلى الموجه '+cName+' بنجاح.');
         }).catch(function(e){ toast('فشل الإرسال: '+(e.message||e)); });
     });
-  }catch(e){ toast('فشل تحميل المرشدين: '+(e.message||e)); }
+  }catch(e){ toast('فشل تحميل الموجهين: '+(e.message||e)); }
 }
 
 function teacherSessionProgressBar(done, total){
@@ -10207,10 +10207,10 @@ async function screenTeacherTasks(){
     '</div>'
   ) : '';
 
-  /* — قسم التوصيات الإرشادية الواردة من المرشد — */
+  /* — قسم التوصيات الإرشادية الواردة من الموجه — */
   const pendingRecsSection = (pendingRecs && pendingRecs.length) ? (
     '<div style="background:color-mix(in srgb,var(--teal) 10%,transparent);border:1.5px solid var(--teal);border-radius:12px;padding:14px 18px;margin-bottom:14px;">' +
-      '<div style="font-weight:700;font-size:13.5px;color:var(--teal);margin-bottom:12px;">📋 '+pendingRecs.length+' توصية إرشادية من المرشد بانتظار إجراءك</div>' +
+      '<div style="font-weight:700;font-size:13.5px;color:var(--teal);margin-bottom:12px;">📋 '+pendingRecs.length+' توصية إرشادية من الموجه بانتظار إجراءك</div>' +
       pendingRecs.map(function(r){
         var isReturned = r.rec_status === 'returned';
         return (
@@ -10366,14 +10366,14 @@ async function screenTeacherTasks(){
           '<div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">' +
             '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
               '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToPrincipal" checked> مدير المدرسة</label>' +
-              '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> المرشد الطلابي</label>' +
+              '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> الموجه الطلابي</label>' +
               (State.user.community_id ? '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCoord"> منسق المجتمع (للاطلاع)</label>' : '') +
             '</div>' +
             (GiftedUI.counselors.length > 0 ?
               '<div id="giftedCounselorPickWrap" style="display:none;">' +
-                '<label style="font-size:13px;color:var(--muted);">اختر المرشد:</label>' +
+                '<label style="font-size:13px;color:var(--muted);">اختر الموجه:</label>' +
                 '<select class="input" id="giftedCounselorSel" style="margin-top:4px;">' +
-                  '<option value="">— اختر مرشداً —</option>' +
+                  '<option value="">— اختر موجهاً —</option>' +
                   GiftedUI.counselors.map(function(c){ return '<option value="'+esc(c.id)+'"'+(GiftedUI.selectedCounselorId===c.id?' selected':'')+'>'+esc(c.full_name)+'</option>'; }).join('') +
                 '</select>' +
               '</div>'
@@ -10652,7 +10652,7 @@ function bindTeacherTasks(){
       el.disabled = true; el.textContent = 'جاري…';
       try{
         await DB.acknowledgeRec(id);
-        toast('تم تسجيل استلامك لرد المرشد.');
+        toast('تم تسجيل استلامك لرد الموجه.');
         await render();
       }catch(e){ toast('فشل: '+e.message); el.disabled=false; el.textContent='✓ تسلّمت الرد'; }
     });
@@ -10669,7 +10669,7 @@ function bindTeacherTasks(){
       if (!win) return;
       var recBlock = (c.rec_for_teacher)
         ? '<div style="margin-top:20px;border-top:1px dashed #aaa;padding-top:14px;">' +
-            '<div style="font-weight:bold;margin-bottom:6px;">رد المرشد الطلابي:</div>' +
+            '<div style="font-weight:bold;margin-bottom:6px;">رد الموجه الطلابي:</div>' +
             '<div style="background:#fffbeb;border-right:4px solid #d97706;padding:10px 14px;white-space:pre-wrap;">'+esc(c.rec_for_teacher)+'</div>' +
           '</div>'
         : '';
@@ -10682,11 +10682,11 @@ function bindTeacherTasks(){
         '.pre{white-space:pre-wrap;background:#f5f5f5;border-radius:6px;padding:12px 16px;margin-top:10px;font-size:13px;}' +
         '@media print{.noprint{display:none}}' +
         '</style></head><body>' +
-        '<h2>نموذج إحالة للمرشد الطلابي</h2>' +
+        '<h2>نموذج إحالة للموجه الطلابي</h2>' +
         '<div class="row"><span class="lbl">اسم الطالب:</span><span>'+esc(c.student_name||student)+'</span></div>' +
         (c.student_grade ? '<div class="row"><span class="lbl">الصف / الشعبة:</span><span>'+esc(c.student_grade||'')+(c.student_section?' / '+esc(c.student_section):'')+'</span></div>' : '') +
         '<div class="row"><span class="lbl">المُحيل:</span><span>'+esc(c.referred_by_name||'—')+'</span></div>' +
-        '<div class="row"><span class="lbl">المرشد المحال إليه:</span><span>'+esc(c.counselor_name||'—')+'</span></div>' +
+        '<div class="row"><span class="lbl">الموجه المحال إليه:</span><span>'+esc(c.counselor_name||'—')+'</span></div>' +
         '<div class="row"><span class="lbl">تاريخ الإحالة:</span><span>'+fmtDate(c.created_at||'')+'</span></div>' +
         (Array.isArray(c.pre_referral_actions) && c.pre_referral_actions.length ? '<div style="margin-bottom:8px;"><div style="font-weight:bold;margin-bottom:4px;">الإجراءات المتخذة قبل التحويل:</div><div>'+c.pre_referral_actions.map(function(a){ return '• '+esc(a); }).join('<br>')+'</div></div>' : '') +
         (c.referral_reason ? '<div><div style="font-weight:bold;margin-bottom:4px;">نص الإحالة الرسمي:</div><div class="pre">'+esc(c.referral_reason)+'</div></div>' : '') +
@@ -10821,18 +10821,18 @@ function bindTeacherTasks(){
     });
   });
 
-  /* توصيات إرشادية — إرجاع للمرشد */
+  /* توصيات إرشادية — إرجاع للموجه */
   document.querySelectorAll('[data-action="returnRec"]').forEach(function(el){
     el.addEventListener('click', async function(){
       var id = el.getAttribute('data-id');
       var studentName = el.getAttribute('data-name');
       var counselorName = el.getAttribute('data-counselor');
-      var note = prompt('ملاحظتك للمرشد '+(counselorName?'('+counselorName+')':'')+' بخصوص الطالب '+(studentName||'')+':');
+      var note = prompt('ملاحظتك للموجه '+(counselorName?'('+counselorName+')':'')+' بخصوص الطالب '+(studentName||'')+':');
       if (note === null) return;
       try{
         await DB.updateCounselingCase(id, { rec_status: 'returned', rec_return_note: note.trim() });
         invalidateCounselorData(); invalidateTeacherScreenData();
-        /* إشعار للمرشد إن أمكن */
+        /* إشعار للموجه إن أمكن */
         try{
           const counselorProfiles = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&full_name=eq.'+encodeURIComponent(counselorName));
           if (counselorProfiles && counselorProfiles.length){
@@ -10840,7 +10840,7 @@ function bindTeacherTasks(){
             invalidateNotifCache();
           }
         }catch(e2){ /* إرسال الإشعار اختياري */ }
-        toast('تم إرجاع التوصية للمرشد.');
+        toast('تم إرجاع التوصية للموجه.');
         await render();
       }catch(e){ toast(arabicError(e)); }
     });
@@ -10932,7 +10932,7 @@ function bindTeacherTasks(){
     if (!toPrincipal && !toCounselor && !toCoord){ toast('يرجى اختيار جهة استلام الإشعار على الأقل.'); return; }
     if (toCounselor && GiftedUI.counselors.length > 1){
       const selCId = (document.getElementById('giftedCounselorSel')||{}).value || '';
-      if (!selCId){ toast('يرجى اختيار المرشد الطلابي المعني من القائمة.'); return; }
+      if (!selCId){ toast('يرجى اختيار الموجه الطلابي المعني من القائمة.'); return; }
     }
     sendGiftedBtn.disabled = true;
     try{
@@ -13610,7 +13610,7 @@ async function screenEditor(){
 /* ---- مولّدات هياكل كل نموذج (قابلة لإعادة الاستخدام بوضعَي التحرير/القراءة) ---- */
 
 const GP_GRADE_OPTS = ['الأول ثانوي','الثاني ثانوي','الثالث ثانوي'];
-const GP_DIAG_OPTS = ['نتائج الاختبار القبلي التشخيصي','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','نتائج اختبار نهاية الفصل','تحليل أوراق العمل الصفية','تحليل أخطاء الطلاب الشائعة','ملاحظة المعلم المباشرة في الفصل','بيانات التقويم المستمر','مؤشرات الحضور والمشاركة الصفية','تقارير المرشد الطلابي'];
+const GP_DIAG_OPTS = ['نتائج الاختبار القبلي التشخيصي','نتائج اختبار الفترة الأولى','نتائج اختبار الفترة الثانية','نتائج اختبار نهاية الفصل','تحليل أوراق العمل الصفية','تحليل أخطاء الطلاب الشائعة','ملاحظة المعلم المباشرة في الفصل','بيانات التقويم المستمر','مؤشرات الحضور والمشاركة الصفية','تقارير الموجه الطلابي'];
 const GP_SKILLS_OPTS = ['الفهم القرائي وتحليل النص','التعبير الكتابي الوظيفي والإبداعي','التعبير الشفهي والعرض والمناقشة','المفردات والتراكيب اللغوية','حل المسائل والتفكير الرياضي','مهارات الاستنتاج والتحليل والتقويم','مهارات التفكير الناقد والإبداعي','المهارات العلمية والتجريبية','تطبيق المفاهيم والنظريات','مهارات البحث والاستقصاء وجمع المعلومات'];
 const GP_TEACHER_OPINION_OPTS = ['تحسّن الطلاب بشكل ملحوظ في المهارات المستهدفة بعد التدخل العلاجي','حقق معظم الطلاب الهدف المستهدف ضمن الجدول الزمني المحدد','استجاب الطلاب بشكل إيجابي للأساليب العلاجية المستخدمة','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي ومتابعة مستمرة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب وتكثيف الدعم','تحسّن الأداء بصورة محدودة وتستلزم الحالة تدخلاً أكثر تخصصاً','أخرى'];
 const GP_TARGET_GOAL_OPTS = ['رفع مستوى الطالب إلى ما فوق حد الإتقان (50% فأكثر)','رفع درجة الطالب بنسبة 20% عن درجته الحالية','رفع درجة الطالب بنسبة 30% عن درجته الحالية','رفع درجة الطالب بنسبة 40% عن درجته الحالية','تحقيق نسبة 60% من الدرجة الكلية','تحقيق نسبة 70% من الدرجة الكلية (مستوى جيد)','إتقان المهارات الأساسية وتجاوز حد الإتقان','الانتقال من مستوى دون المتوسط إلى المتوسط','الانتقال من المستوى المتوسط إلى الجيد'];
@@ -13739,7 +13739,7 @@ const PLC_DECISION_PRESETS = [
   'تطبيق استراتيجية تدريسية موحدة في الوحدة القادمة',
   'توحيد أدوات التقويم ومعايير تقدير المستوى',
   'مشاركة نماذج الأوراق والأدوات مع أعضاء الفريق',
-  'إحالة الطلاب المحتاجين للدعم إلى المرشد الطلابي',
+  'إحالة الطلاب المحتاجين للدعم إلى الموجه الطلابي',
   'متابعة تقدم الطلاب وإعداد تقرير للاجتماع القادم',
   'تنسيق جدول الدروس التوضيحية للفصل القادم',
   'إعداد أنشطة إثرائية للطلاب المتقدمين',
