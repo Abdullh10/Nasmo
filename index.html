@@ -7811,19 +7811,21 @@ function counselingPresetField(label, id, currentVal, presets, rows, placeholder
 }
 
 async function screenCounselorCases(){
-  let cases, schoolUsers, schoolStudents, counselorGiftedReports;
+  let cases, schoolUsers, schoolStudents, counselorGiftedReports, counselorObservations;
   if (_counselorCasesData && (Date.now() - _counselorCasesDataAt) < COUNSELOR_TTL_MS){
-    ({ cases, schoolUsers, schoolStudents, counselorGiftedReports } = _counselorCasesData);
+    ({ cases, schoolUsers, schoolStudents, counselorGiftedReports, counselorObservations } = _counselorCasesData);
   } else {
-    [cases, schoolUsers, schoolStudents, counselorGiftedReports] = await Promise.all([
+    [cases, schoolUsers, schoolStudents, counselorGiftedReports, counselorObservations] = await Promise.all([
       DB.listCounselingCases(State.user.school),
       DB.listUsers({ school: State.user.school }),
       DB.listStudents({ school: State.user.school }),
-      DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; })
+      DB.listGiftedReports(State.user.school, { forCounselor: true }).catch(function(){ return []; }),
+      DB.listObservationsForCounselor(State.user.school).catch(function(){ return []; })
     ]);
-    _counselorCasesData = { cases, schoolUsers, schoolStudents, counselorGiftedReports };
+    _counselorCasesData = { cases, schoolUsers, schoolStudents, counselorGiftedReports, counselorObservations };
     _counselorCasesDataAt = Date.now();
   }
+  counselorObservations = counselorObservations || [];
   const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||isPrincipal(u); })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
   const sortedStudents = schoolStudents.slice().sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
@@ -8017,6 +8019,31 @@ async function screenCounselorCases(){
     '</div>'
   ) : '';
 
+  const obsTab = CounselorUI.tab === 'observations' ? (function(){
+    if (!counselorObservations.length){
+      return '<div style="color:var(--muted);font-size:13px;padding:30px 0;text-align:center;">لا توجد ملاحظات صفية مرسلة بعد.</div>';
+    }
+    var severityLabel = { info: 'عادية', follow_up: 'تحتاج متابعة', urgent: 'عاجلة' };
+    var severityColor = { info: 'var(--accent,#2563eb)', follow_up: 'var(--warning,#d97706)', urgent: 'var(--danger,#dc2626)' };
+    var rows = counselorObservations.slice().sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); }).map(function(obs){
+      var sev = obs.severity || 'info';
+      var sevColor = severityColor[sev] || 'var(--accent,#2563eb)';
+      var sevLabel = severityLabel[sev] || sev;
+      var teacherName = obs.teacher_name || obs.teacher_id || '—';
+      return '<div style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
+          '<span style="font-weight:800;font-size:14.5px;">'+esc(obs.student_name||'—')+'</span>' +
+          (obs.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(obs.student_grade)+(obs.student_section?' / '+esc(obs.student_section):'')+'</span>' : '') +
+          '<span style="background:color-mix(in srgb,'+sevColor+' 18%,transparent);color:'+sevColor+';border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">'+sevLabel+'</span>' +
+          '<span style="font-size:11.5px;color:var(--muted);margin-right:auto;">'+fmtDate(obs.created_at)+'</span>' +
+        '</div>' +
+        '<div style="font-size:13px;line-height:1.7;margin-bottom:6px;">'+esc(obs.observation_text||'')+'</div>' +
+        '<div style="font-size:11.5px;color:var(--muted);">المعلم / المنسق: '+esc(teacherName)+'</div>' +
+      '</div>';
+    }).join('');
+    return '<div style="margin-top:4px;">'+rows+'</div>';
+  })() : '';
+
   const casesTab = CounselorUI.tab === 'cases' ? (
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
       '<select id="caseStatusFilter" class="input" style="max-width:160px;">' +
@@ -8079,13 +8106,14 @@ async function screenCounselorCases(){
       '<button class="tab '+(CounselorUI.tab==='cases'?'active':'')+'" data-action="counselorTab" data-tab="cases">الحالات</button>' +
       '<button class="tab '+(CounselorUI.tab==='stats'?'active':'')+'" data-action="counselorTab" data-tab="stats">إحصائيات</button>' +
       '<button class="tab '+(CounselorUI.tab==='gifted'?'active':'')+'" data-action="counselorTab" data-tab="gifted">الموهوبون'+(counselorGiftedReports.length?' ('+counselorGiftedReports.length+')':'')+' </button>' +
+      '<button class="tab '+(CounselorUI.tab==='observations'?'active':'')+'" data-action="counselorTab" data-tab="observations">🔍 الملاحظات الصفية'+(counselorObservations.length?' ('+counselorObservations.length+')':'')+' </button>' +
       (CounselorUI.studentProfile ? '<button class="tab '+(CounselorUI.tab==='profile'?'active':'')+'" data-action="counselorTab" data-tab="profile">ملف: '+esc(CounselorUI.studentProfile)+'</button>' : '') +
     '</div>' +
     kpiHtml +
     '<div style="margin:12px 0;">' +
       '<button class="btn btn-primary" data-action="addCase">+ إضافة حالة</button>' +
     '</div>' +
-    staleAlert + upcomingHtml + casesTab + giftedTab + statsTab + profileHtml + caseModal
+    staleAlert + upcomingHtml + casesTab + giftedTab + obsTab + statsTab + profileHtml + caseModal
   );
 }
 
