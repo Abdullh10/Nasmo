@@ -7762,7 +7762,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', searchText:'', showArchived:false, sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -7860,7 +7860,6 @@ async function screenCounselorCases(){
     var _q = CounselorUI.searchText.trim();
     filtered = filtered.filter(function(c){ return (c.student_name||'').includes(_q) || (c.referral_reason||'').includes(_q) || (c.referred_by_name||'').includes(_q); });
   }
-
   const openCount = cases.filter(function(c){ return c.status==='open'; }).length;
   const inPrgCount = cases.filter(function(c){ return c.status==='in_progress'; }).length;
   const closedCount = cases.filter(function(c){ return c.status==='closed'; }).length;
@@ -7917,6 +7916,10 @@ async function screenCounselorCases(){
     var n = c.student_name||''; if (!n) return;
     referralCount[n] = (referralCount[n]||0) + 1;
   });
+
+  /* فلتر تكرار الإحالة */
+  if (CounselorUI.repeatFilter === '2') filtered = filtered.filter(function(c){ return (referralCount[c.student_name]||1) >= 2; });
+  if (CounselorUI.repeatFilter === '3') filtered = filtered.filter(function(c){ return (referralCount[c.student_name]||1) >= 3; });
 
   /* فرز الحالات */
   const PRIORITY_ORDER = { urgent:0, medium:1, normal:2 };
@@ -8106,6 +8109,11 @@ async function screenCounselorCases(){
       '<select id="caseCategoryFilter" class="input" style="max-width:130px;">' +
         '<option value="">— كل الأنواع —</option>' +
         Object.entries(CASE_CATEGORY_LABEL).map(function(e){ return '<option value="'+e[0]+'" '+(CounselorUI.categoryFilter===e[0]?'selected':'')+'>'+e[1]+'</option>'; }).join('') +
+      '</select>' +
+      '<select id="caseRepeatFilter" class="input" style="max-width:160px;'+(CounselorUI.repeatFilter?'border-color:var(--danger,#dc2626);color:var(--danger,#dc2626);font-weight:700;':'')+'">'+
+        '<option value="" '+(CounselorUI.repeatFilter===''?'selected':'')+'>— تكرار الإحالة —</option>' +
+        '<option value="2" '+(CounselorUI.repeatFilter==='2'?'selected':'')+'>⚠ إحالتان فأكثر</option>' +
+        '<option value="3" '+(CounselorUI.repeatFilter==='3'?'selected':'')+'>🚨 ثلاث فأكثر — خطر عالٍ</option>' +
       '</select>' +
       '<span style="color:var(--muted);font-size:12.5px;">'+filtered.length+' حالة</span>' +
     '</div>' +
@@ -8773,6 +8781,8 @@ function bindCounselorCases(){
   if (priorityFilterEl) priorityFilterEl.addEventListener('change', function(){ CounselorUI.priorityFilter = this.value; render(); });
   const categoryFilterEl = document.getElementById('caseCategoryFilter');
   if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); });
+  const repeatFilterEl = document.getElementById('caseRepeatFilter');
+  if (repeatFilterEl) repeatFilterEl.addEventListener('change', function(){ CounselorUI.repeatFilter = this.value; render(); });
 
   /* فرز الأعمدة */
   document.querySelectorAll('[data-action="counselorSort"]').forEach(function(el){
