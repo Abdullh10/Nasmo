@@ -7745,7 +7745,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', searchText:'', showArchived:false, modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -7838,6 +7838,11 @@ async function screenCounselorCases(){
   if (CounselorUI.gradeFilter) filtered = filtered.filter(function(c){ return c.student_grade===CounselorUI.gradeFilter; });
   if (CounselorUI.priorityFilter) filtered = filtered.filter(function(c){ return (c.priority||'normal')===CounselorUI.priorityFilter; });
   if (CounselorUI.categoryFilter) filtered = filtered.filter(function(c){ return (c.category||'other')===CounselorUI.categoryFilter; });
+  if (!CounselorUI.showArchived && !CounselorUI.statusFilter) filtered = filtered.filter(function(c){ return c.status !== 'closed'; });
+  if (CounselorUI.searchText) {
+    var _q = CounselorUI.searchText.trim();
+    filtered = filtered.filter(function(c){ return (c.student_name||'').includes(_q) || (c.referral_reason||'').includes(_q) || (c.referred_by_name||'').includes(_q); });
+  }
 
   const openCount = cases.filter(function(c){ return c.status==='open'; }).length;
   const inPrgCount = cases.filter(function(c){ return c.status==='in_progress'; }).length;
@@ -8045,6 +8050,13 @@ async function screenCounselorCases(){
   })() : '';
 
   const casesTab = CounselorUI.tab === 'cases' ? (
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">' +
+      '<input id="counselorSearchInput" class="input" type="search" placeholder="🔍 بحث باسم الطالب أو المُحيل أو السبب…" value="'+esc(CounselorUI.searchText||'')+'" style="flex:1;min-width:200px;">' +
+      '<button class="btn btn-sm '+(CounselorUI.showArchived ? 'btn-primary' : 'btn-ghost')+'" data-action="toggleCounselorArchive" style="white-space:nowrap;">' +
+        (CounselorUI.showArchived ? '📂 إخفاء الأرشيف' : '📁 الأرشيف ('+closedCount+')') +
+      '</button>' +
+      '<button class="btn btn-ghost btn-sm" data-action="exportCounselorCsv" style="white-space:nowrap;">⬇ تصدير CSV</button>' +
+    '</div>' +
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
       '<select id="caseStatusFilter" class="input" style="max-width:160px;">' +
         '<option value="" '+(!CounselorUI.statusFilter?'selected':'')+'>— كل الحالات —</option>' +
@@ -8596,6 +8608,34 @@ function bindCounselorCases(){
   if (priorityFilterEl) priorityFilterEl.addEventListener('change', function(){ CounselorUI.priorityFilter = this.value; render(); });
   const categoryFilterEl = document.getElementById('caseCategoryFilter');
   if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); });
+
+  /* بحث فوري */
+  var searchInputEl = document.getElementById('counselorSearchInput');
+  if (searchInputEl) searchInputEl.addEventListener('input', function(){ CounselorUI.searchText = this.value; render(); });
+
+  /* تبديل الأرشيف */
+  var archiveBtn = document.querySelector('[data-action="toggleCounselorArchive"]');
+  if (archiveBtn) archiveBtn.addEventListener('click', function(){ CounselorUI.showArchived = !CounselorUI.showArchived; render(); });
+
+  /* تصدير CSV */
+  var exportCsvBtn = document.querySelector('[data-action="exportCounselorCsv"]');
+  if (exportCsvBtn) exportCsvBtn.addEventListener('click', function(){
+    var allCases = CounselorUI._cases || [];
+    var rows = [['اسم الطالب','الصف','الشعبة','نوع الحالة','الأولوية','الحالة','المُحيل','عدد الجلسات','تاريخ الإحالة','هدف الإرشاد']];
+    allCases.forEach(function(c){
+      rows.push([
+        c.student_name||'', c.student_grade||'', c.student_section||'',
+        CASE_CATEGORY_LABEL[c.category]||c.category||'',
+        CASE_PRIORITY_LABEL[c.priority||'normal']||'',
+        CASE_STATUS_LABEL[c.status]||'',
+        c.referred_by_name||'',
+        String((c.sessions||[]).length),
+        fmtDate(c.created_at),
+        c.counseling_goal||''
+      ]);
+    });
+    downloadTextFile('حالات_الإرشاد_'+new Date().toISOString().slice(0,10)+'.csv', toCsv(rows));
+  });
 
   document.querySelectorAll('[data-action="counselPreset"]').forEach(function(el){
     el.addEventListener('change', function(){
