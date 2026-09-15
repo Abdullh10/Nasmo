@@ -7762,7 +7762,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', _prefillObs:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -8072,23 +8072,56 @@ async function screenCounselorCases(){
     }
     var severityLabel = { info: 'عادية', follow_up: 'تحتاج متابعة', urgent: 'عاجلة' };
     var severityColor = { info: 'var(--accent,#2563eb)', follow_up: 'var(--warning,#d97706)', urgent: 'var(--danger,#dc2626)' };
-    var rows = counselorObservations.slice().sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); }).map(function(obs){
+
+    /* فرز وفلترة */
+    var obsFiltered = counselorObservations.slice();
+    if (CounselorUI.obsSevFilter) obsFiltered = obsFiltered.filter(function(o){ return (o.severity||'info') === CounselorUI.obsSevFilter; });
+    obsFiltered.sort(function(a,b){
+      var sf = CounselorUI.obsSortField || 'created_at';
+      var dir = CounselorUI.obsSortDir === 'asc' ? 1 : -1;
+      if (sf === 'student_name') return dir * (a.student_name||'').localeCompare(b.student_name||'','ar');
+      if (sf === 'severity'){ var so = {info:2,follow_up:1,urgent:0}; return dir*((so[a.severity||'info']||2)-(so[b.severity||'info']||2)); }
+      if (sf === 'teacher_name') return dir * (a.teacher_name||'').localeCompare(b.teacher_name||'','ar');
+      return dir * (new Date(a.created_at) - new Date(b.created_at));
+    });
+
+    var toolbar =
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">' +
+        '<select id="obsSortSel" class="input" style="max-width:180px;">' +
+          '<option value="created_at_desc" '+(CounselorUI.obsSortField==='created_at'&&CounselorUI.obsSortDir==='desc'?'selected':'')+'>الأحدث أولاً</option>' +
+          '<option value="created_at_asc" '+(CounselorUI.obsSortField==='created_at'&&CounselorUI.obsSortDir==='asc'?'selected':'')+'>الأقدم أولاً</option>' +
+          '<option value="severity_asc" '+(CounselorUI.obsSortField==='severity'&&CounselorUI.obsSortDir==='asc'?'selected':'')+'>الخطورة: الأعلى أولاً</option>' +
+          '<option value="student_name_asc" '+(CounselorUI.obsSortField==='student_name'&&CounselorUI.obsSortDir==='asc'?'selected':'')+'>اسم الطالب أ→ي</option>' +
+          '<option value="teacher_name_asc" '+(CounselorUI.obsSortField==='teacher_name'&&CounselorUI.obsSortDir==='asc'?'selected':'')+'>اسم المعلم أ→ي</option>' +
+        '</select>' +
+        '<select id="obsSevFilter" class="input" style="max-width:170px;'+(CounselorUI.obsSevFilter?'border-color:var(--warning,#d97706);color:var(--warning,#d97706);font-weight:700;':'')+'">'+
+          '<option value="">— كل الخطورات —</option>' +
+          '<option value="info" '+(CounselorUI.obsSevFilter==='info'?'selected':'')+'>🔵 عادية</option>' +
+          '<option value="follow_up" '+(CounselorUI.obsSevFilter==='follow_up'?'selected':'')+'>🟡 تحتاج متابعة</option>' +
+          '<option value="urgent" '+(CounselorUI.obsSevFilter==='urgent'?'selected':'')+'>🔴 عاجلة</option>' +
+        '</select>' +
+        '<span style="color:var(--muted);font-size:12.5px;">'+obsFiltered.length+' ملاحظة</span>' +
+        '<button class="btn btn-ghost btn-sm" data-action="printObs" style="margin-right:auto;white-space:nowrap;">🖨 طباعة</button>' +
+      '</div>';
+
+    var rows = obsFiltered.map(function(obs){
       var sev = obs.severity || 'info';
       var sevColor = severityColor[sev] || 'var(--accent,#2563eb)';
       var sevLabel = severityLabel[sev] || sev;
       var teacherName = obs.teacher_name || obs.teacher_id || '—';
-      return '<div style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));">' +
+      return '<div class="obs-print-card" style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));">' +
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
           '<span style="font-weight:800;font-size:14.5px;">'+esc(obs.student_name||'—')+'</span>' +
           (obs.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(obs.student_grade)+(obs.student_section?' / '+esc(obs.student_section):'')+'</span>' : '') +
           '<span style="background:color-mix(in srgb,'+sevColor+' 18%,transparent);color:'+sevColor+';border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">'+sevLabel+'</span>' +
-          '<span style="font-size:11.5px;color:var(--muted);margin-right:auto;">'+fmtDate(obs.created_at)+'</span>' +
+          '<span style="font-size:11.5px;color:var(--muted);">'+fmtDate(obs.created_at)+'</span>' +
+          '<button class="btn btn-sm btn-primary no-print" data-action="obsCreateCase" data-student="'+esc(obs.student_name||'')+'" data-grade="'+esc(obs.student_grade||'')+'" data-section="'+esc(obs.student_section||'')+'" data-teacher="'+esc(teacherName)+'" data-text="'+esc(obs.observation_text||'')+'" style="margin-right:auto;font-size:12px;padding:3px 10px;">+ إحالة للإرشاد</button>' +
         '</div>' +
         '<div style="font-size:13px;line-height:1.7;margin-bottom:6px;">'+esc(obs.observation_text||'')+'</div>' +
         '<div style="font-size:11.5px;color:var(--muted);">المعلم / المنسق: '+esc(teacherName)+'</div>' +
       '</div>';
     }).join('');
-    return '<div style="margin-top:4px;">'+rows+'</div>';
+    return '<div id="obsPrintArea" style="margin-top:4px;">'+toolbar+rows+'</div>';
   })() : '';
 
   const casesTab = CounselorUI.tab === 'cases' ? (
@@ -8601,6 +8634,7 @@ function counselorCaseModal(c, teachers, students){
   teachers = teachers || [];
   students = students || [];
   const isNew = !c;
+  const prefill = isNew ? (CounselorUI._prefillObs || null) : null;
   const uniqueGrades = students
     .map(function(s){ return s.grade||s.student_grade||''; })
     .filter(function(v,i,a){ return v && a.indexOf(v)===i; })
@@ -8632,35 +8666,38 @@ function counselorCaseModal(c, teachers, students){
               '</select>' +
             '</div>' +
           '</div>' +
-          '<div class="field"><label>المرحلة الدراسية <span style="color:var(--danger);">*</span></label>' +
-            '<select class="input" id="caseGradeSel">' +
-              '<option value="">— اختر المرحلة —</option>' +
-              uniqueGrades.map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('') +
-              '<option value="__manual__">أخرى (إدخال يدوي)</option>' +
-            '</select>' +
-          '</div>' +
-          '<div class="field" id="caseSectionField" style="display:none;"><label>الشعبة</label>' +
-            '<select class="input" id="caseSectionSel"><option value="">— اختر الشعبة —</option></select>' +
-          '</div>' +
-          '<div class="field" id="caseStudentField" style="display:none;"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
-            '<select class="input" id="caseStudentSel"><option value="">— اختر الطالب —</option></select>' +
-          '</div>' +
-          '<div id="caseManualBlock" style="display:none;">' +
-            '<div style="display:flex;gap:8px;">' +
-              '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade"></div>' +
-              '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection"></div>' +
+          (prefill ? '' :
+            '<div class="field"><label>المرحلة الدراسية <span style="color:var(--danger);">*</span></label>' +
+              '<select class="input" id="caseGradeSel">' +
+                '<option value="">— اختر المرحلة —</option>' +
+                uniqueGrades.map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('') +
+                '<option value="__manual__">أخرى (إدخال يدوي)</option>' +
+              '</select>' +
             '</div>' +
-            '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label><input class="input" id="caseStudentName"></div>' +
+            '<div class="field" id="caseSectionField" style="display:none;"><label>الشعبة</label>' +
+              '<select class="input" id="caseSectionSel"><option value="">— اختر الشعبة —</option></select>' +
+            '</div>' +
+            '<div class="field" id="caseStudentField" style="display:none;"><label>اسم الطالب <span style="color:var(--danger);">*</span></label>' +
+              '<select class="input" id="caseStudentSel"><option value="">— اختر الطالب —</option></select>' +
+            '</div>'
+          ) +
+          '<div id="caseManualBlock" style="'+(prefill?'':'display:none;')+'">' +
+            (prefill ? '<div style="background:color-mix(in srgb,var(--accent,#2563eb) 8%,var(--surface));border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12.5px;color:var(--muted);">📋 تم استيراد بيانات الطالب من الملاحظة الصفية</div>' : '') +
+            '<div style="display:flex;gap:8px;">' +
+              '<div class="field" style="flex:1"><label>الصف</label><input class="input" id="caseGrade" value="'+esc(prefill?prefill.grade:'')+'"></div>' +
+              '<div class="field" style="flex:1"><label>الشعبة</label><input class="input" id="caseSection" value="'+esc(prefill?prefill.section:'')+'"></div>' +
+            '</div>' +
+            '<div class="field"><label>اسم الطالب <span style="color:var(--danger);">*</span></label><input class="input" id="caseStudentName" value="'+esc(prefill?prefill.student_name:'')+'"></div>' +
           '</div>' +
           '<div class="field"><label>المُحيل</label>' +
             '<select class="input" id="caseReferredBy">' +
               '<option value="'+esc(State.user.full_name)+'">'+esc(State.user.full_name)+' (أنا)</option>' +
-              teachers.filter(function(t){ return t.id!==State.user.id; }).map(function(t){ return '<option value="'+esc(t.full_name)+'">'+esc(t.full_name)+' — '+esc(ROLE_LABEL[t.role]||t.role)+'</option>'; }).join('') +
-              '<option value="__other__">أخرى (أدخل يدوياً)</option>' +
+              teachers.filter(function(t){ return t.id!==State.user.id; }).map(function(t){ return '<option value="'+esc(t.full_name)+'" '+(prefill&&prefill.teacher===t.full_name?'selected':'')+'>'+esc(t.full_name)+' — '+esc(ROLE_LABEL[t.role]||t.role)+'</option>'; }).join('') +
+              '<option value="__other__" '+(prefill&&prefill.teacher&&!teachers.find(function(t){return t.full_name===prefill.teacher;})?'selected':'')+'>أخرى (أدخل يدوياً)</option>' +
             '</select>' +
           '</div>' +
-          '<div class="field" id="caseReferredByOtherField" style="display:none;"><label>اسم المُحيل</label><input class="input" id="caseReferredByOther"></div>' +
-          '<div class="field"><label>سبب الإحالة</label><textarea class="input" id="caseReason" rows="2"></textarea></div>' +
+          '<div class="field" id="caseReferredByOtherField" style="'+(prefill&&prefill.teacher&&!teachers.find(function(t){return t.full_name===prefill.teacher;})?'':'display:none;')+'"><label>اسم المُحيل</label><input class="input" id="caseReferredByOther" value="'+esc(prefill?prefill.teacher:'')+'"></div>' +
+          '<div class="field"><label>سبب الإحالة</label><textarea class="input" id="caseReason" rows="2">'+esc(prefill?prefill.text:'')+'</textarea></div>' +
           '<div class="field"><label>جوال ولي الأمر (للواتساب)</label><input class="input" id="caseParentPhone" placeholder="مثال: 0501234567"></div>'
         ) : (
           '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">' +
@@ -8796,6 +8833,47 @@ function bindCounselorCases(){
   const referrerFilterEl = document.getElementById('caseReferrerFilter');
   if (referrerFilterEl) referrerFilterEl.addEventListener('change', function(){ CounselorUI.referrerFilter = this.value; render(); });
 
+  /* تبويب الملاحظات الصفية — فرز وفلترة */
+  const obsSortSel = document.getElementById('obsSortSel');
+  if (obsSortSel) obsSortSel.addEventListener('change', function(){
+    var parts = this.value.split('_');
+    var dir = parts.pop();
+    CounselorUI.obsSortField = parts.join('_');
+    CounselorUI.obsSortDir = dir;
+    render();
+  });
+  const obsSevFilterEl = document.getElementById('obsSevFilter');
+  if (obsSevFilterEl) obsSevFilterEl.addEventListener('change', function(){ CounselorUI.obsSevFilter = this.value; render(); });
+
+  /* طباعة الملاحظات */
+  const printObsBtn = document.querySelector('[data-action="printObs"]');
+  if (printObsBtn) printObsBtn.addEventListener('click', function(){
+    var area = document.getElementById('obsPrintArea');
+    if (!area) return;
+    var win = window.open('', '_blank', 'width=800,height=600');
+    win.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>الملاحظات الصفية</title><style>body{font-family:Arial,sans-serif;padding:20px;direction:rtl;} .no-print{display:none!important;} .obs-print-card{border:1px solid #ccc;border-radius:8px;padding:12px;margin-bottom:10px;page-break-inside:avoid;}</style></head><body>'+area.innerHTML+'</body></html>');
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  });
+
+  /* إحالة للإرشاد من ملاحظة صفية */
+  document.querySelectorAll('[data-action="obsCreateCase"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      CounselorUI._prefillObs = {
+        student_name: this.getAttribute('data-student') || '',
+        grade: this.getAttribute('data-grade') || '',
+        section: this.getAttribute('data-section') || '',
+        teacher: this.getAttribute('data-teacher') || '',
+        text: this.getAttribute('data-text') || ''
+      };
+      CounselorUI.modalOpen = true;
+      CounselorUI.editingId = null;
+      render();
+    });
+  });
+
   /* فرز الأعمدة */
   document.querySelectorAll('[data-action="counselorSort"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -8879,7 +8957,7 @@ function bindCounselorCases(){
   const addBtn = document.querySelector('[data-action="addCase"]');
   if (addBtn) addBtn.addEventListener('click', function(){ CounselorUI.modalOpen=true; CounselorUI.editingId=null; render(); });
 
-  const closeModal = function(){ CounselorUI.modalOpen=false; CounselorUI.editingId=null; render(); };
+  const closeModal = function(){ CounselorUI.modalOpen=false; CounselorUI.editingId=null; CounselorUI._prefillObs=null; render(); };
   document.querySelectorAll('[data-action="closeCaseModal"]').forEach(function(el){ el.addEventListener('click', closeModal); });
 
   document.querySelectorAll('[data-action="openCase"]').forEach(function(el){
@@ -9057,7 +9135,8 @@ function bindCounselorCases(){
     const isNew = !CounselorUI.editingId;
     if (isNew){
       const gradeSelEl2 = document.getElementById('caseGradeSel');
-      const isManualEntry = gradeSelEl2 && gradeSelEl2.value === '__manual__';
+      const isPrefillMode = !gradeSelEl2; /* وضع الاستيراد من ملاحظة صفية */
+      const isManualEntry = isPrefillMode || (gradeSelEl2 && gradeSelEl2.value === '__manual__');
       const studentSelEl = document.getElementById('caseStudentSel');
       const studentName = isManualEntry
         ? ((document.getElementById('caseStudentName')||{}).value||'').trim()
@@ -9098,7 +9177,7 @@ function bindCounselorCases(){
         parent_phone: (document.getElementById('caseParentPhone')||{}).value||'',
         close_summary: ''
       };
-      try{ await DB.createCounselingCase(obj); invalidateCounselorData(); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; render(); }
+      try{ await DB.createCounselingCase(obj); invalidateCounselorData(); toast('تمت إضافة الحالة.'); CounselorUI.modalOpen=false; CounselorUI._prefillObs=null; render(); }
       catch(e){ toast(arabicError(e)); saveBtn.disabled = false; saveBtn.textContent = 'إضافة الحالة'; }
     } else {
       saveBtn.disabled = true; saveBtn.textContent = 'جارٍ الحفظ…';
