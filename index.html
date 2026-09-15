@@ -7762,7 +7762,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', searchText:'', showArchived:false, modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', searchText:'', showArchived:false, sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -7916,6 +7916,22 @@ async function screenCounselorCases(){
   cases.forEach(function(c){
     var n = c.student_name||''; if (!n) return;
     referralCount[n] = (referralCount[n]||0) + 1;
+  });
+
+  /* فرز الحالات */
+  const PRIORITY_ORDER = { urgent:0, medium:1, normal:2 };
+  filtered = filtered.slice().sort(function(a,b){
+    var sf = CounselorUI.sortField || 'created_at';
+    var dir = CounselorUI.sortDir === 'asc' ? 1 : -1;
+    var va, vb;
+    if (sf === 'student_name'){ va = a.student_name||''; vb = b.student_name||''; return dir * va.localeCompare(vb,'ar'); }
+    if (sf === 'student_grade'){ va = a.student_grade||''; vb = b.student_grade||''; return dir * va.localeCompare(vb,'ar'); }
+    if (sf === 'category'){ va = CASE_CATEGORY_LABEL[a.category]||''; vb = CASE_CATEGORY_LABEL[b.category]||''; return dir * va.localeCompare(vb,'ar'); }
+    if (sf === 'priority'){ va = PRIORITY_ORDER[a.priority||'normal']; vb = PRIORITY_ORDER[b.priority||'normal']; return dir * (va-vb); }
+    if (sf === 'status'){ va = CASE_STATUS_LABEL[a.status]||''; vb = CASE_STATUS_LABEL[b.status]||''; return dir * va.localeCompare(vb,'ar'); }
+    if (sf === 'sessions'){ va = (a.sessions||[]).length; vb = (b.sessions||[]).length; return dir * (va-vb); }
+    /* created_at افتراضي */
+    return dir * (new Date(a.created_at) - new Date(b.created_at));
   });
 
   const rows = filtered.map(function(c){
@@ -8094,7 +8110,25 @@ async function screenCounselorCases(){
       '<span style="color:var(--muted);font-size:12.5px;">'+filtered.length+' حالة</span>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>اسم الطالب</th><th>الصف</th><th>الشعبة</th><th>النوع</th><th>أحاله</th><th>تاريخ الإحالة</th><th>الحالة</th><th>الجلسات</th><th></th></tr></thead>' +
+      (function(){
+        function sortTh(label, field){
+          var active = CounselorUI.sortField === field;
+          var arrow = active ? (CounselorUI.sortDir==='asc' ? ' ↑' : ' ↓') : ' ↕';
+          var style = 'cursor:pointer;user-select:none;white-space:nowrap;'+(active?'color:var(--accent,#2563eb);':'');
+          return '<th data-action="counselorSort" data-field="'+field+'" style="'+style+'">'+label+'<span style="font-size:10px;opacity:'+(active?1:0.4)+';">'+arrow+'</span></th>';
+        }
+        return '<thead><tr>'+
+          sortTh('اسم الطالب','student_name')+
+          sortTh('الصف','student_grade')+
+          '<th>الشعبة</th>'+
+          sortTh('النوع','category')+
+          '<th>أحاله</th>'+
+          sortTh('تاريخ الإحالة','created_at')+
+          sortTh('الحالة','status')+
+          sortTh('الجلسات','sessions')+
+          '<th></th>'+
+        '</tr></thead>';
+      })() +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="9">لا توجد حالات إرشادية بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>'
   ) : '';
@@ -8739,6 +8773,20 @@ function bindCounselorCases(){
   if (priorityFilterEl) priorityFilterEl.addEventListener('change', function(){ CounselorUI.priorityFilter = this.value; render(); });
   const categoryFilterEl = document.getElementById('caseCategoryFilter');
   if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); });
+
+  /* فرز الأعمدة */
+  document.querySelectorAll('[data-action="counselorSort"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var field = el.getAttribute('data-field');
+      if (CounselorUI.sortField === field){
+        CounselorUI.sortDir = CounselorUI.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        CounselorUI.sortField = field;
+        CounselorUI.sortDir = field === 'sessions' ? 'desc' : (field === 'student_name' || field === 'student_grade' || field === 'category' || field === 'status' ? 'asc' : 'desc');
+      }
+      render();
+    });
+  });
 
   /* بحث فوري */
   var searchInputEl = document.getElementById('counselorSearchInput');
