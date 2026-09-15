@@ -7762,7 +7762,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -7917,9 +7917,15 @@ async function screenCounselorCases(){
     referralCount[n] = (referralCount[n]||0) + 1;
   });
 
+  /* قائمة المُحيلين الفريدة مرتبة أبجدياً */
+  const referrersList = Array.from(new Set(cases.map(function(c){ return c.referred_by_name||''; }).filter(Boolean))).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+
   /* فلتر تكرار الإحالة */
   if (CounselorUI.repeatFilter === '2') filtered = filtered.filter(function(c){ return (referralCount[c.student_name]||1) >= 2; });
   if (CounselorUI.repeatFilter === '3') filtered = filtered.filter(function(c){ return (referralCount[c.student_name]||1) >= 3; });
+
+  /* فلتر المُحيل */
+  if (CounselorUI.referrerFilter) filtered = filtered.filter(function(c){ return (c.referred_by_name||'') === CounselorUI.referrerFilter; });
 
   /* فرز الحالات */
   const PRIORITY_ORDER = { urgent:0, medium:1, normal:2 };
@@ -8115,6 +8121,10 @@ async function screenCounselorCases(){
         '<option value="2" '+(CounselorUI.repeatFilter==='2'?'selected':'')+'>⚠ إحالتان فأكثر</option>' +
         '<option value="3" '+(CounselorUI.repeatFilter==='3'?'selected':'')+'>🚨 ثلاث فأكثر — خطر عالٍ</option>' +
       '</select>' +
+      (referrersList.length ? '<select id="caseReferrerFilter" class="input" style="max-width:170px;'+(CounselorUI.referrerFilter?'border-color:var(--accent,#2563eb);color:var(--accent,#2563eb);font-weight:700;':'')+'">'+
+        '<option value="">— المُحيل (المعلم) —</option>' +
+        referrersList.map(function(r){ return '<option value="'+esc(r)+'" '+(CounselorUI.referrerFilter===r?'selected':'')+'>'+esc(r)+'</option>'; }).join('') +
+      '</select>' : '') +
       '<span style="color:var(--muted);font-size:12.5px;">'+filtered.length+' حالة</span>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
@@ -8783,6 +8793,8 @@ function bindCounselorCases(){
   if (categoryFilterEl) categoryFilterEl.addEventListener('change', function(){ CounselorUI.categoryFilter = this.value; render(); });
   const repeatFilterEl = document.getElementById('caseRepeatFilter');
   if (repeatFilterEl) repeatFilterEl.addEventListener('change', function(){ CounselorUI.repeatFilter = this.value; render(); });
+  const referrerFilterEl = document.getElementById('caseReferrerFilter');
+  if (referrerFilterEl) referrerFilterEl.addEventListener('change', function(){ CounselorUI.referrerFilter = this.value; render(); });
 
   /* فرز الأعمدة */
   document.querySelectorAll('[data-action="counselorSort"]').forEach(function(el){
