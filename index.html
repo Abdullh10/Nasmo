@@ -3833,6 +3833,7 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">تسجيل حصة توضيحية</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي التعليمية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
@@ -9000,6 +9001,9 @@ async function screenDashboard(){
   if (State.dashTab==='teamStats' && State.user.role==='coordinator'){
     return await screenCoordinatorTeamStats();
   }
+  if (State.dashTab==='teacherActivities' && State.user.role==='coordinator'){
+    return await screenCoordinatorTeacherActivities();
+  }
   if (State.dashTab==='principalArchive' && isPrincipal(State.user)){
     return await screenPrincipalArchive();
   }
@@ -9203,6 +9207,7 @@ function bindDashboard(){
   else if (State.dashTab==='demoLesson' && State.user.role==='coordinator') bindCoordinatorDemoLessons();
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') bindCoordinatorTeamStats();
+  else if (State.dashTab==='teacherActivities' && State.user.role==='coordinator') bindCoordinatorTeacherActivities();
   else if (State.dashTab==='principalArchive' && isPrincipal(State.user)) bindPrincipalArchive();
   else if (State.dashTab==='principalReview' && isPrincipal(State.user)) bindPrincipalReview();
   else if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)) bindPrincipalDemoLessons();
@@ -9502,6 +9507,372 @@ function bindCoordinatorMyStudents(){
   });
   const groupPlanBtn = document.querySelector('[data-action="coordGoGroupPlan"]');
   if (groupPlanBtn) groupPlanBtn.addEventListener('click', function(){ openEditor('groupPlan', null); });
+}
+
+/* ----- لوحة المنسق: أنشطتي التعليمية (المنسق كمعلم) ----- */
+let _coordInitiativeSubs = [];
+async function screenCoordinatorTeacherActivities(){
+  const [schoolStudents, subs, myGiftedReports, myObservations] = await Promise.all([
+    DB.listStudents({ school: State.user.school }),
+    DB.listSubmissions({ school: State.user.school }),
+    DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; }),
+    DB.listMyObservations(State.user.school, State.user.id).catch(function(){ return []; })
+  ]);
+  _teacherAllStudentsCache = schoolStudents;
+  _teacherGiftedStudentsCache = schoolStudents;
+  _myObservationsCache = myObservations;
+  const myInitiativeSubs = subs.filter(function(s){ return s.created_by===State.user.id && s.form_type==='teacherInitiative'; });
+  _coordInitiativeSubs = myInitiativeSubs;
+
+  /* — قوائم العناصر — */
+  var STATUS_CLR = { pending:'var(--pending)', approved:'var(--success)', returned:'var(--danger)', draft:'var(--muted)' };
+
+  const initCards = myInitiativeSubs.length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:24px 0;font-size:13.5px;">لم تُوثَّق مبادرات تعليمية بعد.<br><button class="btn btn-primary btn-sm" style="margin-top:12px;" data-action="openInitiativeModal">💡 توثيق مبادرتي الأولى</button></div>'
+    : myInitiativeSubs.map(function(s){
+        var p = s.payload||{};
+        return (
+          '<div style="background:var(--card,#fff);border:1.5px solid var(--border,#e5e7eb);border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:700;font-size:14px;">💡 '+esc(p.initiativeTitle||'—')+'</div>' +
+                '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">'+esc(p.initiativeType||'')+(p.executionDate?' · '+fmtDate(p.executionDate):'')+'</div>' +
+              '</div>' +
+              '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">' +
+                '<span class="badge '+esc(s.status)+'">'+esc(STATUS_LABEL[s.status]||s.status)+'</span>' +
+                (s.status==='draft'?'<button class="btn btn-ghost btn-sm" data-action="editInitiativeDraft" data-id="'+esc(s.id)+'">تعديل</button>':'') +
+              '</div>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+
+  const giftedRows = myGiftedReports.length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:24px 0;font-size:13.5px;">لم تُسجَّل أي بلاغات موهوبين بعد.</div>'
+    : myGiftedReports.map(function(r){
+        return (
+          '<div style="background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">' +
+            '<div><div style="font-weight:700;font-size:14px;">⭐ '+esc(r.student_name||'')+'</div>' +
+            '<div style="font-size:12.5px;color:var(--muted);margin-top:2px;">'+esc(r.talent_type||'')+(r.student_grade?' · '+esc(r.student_grade):'')+(r.student_section?' — '+esc(r.student_section):'')+'</div>' +
+            (r.discovery_indicators?'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+esc(r.discovery_indicators)+'</div>':'') +
+            '</div>' +
+            '<div style="font-size:12px;color:var(--muted);flex-shrink:0;">'+fmtDate(r.created_at||r.inserted_at||'')+'</div>' +
+          '</div>'
+        );
+      }).join('');
+
+  var SEV_LABEL_OBS = { info:'ملاحظة عادية', follow_up:'تحتاج متابعة', urgent:'عاجلة 🔴' };
+  var SEV_COLOR_OBS = { info:'var(--muted,#6b7280)', follow_up:'var(--warning,#d97706)', urgent:'var(--danger,#dc2626)' };
+  const obsRows = myObservations.length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:24px 0;font-size:13.5px;">لم تُسجَّل ملاحظات صفية بعد.</div>'
+    : myObservations.map(function(o){
+        var sev = o.severity||'info';
+        return (
+          '<div style="background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 16px;margin-bottom:10px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-weight:700;font-size:13.5px;">🔍 '+esc(o.student_name||'')+(o.student_grade?' · '+esc(o.student_grade)+(o.student_section?' — '+esc(o.student_section):''):'')+'</div>' +
+                (o.observation_text?'<div style="font-size:12.5px;color:var(--muted);margin-top:4px;white-space:pre-wrap;">'+esc(o.observation_text.slice(0,150))+(o.observation_text.length>150?'…':'')+'</div>':'') +
+              '</div>' +
+              '<div style="font-size:12px;color:'+SEV_COLOR_OBS[sev]+';font-weight:600;flex-shrink:0;">'+esc(SEV_LABEL_OBS[sev]||sev)+'</div>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+
+  /* — مودال الموهوبين — */
+  var giftedGradesArr2 = [];
+  schoolStudents.forEach(function(s){ var g=s.grade||s.student_grade||''; if(g && giftedGradesArr2.indexOf(g)<0) giftedGradesArr2.push(g); });
+  giftedGradesArr2.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+  var giftedGradeOpts2 = giftedGradesArr2.map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('');
+  var GIFTED_INDS = ['تفوق ملحوظ في المادة','سرعة استيعاب وتعلم','إبداع وأصالة في الأفكار','مبادرة وقيادة','فضول علمي مرتفع','مهارة تحليل وحل مشكلات','إنجازات في مسابقات','تميّز في الأنشطة اللاصفية'];
+  const giftedModal = GiftedUI.modalOpen ? (
+    '<div class="modal-bg" data-action="closeGiftedModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">' +
+        '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:var(--golden,#b8860b);">⭐</span> إشعار رعاية الموهوبين</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">وثّق موهبة الطالب وأرسل إشعاراً للجهات المعنية ليُحفظ في سجله الدائم.</p>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0;">' +
+          '<div class="field" style="margin:0;"><label>الصف</label><select class="input" id="giftedGradeSel"><option value="">— اختر الصف —</option>'+giftedGradeOpts2+'</select></div>' +
+          '<div class="field" style="margin:0;"><label>الشعبة</label><select class="input" id="giftedSectionSel" disabled><option value="">— الشعبة —</option></select></div>' +
+        '</div>' +
+        '<div class="field"><label>اسم الطالب</label><select class="input" id="giftedStudentSel" disabled><option value="">— اختر الصف أولاً —</option></select></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+          '<div class="field" style="margin:0;"><label>نوع الموهبة</label><select class="input" id="giftedType"><option value="أكاديمية">أكاديمية</option><option value="علمية وبحثية">علمية وبحثية</option><option value="تقنية ورقمية">تقنية ورقمية</option><option value="إبداعية">إبداعية</option><option value="فنية">فنية</option><option value="لغوية وأدبية">لغوية وأدبية</option><option value="قيادية">قيادية</option><option value="رياضية">رياضية</option><option value="دينية وقرآنية">دينية وقرآنية</option><option value="أخرى">أخرى</option></select></div>' +
+          '<div class="field" style="margin:0;"><label>مستوى الأداء الحالي</label><select class="input" id="giftedPerformance"><option value="فوق المتوسط">فوق المتوسط</option><option value="متميز">متميز</option><option value="استثنائي">استثنائي</option></select></div>' +
+        '</div>' +
+        '<div class="field"><label>مؤشرات الاكتشاف</label><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">'+GIFTED_INDS.map(function(ind){ return '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;background:var(--surface-2,#f4f6f8);border-radius:6px;padding:4px 8px;"><input type="checkbox" class="gifted-indicator-cb" value="'+esc(ind)+'"> '+esc(ind)+'</label>'; }).join('')+'</div></div>' +
+        '<div class="field"><label>الإجراء المقترح من المنسق</label><select class="input" id="giftedAction"><option value="تحويل لبرامج الموهوبين">تحويل لبرامج الموهوبين</option><option value="إثراء داخل الفصل">إثراء داخل الفصل</option><option value="ترشيح لمسابقة">ترشيح لمسابقة أو أولمبياد</option><option value="تواصل مع ولي الأمر">تواصل مع ولي الأمر</option><option value="إشراك في نشاط لاصفي">إشراك في نشاط لاصفي</option><option value="تقييم متخصص">تقييم متخصص</option><option value="أخرى">أخرى</option></select></div>' +
+        '<div class="field"><label>ملاحظات تفصيلية (اختياري)</label><textarea class="input" id="giftedNote" rows="3" placeholder="أي تفاصيل إضافية عن الموهبة أو مقترحاتك…" style="resize:vertical;"></textarea></div>' +
+        '<div class="field"><label>إرسال الإشعار إلى</label>' +
+          '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
+            '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToPrincipal" checked> مدير المدرسة</label>' +
+            '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="giftedToCounselor"> الموجه الطلابي</label>' +
+          '</div>' +
+          (GiftedUI.counselors.length > 0 ? '<div id="giftedCounselorPickWrap" style="display:none;margin-top:8px;"><label style="font-size:13px;color:var(--muted);">اختر الموجه:</label><select class="input" id="giftedCounselorSel" style="margin-top:4px;"><option value="">— اختر موجهاً —</option>'+GiftedUI.counselors.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.full_name)+'</option>'; }).join('')+'</select></div>' : '') +
+        '</div>' +
+        '<div class="modal-actions"><button class="btn btn-primary btn-block" data-action="sendGiftedNotif" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">⭐ توثيق وإرسال الإشعار</button><button class="btn btn-ghost btn-block" data-action="closeGiftedModal">إلغاء</button></div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
+
+  /* — مودال المبادرة — */
+  var initiativeGroupOpts2 = INITIATIVE_TYPES.map(function(g){ return '<optgroup label="'+esc(g.group)+'">'+g.items.map(function(t){ return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }).join('');
+  var _initEd2 = TeacherInitiativeUI.editData || {};
+  var _initEvType2 = _initEd2.evidenceType || 'description';
+  var _initEvLabel2 = _initEvType2==='url' ? 'رابط الشاهد الإلكتروني' : _initEvType2==='procedure' ? 'وصف إجراء التنفيذ' : _initEvType2==='file' ? 'رابط الملف المرفوع' : 'وصف الشاهد';
+  var _initEvPlh2 = _initEvType2==='url' ? 'https://...' : _initEvType2==='procedure' ? 'اشرح خطوات تنفيذ المبادرة بالتفصيل…' : _initEvType2==='file' ? 'سيظهر الرابط تلقائياً بعد الرفع' : 'صف الدليل الذي يثبت تنفيذ المبادرة…';
+  function _initRadio2(val){ return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="initEvidenceType" value="'+val+'"'+(_initEvType2===val?' checked':'')+'>'; }
+  var _initTypeOpts2 = initiativeGroupOpts2.replace('value="'+esc(_initEd2.initiativeType||'')+'"', 'value="'+esc(_initEd2.initiativeType||'')+'" selected');
+  const initiativeModal = TeacherInitiativeUI.modalOpen ? (
+    '<div class="modal-bg" data-action="closeInitiativeModalBg">' +
+      '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;">' +
+        '<h3 style="display:flex;align-items:center;gap:8px;"><span style="color:#0F766E;">💡</span> '+(TeacherInitiativeUI.editId ? 'تعديل المبادرة' : 'توثيق مبادرة تعليمية')+'</h3>' +
+        '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">وثّق مبادرتك التعليمية وأرسلها لمدير المدرسة للاعتماد الرسمي وحفظها في سجلك.</p>' +
+        '<div class="field"><label>عنوان المبادرة <span style="color:var(--danger)">*</span></label><input class="input" id="initTitle" placeholder="مثال: مبادرة تحسين مهارات القراءة" maxlength="200" value="'+esc(_initEd2.initiativeTitle||'')+'"></div>' +
+        '<div class="field"><label>نوع المبادرة <span style="color:var(--danger)">*</span></label><select class="input" id="initType"><option value="">— اختر نوع المبادرة —</option>'+_initTypeOpts2+'</select></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div class="field" style="margin:0;"><label>الفئة المستفيدة</label><input class="input" id="initTargetGroup" placeholder="طلاب الصف الثالث" maxlength="100" value="'+esc(_initEd2.targetGroup||'')+'"></div><div class="field" style="margin:0;"><label>عدد المستفيدين المتوقع</label><input class="input" id="initBeneficiaries" type="number" min="1" placeholder="30" value="'+(_initEd2.estimatedBeneficiaries||'')+'"></div></div>' +
+        '<div class="field"><label>تاريخ التنفيذ <span style="color:var(--danger)">*</span></label><input class="input" id="initDate" type="date" value="'+esc(_initEd2.executionDate||new Date().toISOString().slice(0,10))+'"></div>' +
+        '<div class="field"><label>وصف المبادرة وأهدافها</label><textarea class="input" id="initDesc" rows="3" placeholder="اشرح فكرة المبادرة وما تسعى لتحقيقه…" style="resize:vertical;">'+esc(_initEd2.description||'')+'</textarea></div>' +
+        '<div class="field"><label>نوع الشاهد / الدليل <span style="color:var(--danger)">*</span></label><div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;">'+_initRadio2('description')+'وصف تفصيلي</label>'+_initRadio2('url')+'رابط Drive/OneDrive</label>'+_initRadio2('procedure')+'وصف إجراء</label>'+_initRadio2('file')+'ملف (صورة / PDF)</label></div></div>' +
+        '<div class="field" id="initEvidenceWrap"'+(_initEvType2==='file'?' style="display:none;"':'')+'>  <label id="initEvidenceLabel">'+_initEvLabel2+'</label><textarea class="input" id="initEvidenceText" rows="3" placeholder="'+_initEvPlh2+'" style="resize:vertical;">'+esc(_initEvType2==='file'?'':(_initEd2.evidenceContent||''))+'</textarea></div>' +
+        '<div class="field" id="initFileWrap"'+(_initEvType2!=='file'?' style="display:none;"':'')+'>  <label>ارفع ملف الشاهد (صورة أو PDF) <span style="color:var(--danger)">*</span></label>'+(_initEd2.evidenceContent && _initEvType2==='file' ? '<div style="margin-bottom:8px;font-size:12.5px;color:var(--muted);">ملف مرفق: <a href="'+esc(_initEd2.evidenceContent)+'" target="_blank">عرض الملف الحالي</a></div>' : '')+'<input type="file" id="initFileInput" accept="image/*,.pdf" style="display:none;"><button type="button" class="btn btn-ghost btn-sm" id="initFilePickBtn" style="width:100%;border:2px dashed var(--border);border-radius:8px;padding:20px;color:var(--muted);">📎 اختر ملفاً أو اسحبه هنا<br><span style="font-size:11px;">(صورة أو PDF، حتى 20MB)</span></button><div id="initFileStatus" style="font-size:12.5px;margin-top:6px;color:var(--muted);"></div><input type="hidden" id="initFileUrl" value="'+esc(_initEvType2==='file'?(_initEd2.evidenceContent||''):'')+'">' +
+        '</div>' +
+        '<div class="field"><label>النتيجة المتوقعة</label><textarea class="input" id="initExpectedOutcome" rows="2" placeholder="ما النتيجة التي تتوقع تحقيقها؟" style="resize:vertical;">'+esc(_initEd2.expectedOutcome||'')+'</textarea></div>' +
+        '<div class="modal-actions"><button class="btn btn-primary btn-block" data-action="submitInitiative" style="background:#0F766E;border-color:#0F766E;">💡 إرسال للمدير للاعتماد</button><button class="btn btn-ghost btn-sm" data-action="saveInitiativeDraft">حفظ كمسودة</button><button class="btn btn-ghost btn-block" data-action="closeInitiativeModal">إلغاء</button></div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
+
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    giftedModal + initiativeModal +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;padding:14px 18px;background:var(--surface-2,#f4f6f8);border-radius:12px;border:1px solid var(--border,#e5e7eb);">' +
+      '<button class="btn btn-ghost btn-sm" data-action="openInitiativeModal" style="color:#0F766E;font-weight:600;">💡 توثيق مبادرة تعليمية</button>' +
+      '<button class="btn btn-ghost btn-sm" data-action="openGiftedModal" style="color:var(--golden,#b8860b);font-weight:600;">⭐ رعاية الموهوبين</button>' +
+      '<button class="btn btn-ghost btn-sm" data-action="openObsModal" style="color:var(--primary,#2563eb);font-weight:600;">🔍 ملاحظة صفية</button>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px;">' +
+      '<div class="program-card">' +
+        '<div class="ph" style="display:flex;justify-content:space-between;align-items:center;"><h3>💡 مبادراتي التعليمية ('+myInitiativeSubs.length+')</h3><button class="btn btn-primary btn-sm" data-action="openInitiativeModal" style="background:#0F766E;border-color:#0F766E;">+ جديدة</button></div>' +
+        initCards +
+      '</div>' +
+      '<div class="program-card">' +
+        '<div class="ph" style="display:flex;justify-content:space-between;align-items:center;"><h3>⭐ بلاغاتي للموهوبين ('+myGiftedReports.length+')</h3><button class="btn btn-primary btn-sm" data-action="openGiftedModal" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">+ جديد</button></div>' +
+        giftedRows +
+      '</div>' +
+      '<div class="program-card">' +
+        '<div class="ph" style="display:flex;justify-content:space-between;align-items:center;"><h3>🔍 ملاحظاتي الصفية ('+myObservations.length+')</h3><button class="btn btn-primary btn-sm" data-action="openObsModal">+ جديدة</button></div>' +
+        obsRows +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function bindCoordinatorTeacherActivities(){
+  /* — فتح / إغلاق مودال الملاحظة الصفية — */
+  document.querySelectorAll('[data-action="openObsModal"]').forEach(function(rawEl){
+    var el = rawEl.cloneNode(true);
+    rawEl.parentNode.replaceChild(el, rawEl);
+    el.addEventListener('click', async function(){
+      var students = (_teacherAllStudentsCache||[]).map(function(s){ return { name: s.full_name||s.name||'', grade: s.grade||'', section: s.section||'' }; });
+      await openObservationModal(students);
+    });
+  });
+
+  /* — فتح / إغلاق مودال الموهوبين — */
+  var _openGiftedRaw = document.querySelector('[data-action="openGiftedModal"]');
+  if (_openGiftedRaw){
+    var _openGiftedBtn = _openGiftedRaw.cloneNode(true);
+    _openGiftedRaw.parentNode.replaceChild(_openGiftedBtn, _openGiftedRaw);
+    _openGiftedBtn.addEventListener('click', async function(){
+      GiftedUI.modalOpen = true; GiftedUI.selectedCounselorId = '';
+      try{ GiftedUI.counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&order=full_name.asc') || []; }catch(e){ GiftedUI.counselors = []; }
+      await render();
+    });
+  }
+  var _closeGiftedBtn = document.querySelector('[data-action="closeGiftedModal"]');
+  if (_closeGiftedBtn) _closeGiftedBtn.addEventListener('click', async function(){ GiftedUI.modalOpen = false; await render(); });
+  var _closeGiftedBg = document.querySelector('[data-action="closeGiftedModalBg"]');
+  if (_closeGiftedBg) _closeGiftedBg.addEventListener('click', async function(){ GiftedUI.modalOpen = false; await render(); });
+
+  /* فلترة متتالية: الصف → الشعبة → الطالب */
+  var _gGrade = document.getElementById('giftedGradeSel');
+  var _gSec   = document.getElementById('giftedSectionSel');
+  var _gStu   = document.getElementById('giftedStudentSel');
+  if (_gGrade) _gGrade.addEventListener('change', function(){
+    var g = this.value;
+    _gSec.innerHTML = '<option value="">— الشعبة —</option>';
+    _gStu.innerHTML = '<option value="">— اختر الشعبة أولاً —</option>';
+    _gSec.disabled = !g; _gStu.disabled = true;
+    if (!g) return;
+    var secs = [];
+    (_teacherGiftedStudentsCache||[]).forEach(function(s){ var sc=s.section||s.student_section||''; var sg=s.grade||s.student_grade||''; if(sg===g && sc && secs.indexOf(sc)<0) secs.push(sc); });
+    secs.sort(function(a,b){ return a.localeCompare(b,'ar'); });
+    secs.forEach(function(sc){ _gSec.add(new Option(sc, sc)); });
+  });
+  if (_gSec) _gSec.addEventListener('change', function(){
+    var g = _gGrade ? _gGrade.value : '';
+    var sc = this.value;
+    _gStu.innerHTML = '<option value="">— اختر الطالب —</option>';
+    _gStu.disabled = !sc;
+    if (!sc) return;
+    var filt = (_teacherGiftedStudentsCache||[]).filter(function(s){ return (s.grade||s.student_grade||'')===g && (s.section||s.student_section||'')===sc; });
+    filt.sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+    filt.forEach(function(s){ _gStu.add(new Option(s.full_name, s.full_name)); });
+  });
+
+  /* الموجه الطلابي — إظهار/إخفاء اختيار الموجه */
+  var _gCounselorChk = document.getElementById('giftedToCounselor');
+  var _gCounselorWrap = document.getElementById('giftedCounselorPickWrap');
+  function _toggleCounselorPick2(){ if (_gCounselorWrap) _gCounselorWrap.style.display = (_gCounselorChk && _gCounselorChk.checked) ? '' : 'none'; }
+  if (_gCounselorChk){ _gCounselorChk.addEventListener('change', _toggleCounselorPick2); _toggleCounselorPick2(); }
+
+  /* إرسال بلاغ الموهوبين */
+  var _sendGiftedRaw2 = document.querySelector('[data-action="sendGiftedNotif"]');
+  var _sendGiftedBtn2 = _sendGiftedRaw2 ? (function(){ var c=_sendGiftedRaw2.cloneNode(true); _sendGiftedRaw2.parentNode.replaceChild(c,_sendGiftedRaw2); return c; })() : null;
+  if (_sendGiftedBtn2) _sendGiftedBtn2.addEventListener('click', async function(){
+    if (!(document.getElementById('giftedGradeSel')||{}).value){ toast('يرجى اختيار الصف أولاً.'); return; }
+    if (!(document.getElementById('giftedSectionSel')||{}).value){ toast('يرجى اختيار الشعبة.'); return; }
+    var _stSel = document.getElementById('giftedStudentSel');
+    var _stName = (_stSel ? _stSel.value : '').trim();
+    if (!_stName){ toast('يرجى اختيار اسم الطالب.'); return; }
+    var _gType = (document.getElementById('giftedType')||{}).value || 'أكاديمية';
+    var _gPerf = (document.getElementById('giftedPerformance')||{}).value || '';
+    var _gAct  = (document.getElementById('giftedAction')||{}).value || '';
+    var _gNote = ((document.getElementById('giftedNote')||{}).value || '').trim();
+    var _gInds = [];
+    document.querySelectorAll('.gifted-indicator-cb:checked').forEach(function(cb){ _gInds.push(cb.value); });
+    var _toPrincipal = !!(document.getElementById('giftedToPrincipal') && document.getElementById('giftedToPrincipal').checked);
+    var _toCounselor = !!(document.getElementById('giftedToCounselor') && document.getElementById('giftedToCounselor').checked);
+    if (!_toPrincipal && !_toCounselor){ toast('يرجى اختيار جهة استلام الإشعار على الأقل.'); return; }
+    if (_toCounselor && GiftedUI.counselors.length > 1 && !(document.getElementById('giftedCounselorSel')||{}).value){ toast('يرجى اختيار الموجه الطلابي المعني من القائمة.'); return; }
+    _sendGiftedBtn2.disabled = true;
+    try{
+      var _stRec = (_teacherAllStudentsCache||[]).find(function(s){ return s.full_name===_stName; });
+      await DB.createGiftedReport({
+        school: State.user.school, student_name: _stName,
+        student_grade: _stRec ? (_stRec.grade||_stRec.student_grade||'') : '',
+        student_section: _stRec ? (_stRec.section||_stRec.student_section||'') : '',
+        talent_type: _gType, performance_level: _gPerf, discovery_indicators: _gInds.join('، '),
+        proposed_action: _gAct, notes: _gNote,
+        reported_by_id: State.user.id, reported_by_name: State.user.full_name,
+        notified_principal: _toPrincipal, notified_counselor: _toCounselor, notified_coordinator: false, status: 'new'
+      });
+      var _notifTitle2 = '⭐ طالب موهوب: ' + _stName;
+      var _notifBody2 = 'بلّغ المنسق '+State.user.full_name+' عن موهبة الطالب '+_stName+'\nنوع الموهبة: '+_gType+(_gPerf?' | المستوى: '+_gPerf:'') +(_gInds.length?'\nالمؤشرات: '+_gInds.join('، '):'') +(_gAct?'\nالإجراء المقترح: '+_gAct:'')+(_gNote?'\nملاحظات: '+_gNote:'');
+      var _targets2 = [];
+      if (_toPrincipal){ var _ps2 = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.principal') || []; _ps2.forEach(function(p){ _targets2.push(p); }); }
+      if (_toCounselor){
+        var _selCId2 = (document.getElementById('giftedCounselorSel')||{}).value || '';
+        if (_selCId2){ var _ch2 = GiftedUI.counselors.find(function(c){ return c.id===_selCId2; }); if(_ch2) _targets2.push(_ch2); }
+        else { var _cs2 = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor') || []; _cs2.forEach(function(c){ _targets2.push(c); }); }
+      }
+      for (var _ti2=0; _ti2<_targets2.length; _ti2++){
+        await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:_targets2[_ti2].id, type:'general', title:_notifTitle2, body:_notifBody2 });
+      }
+      invalidateNotifCache();
+      GiftedUI.modalOpen = false;
+      toast('تم توثيق بلاغ الموهبة وإرسال الإشعارات بنجاح.');
+      await render();
+    }catch(e){ toast(arabicError(e)); _sendGiftedBtn2.disabled = false; }
+  });
+
+  /* — فتح / إغلاق مودال المبادرة — */
+  document.querySelectorAll('[data-action="openInitiativeModal"]').forEach(function(btn){
+    btn.addEventListener('click', async function(){ TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null; TeacherInitiativeUI.modalOpen = true; await render(); });
+  });
+  var _closeInitBtn2 = document.querySelector('[data-action="closeInitiativeModal"]');
+  if (_closeInitBtn2) _closeInitBtn2.addEventListener('click', async function(){ TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null; await render(); });
+  var _initModalBg2 = document.querySelector('[data-action="closeInitiativeModalBg"]');
+  if (_initModalBg2) _initModalBg2.addEventListener('click', async function(e){ if(e.target===_initModalBg2){ TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null; await render(); } });
+
+  /* تعديل مسودة */
+  document.querySelectorAll('[data-action="editInitiativeDraft"]').forEach(function(btn){
+    btn.addEventListener('click', async function(){
+      var sid = btn.getAttribute('data-id');
+      var sub = _coordInitiativeSubs.find(function(s){ return s.id===sid; });
+      if (!sub) return;
+      TeacherInitiativeUI.editId = sid; TeacherInitiativeUI.editData = sub.payload || {}; TeacherInitiativeUI.modalOpen = true;
+      await render();
+    });
+  });
+
+  /* تغيير نوع الشاهد */
+  document.querySelectorAll('[name="initEvidenceType"]').forEach(function(radio){
+    radio.addEventListener('change', function(){
+      var lbl=document.getElementById('initEvidenceLabel'), txt=document.getElementById('initEvidenceText'), wrap=document.getElementById('initEvidenceWrap'), fwrap=document.getElementById('initFileWrap');
+      if (!lbl||!txt||!wrap||!fwrap) return;
+      var isFile = this.value==='file';
+      wrap.style.display = isFile?'none':''; fwrap.style.display = isFile?'':'none';
+      if (this.value==='url'){ lbl.textContent='رابط Drive/OneDrive'; txt.setAttribute('placeholder','https://...'); }
+      else if (this.value==='procedure'){ lbl.textContent='وصف إجراء التنفيذ'; txt.setAttribute('placeholder','اشرح خطوات تنفيذ المبادرة بالتفصيل…'); }
+      else { lbl.textContent='وصف الشاهد'; txt.setAttribute('placeholder','صف الدليل الذي يثبت تنفيذ المبادرة…'); }
+    });
+  });
+
+  /* رفع ملف الشاهد */
+  var _iFilePick2 = document.getElementById('initFilePickBtn');
+  var _iFileInput2 = document.getElementById('initFileInput');
+  if (_iFilePick2 && _iFileInput2){
+    _iFilePick2.addEventListener('click', function(){ _iFileInput2.click(); });
+    _iFileInput2.addEventListener('change', async function(){
+      var file = _iFileInput2.files[0]; if (!file) return;
+      if (file.size > 20*1024*1024){ toast('حجم الملف يتجاوز 20MB.'); return; }
+      var st2 = document.getElementById('initFileStatus');
+      if (st2) st2.textContent = 'جاري الرفع…'; _iFilePick2.disabled = true;
+      try{
+        var url2 = await uploadFileToStorage(file);
+        var hu2 = document.getElementById('initFileUrl'); if (hu2) hu2.value = url2;
+        if (st2) st2.innerHTML = '✅ تم الرفع: <a href="'+esc(url2)+'" target="_blank">عرض الملف</a>';
+        _iFilePick2.textContent = '✅ '+file.name+' — تغيير'; _iFilePick2.style.color = '#0F766E';
+      }catch(e2){ if (st2) st2.textContent = 'فشل الرفع: '+arabicError(e2); }
+      finally { _iFilePick2.disabled = false; }
+    });
+  }
+
+  /* إرسال / حفظ مسودة المبادرة */
+  async function _doSubmitInitiative2(targetStatus){
+    var title2=((document.getElementById('initTitle')||{}).value||'').trim();
+    var type2 =((document.getElementById('initType')||{}).value||'').trim();
+    var date2 =((document.getElementById('initDate')||{}).value||'').trim();
+    if (!title2){ toast('يرجى كتابة عنوان المبادرة.'); return; }
+    if (!type2){  toast('يرجى اختيار نوع المبادرة.'); return; }
+    if (!date2){  toast('يرجى تحديد تاريخ التنفيذ.'); return; }
+    var evType2='description';
+    document.querySelectorAll('[name="initEvidenceType"]').forEach(function(r){ if(r.checked) evType2=r.value; });
+    var evText2;
+    if (evType2==='file'){
+      evText2=((document.getElementById('initFileUrl')||{}).value||'').trim();
+      if (!evText2){ toast('يرجى رفع ملف الشاهد أولاً.'); return; }
+    } else {
+      evText2=((document.getElementById('initEvidenceText')||{}).value||'').trim();
+      if (!evText2){ toast('يرجى إدخال الشاهد / الدليل.'); return; }
+    }
+    var payload2 = {
+      initiativeTitle: title2, initiativeType: type2,
+      targetGroup: ((document.getElementById('initTargetGroup')||{}).value||'').trim(),
+      estimatedBeneficiaries: parseInt(((document.getElementById('initBeneficiaries')||{}).value||'0'),10)||0,
+      executionDate: date2, description: ((document.getElementById('initDesc')||{}).value||'').trim(),
+      evidenceType: evType2, evidenceContent: evText2,
+      expectedOutcome: ((document.getElementById('initExpectedOutcome')||{}).value||'').trim()
+    };
+    try{
+      if (TeacherInitiativeUI.editId){
+        await DB.updateSubmission(TeacherInitiativeUI.editId, { payload: payload2, status: targetStatus });
+      } else {
+        await DB.createSubmission({ form_type:'teacherInitiative', school:State.user.school, created_by:State.user.id, created_by_name:State.user.full_name, community_id:State.user.community_id||null, status:targetStatus, payload:payload2, preparer_signature:null, principal_signature:null, principal_comment:'' });
+      }
+      TeacherInitiativeUI.modalOpen = false; TeacherInitiativeUI.editId = null; TeacherInitiativeUI.editData = null;
+      toast(targetStatus==='pending' ? 'تم إرسال المبادرة للمدير للاعتماد.' : 'تم حفظ المسودة.');
+      await render();
+    }catch(e){ toast(arabicError(e)); }
+  }
+  var _subInitRaw2 = document.querySelector('[data-action="submitInitiative"]');
+  if (_subInitRaw2){ var _subInitBtn2=_subInitRaw2.cloneNode(true); _subInitRaw2.parentNode.replaceChild(_subInitBtn2,_subInitRaw2); _subInitBtn2.addEventListener('click', async function(){ _subInitBtn2.disabled=true; await _doSubmitInitiative2('pending'); _subInitBtn2.disabled=false; }); }
+  var _draftInitRaw2 = document.querySelector('[data-action="saveInitiativeDraft"]');
+  if (_draftInitRaw2){ var _draftInitBtn2=_draftInitRaw2.cloneNode(true); _draftInitRaw2.parentNode.replaceChild(_draftInitBtn2,_draftInitRaw2); _draftInitBtn2.addEventListener('click', async function(){ _draftInitBtn2.disabled=true; await _doSubmitInitiative2('draft'); _draftInitBtn2.disabled=false; }); }
 }
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
