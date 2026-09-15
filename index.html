@@ -2437,6 +2437,15 @@ const DB = {
     list.push(obj); localStorage.setItem('dtd_obs_v1', JSON.stringify(list));
     return obj;
   },
+  async updateObservation(id, patch){
+    if (isRemote()){
+      await remoteFetch('classroom_observations?id=eq.'+encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=minimal' });
+      return;
+    }
+    const list = JSON.parse(localStorage.getItem('dtd_obs_v1') || '[]');
+    const idx = list.findIndex(function(o){ return o.id===id; });
+    if (idx !== -1){ Object.assign(list[idx], patch); localStorage.setItem('dtd_obs_v1', JSON.stringify(list)); }
+  },
   async listMyObservations(school, teacherId){
     if (isRemote()){
       return await remoteFetch(
@@ -7762,7 +7771,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', _prefillObs:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', obsShowClosed:false, _prefillObs:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -8075,6 +8084,7 @@ async function screenCounselorCases(){
 
     /* فرز وفلترة */
     var obsFiltered = counselorObservations.slice();
+    if (!CounselorUI.obsShowClosed) obsFiltered = obsFiltered.filter(function(o){ return o.status !== 'closed' && o.status !== 'reviewed'; });
     if (CounselorUI.obsSevFilter) obsFiltered = obsFiltered.filter(function(o){ return (o.severity||'info') === CounselorUI.obsSevFilter; });
     obsFiltered.sort(function(a,b){
       var sf = CounselorUI.obsSortField || 'created_at';
@@ -8101,6 +8111,7 @@ async function screenCounselorCases(){
           '<option value="urgent" '+(CounselorUI.obsSevFilter==='urgent'?'selected':'')+'>🔴 عاجلة</option>' +
         '</select>' +
         '<span style="color:var(--muted);font-size:12.5px;">'+obsFiltered.length+' ملاحظة</span>' +
+        '<button class="btn btn-sm '+(CounselorUI.obsShowClosed?'btn-primary':'btn-ghost')+'" data-action="obsToggleClosed" style="white-space:nowrap;font-size:12px;">'+(CounselorUI.obsShowClosed?'✓ إخفاء المُغلقة':'📂 المُغلقة')+'</button>' +
         '<button class="btn btn-ghost btn-sm" data-action="printObs" style="margin-right:auto;white-space:nowrap;">🖨 طباعة</button>' +
       '</div>';
 
@@ -8109,16 +8120,30 @@ async function screenCounselorCases(){
       var sevColor = severityColor[sev] || 'var(--accent,#2563eb)';
       var sevLabel = severityLabel[sev] || sev;
       var teacherName = obs.teacher_name || obs.teacher_id || '—';
-      return '<div class="obs-print-card" style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));">' +
-        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">' +
+      var obsText = obs.description || '';
+      var obsType = obs.observation_type || '';
+      var isClosed = obs.status === 'closed' || obs.status === 'reviewed';
+      return '<div class="obs-print-card" style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));'+(isClosed?'opacity:0.6;':'')+';">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
           '<span style="font-weight:800;font-size:14.5px;">'+esc(obs.student_name||'—')+'</span>' +
           (obs.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(obs.student_grade)+(obs.student_section?' / '+esc(obs.student_section):'')+'</span>' : '') +
           '<span style="background:color-mix(in srgb,'+sevColor+' 18%,transparent);color:'+sevColor+';border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">'+sevLabel+'</span>' +
           '<span style="font-size:11.5px;color:var(--muted);">'+fmtDate(obs.created_at)+'</span>' +
-          '<button class="btn btn-sm btn-primary no-print" data-action="obsCreateCase" data-student="'+esc(obs.student_name||'')+'" data-grade="'+esc(obs.student_grade||'')+'" data-section="'+esc(obs.student_section||'')+'" data-teacher="'+esc(teacherName)+'" data-text="'+esc(obs.observation_text||'')+'" style="margin-right:auto;font-size:12px;padding:3px 10px;">🗓 جلسة إرشادية</button>' +
+          (isClosed ? '<span style="font-size:11.5px;color:var(--muted);background:var(--card-2,#f4f6f8);border-radius:20px;padding:2px 10px;">✓ تمت المراجعة</span>' : '') +
         '</div>' +
-        (obs.observation_text ? '<div style="font-size:13px;line-height:1.75;margin-bottom:8px;padding:8px 12px;background:color-mix(in srgb,'+sevColor+' 8%,var(--surface));border-right:3px solid '+sevColor+';border-radius:0 6px 6px 0;"><span style="font-size:11px;font-weight:700;color:'+sevColor+';display:block;margin-bottom:3px;">نص الملاحظة:</span>'+esc(obs.observation_text)+'</div>' : '') +
-        '<div style="font-size:11.5px;color:var(--muted);">المعلم: '+esc(teacherName)+'</div>' +
+        /* نص الملاحظة */
+        (obsType || obsText ? '<div style="margin-bottom:10px;padding:10px 14px;background:color-mix(in srgb,'+sevColor+' 8%,var(--surface));border-right:3px solid '+sevColor+';border-radius:0 8px 8px 0;">' +
+          (obsType ? '<div style="font-size:11px;font-weight:700;color:'+sevColor+';margin-bottom:4px;">نوع الملاحظة: '+esc(obsType)+'</div>' : '') +
+          (obsText ? '<div style="font-size:13.5px;line-height:1.8;color:var(--text);">'+esc(obsText)+'</div>' : '') +
+        '</div>' : '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;font-style:italic;">لم يُضف المعلم تفاصيل.</div>') +
+        /* سطر المعلم والأزرار */
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+          '<span style="font-size:11.5px;color:var(--muted);margin-left:auto;">المعلم: '+esc(teacherName)+'</span>' +
+          (!isClosed ? (
+            '<button class="btn btn-ghost btn-sm no-print" data-action="obsClose" data-id="'+esc(obs.id||'')+'" style="font-size:12px;padding:3px 10px;color:var(--muted);">✕ إغلاق</button>' +
+            '<button class="btn btn-sm btn-primary no-print" data-action="obsCreateCase" data-student="'+esc(obs.student_name||'')+'" data-grade="'+esc(obs.student_grade||'')+'" data-section="'+esc(obs.student_section||'')+'" data-teacher="'+esc(teacherName)+'" data-text="'+esc(obsText)+'" style="font-size:12px;padding:3px 10px;">🗓 جلسة إرشادية</button>'
+          ) : '') +
+        '</div>' +
       '</div>';
     }).join('');
     return '<div id="obsPrintArea" style="margin-top:4px;">'+toolbar+rows+'</div>';
@@ -8844,6 +8869,8 @@ function bindCounselorCases(){
   });
   const obsSevFilterEl = document.getElementById('obsSevFilter');
   if (obsSevFilterEl) obsSevFilterEl.addEventListener('change', function(){ CounselorUI.obsSevFilter = this.value; render(); });
+  const obsToggleClosedBtn = document.querySelector('[data-action="obsToggleClosed"]');
+  if (obsToggleClosedBtn) obsToggleClosedBtn.addEventListener('click', function(){ CounselorUI.obsShowClosed = !CounselorUI.obsShowClosed; render(); });
 
   /* طباعة الملاحظات */
   const printObsBtn = document.querySelector('[data-action="printObs"]');
@@ -8871,6 +8898,24 @@ function bindCounselorCases(){
       CounselorUI.modalOpen = true;
       CounselorUI.editingId = null;
       render();
+    });
+  });
+
+  /* إغلاق ملاحظة صفية */
+  document.querySelectorAll('[data-action="obsClose"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var id = this.getAttribute('data-id');
+      if (!id) return;
+      if (!confirm('هل تريد إغلاق هذه الملاحظة؟ سيُحدَّث وضعها إلى "تمت المراجعة".')) return;
+      try{
+        await DB.updateObservation(id, { status: 'reviewed' });
+        /* تحديث البيانات المحلية مباشرة بدون انتظار */
+        if (_counselorCasesData && _counselorCasesData.counselorObservations){
+          var obs = _counselorCasesData.counselorObservations.find(function(o){ return o.id===id; });
+          if (obs) obs.status = 'reviewed';
+        }
+        render();
+      } catch(e){ toast(arabicError(e)); }
     });
   });
 
