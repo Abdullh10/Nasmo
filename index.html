@@ -9650,7 +9650,7 @@ async function screenCoordinatorTeacherActivities(){
     giftedModal + initiativeModal +
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;padding:14px 18px;background:var(--surface-2,#f4f6f8);border-radius:12px;border:1px solid var(--border,#e5e7eb);">' +
       '<button class="btn btn-ghost btn-sm" data-action="openInitiativeModal" style="color:#0F766E;font-weight:600;">💡 توثيق مبادرة تعليمية</button>' +
-      '<button class="btn btn-ghost btn-sm" data-action="openGiftedModal" style="color:var(--golden,#b8860b);font-weight:600;">⭐ رعاية الموهوبين</button>' +
+      '<button class="btn btn-ghost btn-sm" data-action="openGiftedModal" style="color:var(--golden,#b8860b);font-weight:600;">⭐ اكتشاف الموهوبين</button>' +
       '<button class="btn btn-ghost btn-sm" data-action="openObsModal" style="color:var(--primary,#2563eb);font-weight:600;">🔍 ملاحظة صفية</button>' +
     '</div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px;">' +
@@ -9659,7 +9659,7 @@ async function screenCoordinatorTeacherActivities(){
         initCards +
       '</div>' +
       '<div class="program-card">' +
-        '<div class="ph" style="display:flex;justify-content:space-between;align-items:center;"><h3>⭐ بلاغاتي للموهوبين ('+myGiftedReports.length+')</h3><button class="btn btn-primary btn-sm" data-action="openGiftedModal" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">+ جديد</button></div>' +
+        '<div class="ph" style="display:flex;justify-content:space-between;align-items:center;"><h3>⭐ اكتشاف الموهوبين ('+myGiftedReports.length+')</h3><button class="btn btn-primary btn-sm" data-action="openGiftedModal" style="background:var(--golden,#b8860b);border-color:var(--golden,#b8860b);">+ جديد</button></div>' +
         giftedRows +
       '</div>' +
       '<div class="program-card">' +
@@ -9682,16 +9682,15 @@ function bindCoordinatorTeacherActivities(){
   });
 
   /* — فتح / إغلاق مودال الموهوبين — */
-  var _openGiftedRaw = document.querySelector('[data-action="openGiftedModal"]');
-  if (_openGiftedRaw){
-    var _openGiftedBtn = _openGiftedRaw.cloneNode(true);
-    _openGiftedRaw.parentNode.replaceChild(_openGiftedBtn, _openGiftedRaw);
-    _openGiftedBtn.addEventListener('click', async function(){
+  document.querySelectorAll('[data-action="openGiftedModal"]').forEach(function(rawEl){
+    var el = rawEl.cloneNode(true);
+    rawEl.parentNode.replaceChild(el, rawEl);
+    el.addEventListener('click', async function(){
       GiftedUI.modalOpen = true; GiftedUI.selectedCounselorId = '';
       try{ GiftedUI.counselors = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.counselor&order=full_name.asc') || []; }catch(e){ GiftedUI.counselors = []; }
       await render();
     });
-  }
+  });
   var _closeGiftedBtn = document.querySelector('[data-action="closeGiftedModal"]');
   if (_closeGiftedBtn) _closeGiftedBtn.addEventListener('click', async function(){ GiftedUI.modalOpen = false; await render(); });
   var _closeGiftedBg = document.querySelector('[data-action="closeGiftedModalBg"]');
