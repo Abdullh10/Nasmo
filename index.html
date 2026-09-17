@@ -3006,6 +3006,13 @@ function setUserSession(u){
     CredsPrint = { school:'', items:[] };
     localStorage.removeItem(LS_LAST_CREDS_BATCH);
   }
+  /* حذف مفاتيح الكاش القديمة (تنتمي لمستخدم/مدرسة أخرى) لتحرير الذاكرة */
+  if (u){
+    try{
+      const pfx = LS_FC + encodeURIComponent(u.id||u.school||'') + '|';
+      Object.keys(localStorage).filter(function(k){ return k.startsWith(LS_FC) && !k.startsWith(pfx); }).forEach(function(k){ localStorage.removeItem(k); });
+    }catch(e){}
+  }
 }
 function loadUserSession(){ try{ return JSON.parse(localStorage.getItem('dtd_session')); }catch(e){ return null; } }
 function logout(){
@@ -7529,7 +7536,7 @@ async function screenAdminSettings(){
         '</div>' +
       '</div>' +
     '</div>' +
-    (isRemote() ?
+    (isRemote() && State.user && State.user.role === 'super_admin' ?
     '<div class="program-card">' +
       '<div class="ph"><h3>مفتاح خدمة Supabase (service_role)</h3><p>يُستخدم لإنشاء الحسابات عبر Admin API بلا قيود معدل. أدخله مرة واحدة على هذا الجهاز — يُحفظ محلياً ولا يُرسل لأي جهة خارجية.</p></div>' +
       '<div style="padding:16px 18px;">' +
@@ -7544,7 +7551,7 @@ async function screenAdminSettings(){
         '<p style="color:var(--muted);font-size:11.5px;margin-top:8px;">للحصول على المفتاح: Supabase → Project Settings → API → service_role secret</p>' +
       '</div>' +
     '</div>' : '') +
-    (isRemote() && hasSvcKey ?
+    (isRemote() && hasSvcKey && State.user && State.user.role === 'super_admin' ?
     '<div class="program-card">' +
       '<div class="ph"><h3>تنظيف الحسابات المعطوبة</h3><p>يبحث في Supabase Auth عن حسابات لا يقابلها سجل في جدول profiles (ناتجة عن استيرادات فاشلة سابقة) ويحذفها نهائياً حتى يمكن إعادة الاستيراد بدون أخطاء.</p></div>' +
       '<div style="padding:16px 18px;">' +
