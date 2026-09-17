@@ -2333,6 +2333,53 @@ const DB = {
     localStorage.setItem(LS_VISIT_SCHEDULES, JSON.stringify(list));
     return true;
   },
+  async listSupervisoryVisits(school){
+    if (isRemote()){
+      return await remoteFetch('supervisory_visits?school=eq.' + encodeURIComponent(school) + '&order=visit_date.desc') || [];
+    }
+    return JSON.parse(localStorage.getItem('dtd_sup_visits') || '[]').filter(function(v){ return v.school===school; });
+  },
+  async listMySupervisoryVisits(school, teacherId){
+    if (isRemote()){
+      return await remoteFetch('supervisory_visits?school=eq.' + encodeURIComponent(school) + '&teacher_id=eq.' + encodeURIComponent(teacherId) + '&order=visit_date.desc') || [];
+    }
+    return JSON.parse(localStorage.getItem('dtd_sup_visits') || '[]').filter(function(v){ return v.school===school && v.teacher_id===teacherId; });
+  },
+  async createSupervisoryVisit(obj){
+    if (isRemote()){
+      obj.created_at = nowIso(); obj.updated_at = nowIso();
+      _fcInvalidate('supervisory_visits');
+      const rows = await remoteFetch('supervisory_visits', { method:'POST', body:obj, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    obj.id = uid(); obj.created_at = nowIso();
+    const list = JSON.parse(localStorage.getItem('dtd_sup_visits') || '[]');
+    list.push(obj); localStorage.setItem('dtd_sup_visits', JSON.stringify(list));
+    return obj;
+  },
+  async updateSupervisoryVisit(id, patch){
+    if (isRemote()){
+      patch.updated_at = nowIso();
+      _fcInvalidate('supervisory_visits');
+      const rows = await remoteFetch('supervisory_visits?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
+      return rows && rows[0];
+    }
+    let list = JSON.parse(localStorage.getItem('dtd_sup_visits') || '[]');
+    list = list.map(function(v){ return v.id===id ? Object.assign({}, v, patch) : v; });
+    localStorage.setItem('dtd_sup_visits', JSON.stringify(list));
+    return list.find(function(v){ return v.id===id; });
+  },
+  async deleteSupervisoryVisit(id){
+    if (isRemote()){
+      _fcInvalidate('supervisory_visits');
+      await remoteFetch('supervisory_visits?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem('dtd_sup_visits') || '[]');
+    list = list.filter(function(v){ return v.id!==id; });
+    localStorage.setItem('dtd_sup_visits', JSON.stringify(list));
+    return true;
+  },
   async listStudents(filter){
     filter = filter || {};
     if (isRemote()){
@@ -3898,6 +3945,7 @@ function dashTabsHtml(){
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='academicSupervision'?'active':'')+'" data-action="dashTab" data-tab="academicSupervision">🏫 الإشراف الأكاديمي</button>' : '') +
       '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalArchive'?'active':'')+'" data-action="dashTab" data-tab="principalArchive">📁 أرشيف النماذج</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
@@ -5819,6 +5867,369 @@ function bindPrincipalGifted(){
   });
 }
 
+/* ===== الإشراف الأكاديمي ===== */
+const SUP_DOMAINS = [
+  { key:'planning', label:'التخطيط للتدريس', elements:[
+    { key:'preparation', label:'الإعداد للخطة والدرس' },
+    { key:'objectives',  label:'تحديد الأهداف وشموليتها' },
+    { key:'strategies',  label:'تحديد الاستراتيجيات المطبقة ومناسبتها' }
+  ]},
+  { key:'activities', label:'إجراءات وأنشطة الدرس', elements:[
+    { key:'warmup',            label:'التهيئة المناسبة' },
+    { key:'lesson_objectives', label:'أهداف الدرس' },
+    { key:'teaching_method',   label:'طريقة التدريس وملاءمتها لتحقيق الأهداف' },
+    { key:'environment',       label:'العلاقة بين الدرس والبيئة المحيطة' },
+    { key:'teaching_aids',     label:'فاعلية الوسيلة في تحقيق أهداف التعلم' },
+    { key:'class_activities',  label:'فاعلية الأنشطة الصفية ودور الطالب في تنفيذها' },
+    { key:'individual_diff',   label:'مراعاة الفروق الفردية بين الطالب' },
+    { key:'closure',           label:'إغلاق الدرس' }
+  ]},
+  { key:'class_mgmt', label:'إدارة الصف', elements:[
+    { key:'class_env',    label:'البيئة الصفية' },
+    { key:'communication',label:'مهارات التواصل' },
+    { key:'time_mgmt',    label:'إدارة الوقت' }
+  ]},
+  { key:'assessment', label:'التقويم', elements:[
+    { key:'feedback',       label:'مراحل التقويم والتغذية الراجعة' },
+    { key:'documentation',  label:'توثيق التقويم والمهام الأدائية أثناء التدريس' },
+    { key:'diversity',      label:'تنويع أساليب التقويم وأدواته' }
+  ]}
+];
+const SUP_RATING_LABELS = { 4:'مميز', 3:'حقق الهدف', 2:'فرصة تحسين', 1:'لم يحقق' };
+const SUP_RATING_COLORS = { 4:'#16a34a', 3:'#2563eb', 2:'#d97706', 1:'#dc2626' };
+let SupUI = { schedModal:false, evalModal:false, visit:null, repTab:'visits', teachersList:[] };
+
+function _supAvg(evaluation){
+  if (!evaluation || typeof evaluation !== 'object') return null;
+  var vals = [];
+  SUP_DOMAINS.forEach(function(d){ d.elements.forEach(function(e){ var v = (evaluation[d.key]||{})[e.key]; if (v) vals.push(Number(v)); }); });
+  if (!vals.length) return null;
+  return vals.reduce(function(a,b){ return a+b; }, 0) / vals.length;
+}
+function _supAvgLabel(avg){
+  if (avg === null) return '—';
+  if (avg >= 3.5) return 'مميز';
+  if (avg >= 2.5) return 'حقق الهدف';
+  if (avg >= 1.5) return 'فرصة تحسين';
+  return 'لم يحقق';
+}
+function _supAvgColor(avg){
+  if (avg === null) return 'var(--muted)';
+  if (avg >= 3.5) return '#16a34a';
+  if (avg >= 2.5) return '#2563eb';
+  if (avg >= 1.5) return '#d97706';
+  return '#dc2626';
+}
+
+function _supSchedModalHtml(teachers){
+  if (!SupUI.schedModal) return '';
+  return '<div class="modal-overlay" data-action="closeSupSchedModal" style="z-index:3000;">' +
+    '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px;">' +
+      '<div class="modal-header"><h3>جدولة زيارة إشرافية جديدة</h3><button class="modal-close" data-action="closeSupSchedModal">✕</button></div>' +
+      '<div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">' +
+        '<div class="field"><label>المعلم *</label>' +
+          '<select class="input" id="supSchedTeacher">' +
+            '<option value="">-- اختر المعلم --</option>' +
+            teachers.filter(function(t){ return t.role==='teacher'; }).map(function(t){
+              return '<option value="'+esc(t.id)+'|'+esc(t.full_name)+'">'+esc(t.full_name)+'</option>';
+            }).join('') +
+          '</select>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+          '<div class="field"><label>المادة</label><input class="input" id="supSchedSubject" placeholder="الرياضيات، علوم..."></div>' +
+          '<div class="field"><label>الصف</label><input class="input" id="supSchedGrade" placeholder="الأول ث"></div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+          '<div class="field"><label>الفصل</label><input class="input" id="supSchedSection" placeholder="أ، ب..."></div>' +
+          '<div class="field"><label>الحصة</label><input class="input" id="supSchedPeriod" placeholder="الثانية"></div>' +
+        '</div>' +
+        '<div class="field"><label>تاريخ الزيارة *</label><input class="input" type="date" id="supSchedDate"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">' +
+          '<button class="btn btn-ghost" data-action="closeSupSchedModal">إلغاء</button>' +
+          '<button class="btn btn-primary" data-action="saveSupSched">جدولة الزيارة</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function _supEvalModalHtml(v){
+  if (!SupUI.evalModal || !v) return '';
+  var ev = v.evaluation || {};
+  var domainsHtml = SUP_DOMAINS.map(function(d){
+    var dEv = ev[d.key] || {};
+    var elemHtml = d.elements.map(function(e){
+      var cur = dEv[e.key] || 0;
+      var radios = [4,3,2,1].map(function(val){
+        return '<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:'+(cur===val?SUP_RATING_COLORS[val]+'22':'var(--card)')+';color:'+(cur===val?SUP_RATING_COLORS[val]:'var(--text)')+';font-weight:'+(cur===val?'700':'400')+';white-space:nowrap;">' +
+          '<input type="radio" name="sup_'+esc(d.key)+'_'+esc(e.key)+'" value="'+val+'" '+(cur===val?'checked':'')+' style="display:none;"> ' +
+          SUP_RATING_LABELS[val] +
+        '</label>';
+      }).join('');
+      return '<div style="margin-bottom:10px;">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">'+esc(e.label)+'</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+radios+'</div>' +
+      '</div>';
+    }).join('');
+    return '<div style="background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:14px 16px;margin-bottom:12px;">' +
+      '<div style="font-weight:700;font-size:14px;color:var(--navy);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);">'+esc(d.label)+'</div>' +
+      elemHtml +
+    '</div>';
+  }).join('');
+  return '<div class="modal-overlay" style="z-index:3000;" data-action="closeSupEvalModal">' +
+    '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:680px;max-height:90vh;overflow-y:auto;">' +
+      '<div class="modal-header" style="position:sticky;top:0;background:var(--card);z-index:1;">' +
+        '<h3>بطاقة الزيارة الصفية — '+esc(v.teacher_name)+'</h3>' +
+        '<button class="modal-close" data-action="closeSupEvalModal">✕</button>' +
+      '</div>' +
+      '<div style="padding:16px 18px;">' +
+        '<div style="background:var(--bg,#f9fafb);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
+          '<span>📅 تاريخ الزيارة: <b>'+esc(v.visit_date||'—')+'</b></span>' +
+          '<span>📚 المادة: <b>'+esc(v.subject||'—')+'</b></span>' +
+          '<span>🏫 الصف/الفصل: <b>'+esc((v.grade||'')+(v.section?' - '+v.section:''))+'</b></span>' +
+          '<span>⏰ الحصة: <b>'+esc(v.period||'—')+'</b></span>' +
+        '</div>' +
+        domainsHtml +
+        '<div style="margin-top:4px;">' +
+          '<div class="field"><label>ملاحظات عامة</label><textarea class="input" id="supEvalNotes" rows="3" placeholder="ملاحظات إضافية...">'+esc(v.general_notes||'')+'</textarea></div>' +
+          '<div class="field"><label>التوصيات لتطوير أداء المعلم</label><textarea class="input" id="supEvalRecs" rows="3" placeholder="التوصيات والمقترحات...">'+esc(v.recommendations||'')+'</textarea></div>' +
+          '<div class="field"><label>خطة التطوير المتفق عليها</label><textarea class="input" id="supEvalPlan" rows="3" placeholder="الإجراءات المتفق عليها مع المعلم...">'+esc(v.development_plan||'')+'</textarea></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">' +
+          '<button class="btn btn-ghost" data-action="closeSupEvalModal">إغلاق</button>' +
+          '<button class="btn btn-primary" data-action="saveSupEval">حفظ نتيجة الزيارة</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+async function screenPrincipalAcademicSupervision(){
+  var visits = await DB.listSupervisoryVisits(State.user.school).catch(function(){ return []; });
+  var teachers = SupUI.teachersList.length ? SupUI.teachersList : await DB.listUsers({ school: State.user.school }).catch(function(){ return []; });
+  SupUI.teachersList = teachers;
+
+  var scheduled = visits.filter(function(v){ return v.status==='scheduled'; });
+  var completed  = visits.filter(function(v){ return v.status==='completed'; });
+  var cancelled  = visits.filter(function(v){ return v.status==='cancelled'; });
+
+  var STATUS_LABEL = { scheduled:'مجدولة', completed:'منجزة', cancelled:'ملغاة' };
+  var STATUS_COLOR = { scheduled:'#2563eb', completed:'#16a34a', cancelled:'#6b7280' };
+
+  var visitsTableHtml = visits.length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px;">لا توجد زيارات إشرافية بعد. ابدأ بجدولة زيارة جديدة.</div>'
+    : '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13.5px;">' +
+        '<thead><tr style="background:var(--bg,#f9fafb);">' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">المعلم</th>' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">المادة</th>' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">الصف/الفصل</th>' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">التاريخ</th>' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">الحالة</th>' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">التقييم العام</th>' +
+          '<th style="padding:10px 12px;border-bottom:2px solid var(--border);"></th>' +
+        '</tr></thead>' +
+        '<tbody>' +
+          visits.map(function(v){
+            var avg = _supAvg(v.evaluation);
+            var avgLabel = avg !== null ? (_supAvgLabel(avg) + ' (' + avg.toFixed(1) + ')') : '—';
+            return '<tr style="border-bottom:1px solid var(--border);">' +
+              '<td style="padding:10px 12px;font-weight:600;">'+esc(v.teacher_name)+'</td>' +
+              '<td style="padding:10px 12px;color:var(--muted);">'+esc(v.subject||'—')+'</td>' +
+              '<td style="padding:10px 12px;color:var(--muted);">'+esc((v.grade||'')+(v.section?' '+v.section:''))+'</td>' +
+              '<td style="padding:10px 12px;white-space:nowrap;">'+esc(v.visit_date||'—')+'</td>' +
+              '<td style="padding:10px 12px;"><span style="font-size:12px;font-weight:700;color:'+STATUS_COLOR[v.status||'scheduled']+';">'+STATUS_LABEL[v.status||'scheduled']+'</span></td>' +
+              '<td style="padding:10px 12px;font-size:12.5px;font-weight:700;color:'+_supAvgColor(avg)+';">'+avgLabel+'</td>' +
+              '<td style="padding:10px 12px;white-space:nowrap;">' +
+                '<button class="btn btn-ghost btn-sm" data-action="supOpenEval" data-id="'+esc(v.id)+'">'+( v.status==='completed' ? '📋 عرض النتيجة' : '✍️ تعبئة البطاقة')+'</button> ' +
+                (v.status==='scheduled' ? '<button class="btn btn-ghost btn-sm" data-action="supCancel" data-id="'+esc(v.id)+'">إلغاء</button>' : '') +
+              '</td>' +
+            '</tr>';
+          }).join('') +
+        '</tbody>' +
+      '</table></div>';
+
+  /* تبويب التقارير */
+  var teacherStats = {};
+  completed.forEach(function(v){
+    if (!teacherStats[v.teacher_name]) teacherStats[v.teacher_name] = { visits:0, avgSum:0, avgCount:0 };
+    teacherStats[v.teacher_name].visits++;
+    var avg = _supAvg(v.evaluation);
+    if (avg !== null){ teacherStats[v.teacher_name].avgSum += avg; teacherStats[v.teacher_name].avgCount++; }
+  });
+  var statsHtml = Object.keys(teacherStats).length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px;">لا تتوفر زيارات منجزة بعد لإنشاء التقارير.</div>'
+    : '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13.5px;">' +
+        '<thead><tr style="background:var(--bg,#f9fafb);">' +
+          '<th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border);font-weight:700;">المعلم</th>' +
+          '<th style="padding:10px 12px;text-align:center;border-bottom:2px solid var(--border);font-weight:700;">عدد الزيارات</th>' +
+          '<th style="padding:10px 12px;text-align:center;border-bottom:2px solid var(--border);font-weight:700;">متوسط التقييم</th>' +
+          '<th style="padding:10px 12px;text-align:center;border-bottom:2px solid var(--border);font-weight:700;">التقدير العام</th>' +
+        '</tr></thead><tbody>' +
+          Object.keys(teacherStats).sort().map(function(name){
+            var s = teacherStats[name];
+            var avg = s.avgCount ? (s.avgSum / s.avgCount) : null;
+            return '<tr style="border-bottom:1px solid var(--border);">' +
+              '<td style="padding:10px 12px;font-weight:600;">'+esc(name)+'</td>' +
+              '<td style="padding:10px 12px;text-align:center;">'+s.visits+'</td>' +
+              '<td style="padding:10px 12px;text-align:center;font-weight:700;color:'+_supAvgColor(avg)+';font-variant-numeric:tabular-nums;">'+(avg!==null?avg.toFixed(2):'—')+'</td>' +
+              '<td style="padding:10px 12px;text-align:center;font-weight:700;color:'+_supAvgColor(avg)+';">'+_supAvgLabel(avg)+'</td>' +
+            '</tr>';
+          }).join('') +
+        '</tbody></table></div>';
+
+  var tabHtml =
+    '<div class="tabs" style="margin-bottom:16px;">' +
+      '<button class="tab '+(SupUI.repTab==='visits'?'active':'')+'" data-action="supRepTab" data-tab="visits">الزيارات ('+visits.length+')</button>' +
+      '<button class="tab '+(SupUI.repTab==='reports'?'active':'')+'" data-action="supRepTab" data-tab="reports">📊 تقارير المعلمين</button>' +
+    '</div>' +
+    (SupUI.repTab==='visits' ? visitsTableHtml : statsHtml);
+
+  return (
+    _supSchedModalHtml(teachers) +
+    _supEvalModalHtml(SupUI.visit) +
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:20px;">' +
+      '<h2 style="font-size:17px;font-weight:700;margin:0;">🏫 الإشراف الأكاديمي</h2>' +
+      '<button class="btn btn-primary" data-action="openSupSchedModal">+ جدولة زيارة إشرافية</button>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px;">' +
+      '<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+        '<div style="font-size:24px;font-weight:800;color:#2563eb;font-variant-numeric:tabular-nums;">'+scheduled.length+'</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px;">مجدولة</div>' +
+      '</div>' +
+      '<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+        '<div style="font-size:24px;font-weight:800;color:#16a34a;font-variant-numeric:tabular-nums;">'+completed.length+'</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px;">منجزة</div>' +
+      '</div>' +
+      '<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+        '<div style="font-size:24px;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums;">'+cancelled.length+'</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px;">ملغاة</div>' +
+      '</div>' +
+      '<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">' +
+        (function(){ var avgs = completed.map(function(v){ return _supAvg(v.evaluation); }).filter(function(a){ return a!==null; }); var overall = avgs.length ? (avgs.reduce(function(a,b){return a+b;},0)/avgs.length) : null; return '<div style="font-size:20px;font-weight:800;color:'+_supAvgColor(overall)+';font-variant-numeric:tabular-nums;">'+(overall!==null?overall.toFixed(1):'—')+'</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">متوسط التقييم</div>'; })() +
+      '</div>' +
+    '</div>' +
+    '<div class="program-card">' +
+      '<div style="padding:16px 18px;">' + tabHtml + '</div>' +
+    '</div>'
+  );
+}
+
+function bindPrincipalAcademicSupervision(){
+  document.querySelectorAll('[data-action="supRepTab"]').forEach(function(el){
+    el.addEventListener('click', async function(){ SupUI.repTab = el.getAttribute('data-tab'); await render(); bindPrincipalAcademicSupervision(); });
+  });
+  var openBtn = document.querySelector('[data-action="openSupSchedModal"]');
+  if (openBtn) openBtn.addEventListener('click', function(){ SupUI.schedModal = true; render().then(bindPrincipalAcademicSupervision); });
+  document.querySelectorAll('[data-action="closeSupSchedModal"]').forEach(function(el){
+    el.addEventListener('click', function(){ SupUI.schedModal = false; render().then(bindPrincipalAcademicSupervision); });
+  });
+  document.querySelectorAll('[data-action="closeSupEvalModal"]').forEach(function(el){
+    el.addEventListener('click', function(){ SupUI.evalModal = false; SupUI.visit = null; render().then(bindPrincipalAcademicSupervision); });
+  });
+
+  /* جدولة زيارة */
+  var saveSchedBtn = document.querySelector('[data-action="saveSupSched"]');
+  if (saveSchedBtn) saveSchedBtn.addEventListener('click', async function(){
+    var teacherVal = (document.getElementById('supSchedTeacher')||{}).value || '';
+    var visitDate  = (document.getElementById('supSchedDate')||{}).value || '';
+    if (!teacherVal || !visitDate){ toast('اختر المعلم والتاريخ.'); return; }
+    if (this.disabled) return; this.disabled = true;
+    var parts = teacherVal.split('|');
+    var teacherId = parts[0]; var teacherName = parts.slice(1).join('|');
+    try{
+      var obj = {
+        school: State.user.school,
+        teacher_id: teacherId, teacher_name: teacherName,
+        supervisor_id: State.user.id, supervisor_name: State.user.full_name,
+        subject:  (document.getElementById('supSchedSubject')||{}).value || '',
+        grade:    (document.getElementById('supSchedGrade')||{}).value || '',
+        section:  (document.getElementById('supSchedSection')||{}).value || '',
+        period:   (document.getElementById('supSchedPeriod')||{}).value || '',
+        visit_date: visitDate, status: 'scheduled', evaluation: {}
+      };
+      await DB.createSupervisoryVisit(obj);
+      /* إشعار للمعلم */
+      await DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name,
+        target_type: 'user', target_id: teacherId,
+        message: 'تم جدولة زيارة إشرافية لك بتاريخ ' + visitDate + (obj.subject?' في مادة '+obj.subject:'') + ' — ' + State.user.full_name
+      }).catch(function(){});
+      toast('تم جدولة الزيارة وإشعار المعلم.');
+      SupUI.schedModal = false; SupUI.teachersList = [];
+      await render(); bindPrincipalAcademicSupervision();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+
+  /* فتح مودال التقييم */
+  document.querySelectorAll('[data-action="supOpenEval"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var id = el.getAttribute('data-id');
+      var visits = await DB.listSupervisoryVisits(State.user.school).catch(function(){ return []; });
+      SupUI.visit = visits.find(function(v){ return v.id===id; }) || null;
+      SupUI.evalModal = true;
+      await render(); bindPrincipalAcademicSupervision();
+    });
+  });
+
+  /* إلغاء زيارة */
+  document.querySelectorAll('[data-action="supCancel"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد إلغاء هذه الزيارة؟')) return;
+      try{
+        await DB.updateSupervisoryVisit(el.getAttribute('data-id'), { status:'cancelled' });
+        toast('تم إلغاء الزيارة.');
+        await render(); bindPrincipalAcademicSupervision();
+      }catch(e){ toast(arabicError(e)); }
+    });
+  });
+
+  /* حفظ نتيجة التقييم */
+  var saveEvalBtn = document.querySelector('[data-action="saveSupEval"]');
+  if (saveEvalBtn) saveEvalBtn.addEventListener('click', async function(){
+    if (!SupUI.visit) return;
+    if (this.disabled) return; this.disabled = true;
+    try{
+      var evaluation = {};
+      SUP_DOMAINS.forEach(function(d){
+        evaluation[d.key] = {};
+        d.elements.forEach(function(e){
+          var radio = document.querySelector('input[name="sup_'+d.key+'_'+e.key+'"]:checked');
+          if (radio) evaluation[d.key][e.key] = Number(radio.value);
+        });
+      });
+      var notes = (document.getElementById('supEvalNotes')||{}).value || '';
+      var recs   = (document.getElementById('supEvalRecs')||{}).value || '';
+      var plan   = (document.getElementById('supEvalPlan')||{}).value || '';
+      await DB.updateSupervisoryVisit(SupUI.visit.id, { status:'completed', evaluation:evaluation, general_notes:notes, recommendations:recs, development_plan:plan });
+      /* إشعار للمعلم */
+      await DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name,
+        target_type: 'user', target_id: SupUI.visit.teacher_id,
+        message: 'تم إكمال تقييم الزيارة الإشرافية بتاريخ ' + (SupUI.visit.visit_date||'') + ' — يمكنك مراجعة النتيجة في حسابك.'
+      }).catch(function(){});
+      toast('تم حفظ بطاقة الزيارة وإشعار المعلم.');
+      SupUI.evalModal = false; SupUI.visit = null;
+      await render(); bindPrincipalAcademicSupervision();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+
+  /* interactive radio labels */
+  document.querySelectorAll('[data-action="saveSupEval"]').forEach(function(){ /* handled above */ });
+  document.querySelectorAll('.modal-box input[type="radio"]').forEach(function(radio){
+    radio.addEventListener('change', function(){
+      var name = radio.getAttribute('name');
+      document.querySelectorAll('input[name="'+name+'"]').forEach(function(r){
+        var lbl = r.closest('label');
+        if (!lbl) return;
+        var val = Number(r.value);
+        if (r.checked){ lbl.style.background = SUP_RATING_COLORS[val]+'22'; lbl.style.color = SUP_RATING_COLORS[val]; lbl.style.fontWeight='700'; lbl.style.borderColor=SUP_RATING_COLORS[val]; }
+        else { lbl.style.background = 'var(--card)'; lbl.style.color = 'var(--text)'; lbl.style.fontWeight='400'; lbl.style.borderColor='var(--border)'; }
+      });
+    });
+  });
+}
+
 function bindNotificationsPanel(){
   document.querySelectorAll('[data-action="pnotifFilter"]').forEach(function(el){
     el.addEventListener('click', async function(){ NotifPanelUI.filter = el.getAttribute('data-val'); await render(); bindNotificationsPanel(); });
@@ -7505,7 +7916,32 @@ async function screenAdminSettings(){
     "create policy \"login_logs_insert\" on login_logs for insert with check ( school = my_school() );",
     'alter table push_subscriptions enable row level security;',
     'drop policy if exists "push_subs_all" on push_subscriptions;',
-    "create policy \"push_subs_all\" on push_subscriptions for all using ( user_id = auth.uid() or my_role() in ('admin','super_admin') ) with check ( user_id = auth.uid() );"
+    "create policy \"push_subs_all\" on push_subscriptions for all using ( user_id = auth.uid() or my_role() in ('admin','super_admin') ) with check ( user_id = auth.uid() );",
+    '',
+    '-- 12) جدول الزيارات الإشرافية (مدير/وكيل يزور المعلمين)',
+    'create table if not exists supervisory_visits (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  school text not null,',
+    '  teacher_id uuid references profiles(id) on delete set null,',
+    '  teacher_name text default \'\',',
+    '  supervisor_id uuid references profiles(id) on delete set null,',
+    '  supervisor_name text default \'\',',
+    '  subject text default \'\',',
+    '  grade text default \'\',',
+    '  section text default \'\',',
+    '  period text default \'\',',
+    '  visit_date date,',
+    '  status text check (status in (\'scheduled\',\'completed\',\'cancelled\')) default \'scheduled\',',
+    '  evaluation jsonb default \'{}\'::jsonb,',
+    '  general_notes text default \'\',',
+    '  recommendations text default \'\',',
+    '  development_plan text default \'\',',
+    '  created_at timestamptz default now(),',
+    '  updated_at timestamptz default now()',
+    ');',
+    'alter table supervisory_visits enable row level security;',
+    'drop policy if exists "supervisory_visits_all" on supervisory_visits;',
+    "create policy \"supervisory_visits_all\" on supervisory_visits for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );"
   ].join('\n');
   return (
     '<div class="program-card">' +
@@ -9463,6 +9899,9 @@ async function screenDashboard(){
   if (State.dashTab==='principalNotif' && isPrincipal(State.user)){
     return await screenNotificationsPanel();
   }
+  if (State.dashTab==='academicSupervision' && isPrincipal(State.user)){
+    return await screenPrincipalAcademicSupervision();
+  }
   if (State.dashTab==='indicators'){
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">' + (State.user.role==='coordinator' ? 'لوحة منسق المجتمع المهني' : isPrincipal(State.user) ? (ROLE_LABEL[State.user.role]||'مدير المدرسة') : 'لوحة مدير المدرسة') + '</h2>' +
@@ -9657,6 +10096,7 @@ function bindDashboard(){
   else if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)) bindPrincipalDemoLessons();
   else if (State.dashTab==='principalGifted' && isPrincipal(State.user)) bindPrincipalGifted();
   else if (State.dashTab==='principalNotif' && isPrincipal(State.user)) bindNotificationsPanel();
+  else if (State.dashTab==='academicSupervision' && isPrincipal(State.user)) bindPrincipalAcademicSupervision();
   else if (State.dashTab==='indicators') bindIndicators();
   else if (isPrincipal(State.user)) bindPrincipalMain();
 }
@@ -10702,11 +11142,11 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents,
   );
 }
 async function screenTeacherTasks(){
-  let subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations;
+  let subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations, mySupVisits;
   if (_teacherScreenData && (Date.now() - _teacherScreenDataAt) < TEACHER_SCREEN_TTL_MS){
-    ({ subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations } = _teacherScreenData);
+    ({ subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations, mySupVisits } = _teacherScreenData);
   } else {
-    [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations] = await Promise.all([
+    [subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations, mySupVisits] = await Promise.all([
       DB.listSubmissions({ school: State.user.school }),
       DB.listTasks({ school: State.user.school }),
       DB.listGoals({ school: State.user.school }),
@@ -10718,11 +11158,13 @@ async function screenTeacherTasks(){
         : Promise.resolve([])),
       DB.listGiftedReports(State.user.school, { reportedById: State.user.id }).catch(function(){ return []; }),
       DB.listMyReferralCases(State.user.school, State.user.full_name).catch(function(){ return []; }),
-      DB.listMyObservations(State.user.school, State.user.id).catch(function(){ return []; })
+      DB.listMyObservations(State.user.school, State.user.id).catch(function(){ return []; }),
+      DB.listMySupervisoryVisits(State.user.school, State.user.id).catch(function(){ return []; })
     ]);
-    _teacherScreenData = { subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations };
+    _teacherScreenData = { subs, rawTasks, rawGoals, rawVisits, schoolStudents, pendingRecs, studentGiftedReports, myGiftedReports, myReferralCases, myObservations, mySupVisits };
     _teacherScreenDataAt = Date.now();
   }
+  mySupVisits = mySupVisits || [];
   _myObservationsCache = myObservations;
 
   /* — جلسات الخطة الفردية — */
@@ -11408,6 +11850,7 @@ async function screenTeacherTasks(){
       '<button class="tab '+(TeacherFormsUI.dashTab==='agenda'?'active':'')+'" data-action="teacherDashTab" data-tab="agenda">📅 جدول متابعتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myGifted'?'active':'')+'" data-action="teacherDashTab" data-tab="myGifted">⭐ ترشيحاتي</button>' +
       '<button class="tab '+(TeacherFormsUI.dashTab==='myInitiatives'?'active':'')+'" data-action="teacherDashTab" data-tab="myInitiatives">💡 مبادراتي</button>' +
+      '<button class="tab '+(TeacherFormsUI.dashTab==='mySupVisits'?'active':'')+'" data-action="teacherDashTab" data-tab="mySupVisits">🏫 زياراتي الإشرافية'+(mySupVisits.filter(function(v){return v.status==='scheduled';}).length?' <span style="background:#2563eb;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-right:2px;">'+mySupVisits.filter(function(v){return v.status==='scheduled';}).length+'</span>':'')+'</button>' +
       (_teacherStudentProfile ? '<button class="tab '+(TeacherFormsUI.dashTab==='profile'?'active':'')+'" data-action="teacherDashTab" data-tab="profile">ملف: '+esc(_teacherStudentProfile)+'</button>' : '') +
     '</div>' +
     (TeacherFormsUI.dashTab==='main' ? mainContent : '') +
@@ -11444,6 +11887,49 @@ async function screenTeacherTasks(){
           '<button class="btn btn-primary btn-sm" data-action="openObsModal">+ ملاحظة جديدة</button>' +
         '</div>' +
         obsHtml +
+      '</div>';
+    })() : '') +
+    (TeacherFormsUI.dashTab==='mySupVisits' ? (function(){
+      var SEV_RATING_LABEL = { 4:'مميز', 3:'حقق الهدف', 2:'فرصة تحسين', 1:'لم يحقق' };
+      var SEV_RATING_COLOR = { 4:'#16a34a', 3:'#2563eb', 2:'#d97706', 1:'#dc2626' };
+      var STATUS_LBL = { scheduled:'مجدولة 🔵', completed:'منجزة ✅', cancelled:'ملغاة' };
+      var upcoming = mySupVisits.filter(function(v){ return v.status==='scheduled'; });
+      var done     = mySupVisits.filter(function(v){ return v.status==='completed'; });
+      var upcomingHtml = upcoming.length === 0
+        ? '<div style="text-align:center;color:var(--muted);padding:20px 0;font-size:13.5px;">لا توجد زيارات مجدولة.</div>'
+        : upcoming.map(function(v){
+            return '<div style="background:var(--card,#fff);border:2px solid #2563eb33;border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
+                '<div>' +
+                  '<div style="font-weight:700;font-size:14px;color:var(--text);">📅 '+esc(v.visit_date||'—')+'</div>' +
+                  '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">'+esc([v.subject, v.grade, v.section, v.period?'الحصة '+v.period:''].filter(Boolean).join(' | '))+'</div>' +
+                  '<div style="font-size:12px;color:var(--muted);margin-top:2px;">المشرف: '+esc(v.supervisor_name||'—')+'</div>' +
+                '</div>' +
+                '<span style="font-size:12px;font-weight:700;color:#2563eb;">مجدولة</span>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+      var doneHtml = done.length === 0
+        ? '<div style="text-align:center;color:var(--muted);padding:20px 0;font-size:13.5px;">لا توجد زيارات منجزة بعد.</div>'
+        : done.map(function(v){
+            var avg = typeof _supAvg === 'function' ? _supAvg(v.evaluation) : null;
+            return '<div style="background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
+                '<div>' +
+                  '<div style="font-weight:700;font-size:14px;color:var(--text);">📅 '+esc(v.visit_date||'—')+'</div>' +
+                  '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">'+esc([v.subject, v.grade, v.section, v.period?'الحصة '+v.period:''].filter(Boolean).join(' | '))+'</div>' +
+                  '<div style="font-size:12px;color:var(--muted);margin-top:2px;">المشرف: '+esc(v.supervisor_name||'—')+'</div>' +
+                '</div>' +
+                (avg!==null ? '<div style="text-align:center;"><div style="font-size:18px;font-weight:800;color:'+(typeof _supAvgColor==='function'?_supAvgColor(avg):'#333')+';">'+avg.toFixed(1)+'</div><div style="font-size:11px;color:'+(typeof _supAvgColor==='function'?_supAvgColor(avg):'#333')+';">'+(typeof _supAvgLabel==='function'?_supAvgLabel(avg):'')+'</div></div>' : '') +
+              '</div>' +
+              (v.recommendations ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;">التوصيات:</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.6;">'+esc(v.recommendations)+'</div></div>' : '') +
+              (v.development_plan ? '<div style="margin-top:8px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;">خطة التطوير:</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.6;">'+esc(v.development_plan)+'</div></div>' : '') +
+            '</div>';
+          }).join('');
+      return '<div style="margin-top:4px;">' +
+        '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">🏫 زياراتي الإشرافية</div>' +
+        (upcoming.length > 0 ? '<div style="font-size:13px;font-weight:700;color:#2563eb;margin-bottom:8px;">⏳ القادمة ('+upcoming.length+')</div>' + upcomingHtml : '') +
+        '<div style="font-size:13px;font-weight:700;color:var(--muted);margin:'+(upcoming.length?'16px':'0')+'px 0 8px;">منجزة ('+done.length+')</div>' + doneHtml +
       '</div>';
     })() : '') +
     (TeacherFormsUI.dashTab==='profile' ? '<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" data-action="teacherProfileBack">‹ رجوع إلى لوحتي</button></div>' + profileHtml : '') +
