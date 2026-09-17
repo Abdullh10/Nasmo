@@ -6374,12 +6374,20 @@ async function openObservationModal(students){
             '<option value="">— اختر الصف أولاً —</option>' +
           '</select>' +
         '</div>' +
-        /* الطالب */
+        /* الطلاب - متعدد الاختيار */
         '<div class="field" style="margin-bottom:14px;">' +
-          '<label style="font-size:12px;font-weight:600;color:var(--text);">الطالب <span style="color:var(--danger)">*</span></label>' +
-          '<select class="input" id="obsStudentSel" style="margin-top:4px;" disabled>' +
-            '<option value="">— اختر الشعبة أولاً —</option>' +
-          '</select>' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">الطلاب <span style="color:var(--danger)">*</span></label>' +
+          '<div id="obsStudentListPlaceholder" style="font-size:12.5px;color:var(--muted);margin-top:6px;font-style:italic;padding:8px 0;">— اختر الصف والشعبة أولاً —</div>' +
+          '<div id="obsStudentListWrap" style="display:none;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+              '<span id="obsSelectedCount" style="font-size:12px;font-weight:600;color:var(--navy,#1B3F72);">0 طالب محدد</span>' +
+              '<div style="display:flex;gap:6px;">' +
+                '<button type="button" id="obsSelectAllBtn" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;">تحديد الكل</button>' +
+                '<button type="button" id="obsClearAllBtn" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;">إلغاء الكل</button>' +
+              '</div>' +
+            '</div>' +
+            '<div id="obsStudentList" style="max-height:180px;overflow-y:auto;border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:6px 8px;background:var(--surface-2,#f7f9fb);"></div>' +
+          '</div>' +
         '</div>' +
         /* نوع الملاحظة */
         '<div class="field" style="margin-bottom:14px;">' +
@@ -6426,31 +6434,65 @@ async function openObservationModal(students){
     '</div>';
   document.body.appendChild(div);
 
-  /* فلترة متتالية: الصف → الشعبة → الطالب */
+  /* فلترة متتالية: الصف → الشعبة → قائمة الطلاب بخانات اختيار */
   var obsGradeSel   = document.getElementById('obsGradeSel');
   var obsSectionSel = document.getElementById('obsSectionSel');
-  var obsStudentSel = document.getElementById('obsStudentSel');
+
+  function _rebuildObsStudentList(){
+    var grade = obsGradeSel.value;
+    var sec   = obsSectionSel.value;
+    var wrap  = document.getElementById('obsStudentListWrap');
+    var placeholder = document.getElementById('obsStudentListPlaceholder');
+    var listEl = document.getElementById('obsStudentList');
+    var countEl = document.getElementById('obsSelectedCount');
+    if (!grade || !sec){
+      if (wrap) wrap.style.display = 'none';
+      if (placeholder) placeholder.style.display = '';
+      return;
+    }
+    var filtered = (students||[]).filter(function(s){ return s.grade===grade && s.section===sec; });
+    filtered.sort(function(a,b){ return (a.name||'').localeCompare(b.name||'','ar'); });
+    if (listEl){
+      listEl.innerHTML = filtered.map(function(s){
+        return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;cursor:pointer;font-size:13px;">' +
+          '<input type="checkbox" class="obs-stu-cb" value="'+esc(s.name)+'" style="width:15px;height:15px;accent-color:var(--navy,#1B3F72);cursor:pointer;flex-shrink:0;">'+esc(s.name)+'</label>';
+      }).join('');
+      listEl.querySelectorAll('.obs-stu-cb').forEach(function(cb){
+        cb.addEventListener('change', function(){
+          var cnt = listEl.querySelectorAll('.obs-stu-cb:checked').length;
+          if (countEl) countEl.textContent = cnt+' طالب محدد';
+        });
+      });
+    }
+    if (countEl) countEl.textContent = '0 طالب محدد';
+    if (wrap) wrap.style.display = '';
+    if (placeholder) placeholder.style.display = 'none';
+  }
+
   obsGradeSel.addEventListener('change', function(){
     var grade = this.value;
     obsSectionSel.innerHTML = '<option value="">— اختر الشعبة —</option>';
-    obsStudentSel.innerHTML = '<option value="">— اختر الشعبة أولاً —</option>';
     obsSectionSel.disabled = !grade;
-    obsStudentSel.disabled = true;
+    _rebuildObsStudentList();
     if (!grade) return;
     var secs = [];
     (students||[]).forEach(function(s){ if(s.grade===grade && s.section && secs.indexOf(s.section)<0) secs.push(s.section); });
     secs.sort(function(a,b){ return a.localeCompare(b,'ar'); });
     secs.forEach(function(sec){ obsSectionSel.add(new Option(sec, sec)); });
   });
-  obsSectionSel.addEventListener('change', function(){
-    var grade = obsGradeSel.value;
-    var sec   = this.value;
-    obsStudentSel.innerHTML = '<option value="">— اختر الطالب —</option>';
-    obsStudentSel.disabled = !sec;
-    if (!sec) return;
-    var filtered = (students||[]).filter(function(s){ return s.grade===grade && s.section===sec; });
-    filtered.sort(function(a,b){ return (a.name||'').localeCompare(b.name||'','ar'); });
-    filtered.forEach(function(s){ obsStudentSel.add(new Option(s.name, s.name)); });
+  obsSectionSel.addEventListener('change', function(){ _rebuildObsStudentList(); });
+
+  /* تحديد الكل / إلغاء الكل */
+  var _obsSelAllBtn = document.getElementById('obsSelectAllBtn');
+  var _obsClrAllBtn = document.getElementById('obsClearAllBtn');
+  if (_obsSelAllBtn) _obsSelAllBtn.addEventListener('click', function(){
+    document.querySelectorAll('.obs-stu-cb').forEach(function(cb){ cb.checked = true; });
+    var cnt = document.querySelectorAll('.obs-stu-cb').length;
+    var ce = document.getElementById('obsSelectedCount'); if(ce) ce.textContent = cnt+' طالب محدد';
+  });
+  if (_obsClrAllBtn) _obsClrAllBtn.addEventListener('click', function(){
+    document.querySelectorAll('.obs-stu-cb').forEach(function(cb){ cb.checked = false; });
+    var ce = document.getElementById('obsSelectedCount'); if(ce) ce.textContent = '0 طالب محدد';
   });
   /* تحديث الشدة تلقائياً عند اختيار نوع الملاحظة */
   document.getElementById('obsTypeSel').addEventListener('change', function(){
@@ -6471,57 +6513,167 @@ async function openObservationModal(students){
   div.addEventListener('click', function(e){ if(e.target===div) div.remove(); });
 
   document.getElementById('obsSubmit').addEventListener('click', async function(){
-    const studentName = document.getElementById('obsStudentSel').value;
-    const obsType     = document.getElementById('obsTypeSel').value;
+    const checkedBoxes = Array.from(document.querySelectorAll('.obs-stu-cb:checked'));
+    const obsType = document.getElementById('obsTypeSel').value;
     if (!document.getElementById('obsGradeSel').value){ toast('يرجى اختيار الصف.'); return; }
     if (!document.getElementById('obsSectionSel').value){ toast('يرجى اختيار الشعبة.'); return; }
-    if (!studentName){ toast('يرجى اختيار الطالب.'); return; }
+    if (!checkedBoxes.length){ toast('يرجى تحديد طالب واحد على الأقل.'); return; }
     if (!obsType){ toast('يرجى اختيار نوع الملاحظة.'); return; }
     if (showCounselorSel && !(document.getElementById('obsCounselorSel')||{}).value){ toast('يرجى اختيار الموجه الطلابي.'); return; }
-    const grade   = document.getElementById('obsGradeSel').value + ' / ' + document.getElementById('obsSectionSel').value;
-    const desc    = document.getElementById('obsDesc').value.trim();
-    const sev     = (document.querySelector('input[name="obsSev"]:checked')||{value:'info'}).value;
+    const grade = document.getElementById('obsGradeSel').value + ' / ' + document.getElementById('obsSectionSel').value;
+    const desc  = document.getElementById('obsDesc').value.trim();
+    const sev   = (document.querySelector('input[name="obsSev"]:checked')||{value:'info'}).value;
+    const studentNames = checkedBoxes.map(function(cb){ return cb.value; });
     const btn = document.getElementById('obsSubmit');
-    btn.disabled = true; btn.textContent = 'جاري الحفظ…';
+    btn.disabled = true; btn.textContent = 'جاري الحفظ… (0/'+studentNames.length+')';
     try{
-      await DB.createObservation({
-        school: State.user.school,
-        teacher_id: State.user.id,
-        teacher_name: State.user.full_name||'',
-        student_name: studentName,
-        student_grade: grade,
-        observation_type: obsType,
-        description: desc,
-        severity: sev,
-        status: 'open',
-        observation_date: today
-      });
-      /* إشعار الموجه */
+      for (var _si=0; _si<studentNames.length; _si++){
+        btn.textContent = 'جاري الحفظ… ('+(_si+1)+'/'+studentNames.length+')';
+        await DB.createObservation({
+          school: State.user.school,
+          teacher_id: State.user.id,
+          teacher_name: State.user.full_name||'',
+          student_name: studentNames[_si],
+          student_grade: grade,
+          observation_type: obsType,
+          description: desc,
+          severity: sev,
+          status: 'open',
+          observation_date: today
+        });
+      }
+      /* إشعار الموجه — مرة واحدة للدفعة كلها */
       try{
-        /* تحديد الموجه: من القائمة المنسدلة أو الوحيد تلقائياً */
         var selCounselorId = showCounselorSel
           ? (document.getElementById('obsCounselorSel')||{}).value || ''
           : (_obsCounselors[0] ? _obsCounselors[0].id : '');
         if (!selCounselorId && showCounselorSel){
-          toast('يرجى اختيار الموجه الطلابي قبل الحفظ.');
-          btn.disabled=false; btn.textContent='حفظ الملاحظة'; return;
+          toast('يرجى اختيار الموجه الطلابي قبل الحفظ.'); btn.disabled=false; btn.textContent='حفظ الملاحظة'; return;
         }
         const counselor = _obsCounselors.find(function(c){ return c.id===selCounselorId; }) || _obsCounselors[0];
         if (counselor){
-          await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselor.id, type:'general', title:'ملاحظة صفية جديدة', body:'المعلم '+State.user.full_name+' سجّل ملاحظة بشأن '+studentName+': '+obsType });
+          var notifBody = studentNames.length===1
+            ? 'المعلم '+State.user.full_name+' سجّل ملاحظة بشأن '+studentNames[0]+': '+obsType
+            : 'المعلم '+State.user.full_name+' سجّل ملاحظة جماعية بشأن '+studentNames.length+' طلاب: '+obsType;
+          await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselor.id, type:'general', title:'ملاحظة صفية جديدة', body:notifBody });
         }
         if (sev==='urgent'){
           const allUsers = await DB.listUsers({ school: State.user.school });
           const principals = (allUsers||[]).filter(function(u){ return isPrincipal(u); });
           for (var _pi=0; _pi<principals.length; _pi++){
-            await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:principals[_pi].id, type:'general', title:'⚠️ ملاحظة صفية عاجلة', body:'المعلم '+State.user.full_name+' رصد حالة عاجلة للطالب '+studentName+': '+obsType });
+            await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:principals[_pi].id, type:'general', title:'⚠️ ملاحظة صفية عاجلة', body:'المعلم '+State.user.full_name+' رصد حالة عاجلة لـ'+studentNames.length+' طلاب: '+obsType });
           }
         }
       }catch(ne){ console.warn('[obs notify]', ne.message); }
-      toast('تم حفظ الملاحظة وإبلاغ الموجه'+(sev==='urgent'?' والمدير':'')+'.');
+      var successMsg = studentNames.length===1
+        ? 'تم حفظ الملاحظة وإبلاغ الموجه'+(sev==='urgent'?' والمدير':'')+'.'
+        : 'تم حفظ '+studentNames.length+' ملاحظة وإبلاغ الموجه'+(sev==='urgent'?' والمدير':'')+'.'
+      toast(successMsg);
       div.remove();
       await render();
     }catch(e){ toast('فشل الحفظ: '+e.message); btn.disabled=false; btn.textContent='حفظ الملاحظة'; }
+  });
+}
+
+/* ---------------------- مودال الجلسة الإرشادية الجماعية (من الملاحظات الصفية) ---------------------- */
+function openBulkCaseModal(selObs){
+  if (!selObs || !selObs.length) return;
+  const catOpts = Object.entries(CASE_CATEGORY_LABEL).map(function(e){ return '<option value="'+e[0]+'">'+e[1]+'</option>'; }).join('');
+  const priOpts = Object.entries(CASE_PRIORITY_LABEL).map(function(e){ return '<option value="'+e[0]+'" '+(e[0]==='normal'?'selected':'')+'>'+e[1]+'</option>'; }).join('');
+  const studentRows = selObs.map(function(o){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border,#e5e7eb);">' +
+      '<span style="font-weight:700;font-size:13px;">'+esc(o.student_name||'—')+'</span>' +
+      (o.student_grade ? '<span style="font-size:11.5px;color:var(--muted);">'+esc(o.student_grade)+'</span>' : '') +
+      (o.observation_type ? '<span style="font-size:11.5px;color:var(--muted);margin-right:auto;">'+esc(o.observation_type)+'</span>' : '') +
+    '</div>';
+  }).join('');
+
+  const div = document.createElement('div');
+  div.id = 'bulk-case-overlay';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9200;display:flex;align-items:center;justify-content:center;padding:16px;';
+  div.innerHTML =
+    '<div style="background:var(--card,#fff);border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);">' +
+      '<div style="padding:18px 20px 14px;border-bottom:1px solid var(--border,#e5e7eb);">' +
+        '<div style="font-size:16px;font-weight:800;color:var(--text);">🗓 جلسة إرشادية جماعية</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:2px;">سيُنشأ سجل جلسة مستقل لكل طالب محدد</div>' +
+      '</div>' +
+      '<div style="padding:16px 20px 20px;">' +
+        /* قائمة الطلاب */
+        '<div style="margin-bottom:16px;">' +
+          '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;">الطلاب المحددون ('+selObs.length+')</div>' +
+          '<div style="max-height:140px;overflow-y:auto;padding:6px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--surface-2,#f7f9fb);">'+studentRows+'</div>' +
+        '</div>' +
+        /* نوع الحالة */
+        '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">نوع الحالة</label>' +
+          '<select class="input" id="bulkCaseCat" style="margin-top:4px;">'+catOpts+'</select>' +
+        '</div>' +
+        /* الأولوية */
+        '<div class="field" style="margin-bottom:12px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">الأولوية</label>' +
+          '<select class="input" id="bulkCasePri" style="margin-top:4px;">'+priOpts+'</select>' +
+        '</div>' +
+        /* سبب الإحالة */
+        '<div class="field" style="margin-bottom:16px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text);">سبب الجلسة / ملاحظات</label>' +
+          '<textarea class="input" id="bulkCaseReason" rows="3" style="margin-top:4px;resize:vertical;" placeholder="سبب مشترك للجلسة الإرشادية…">'+esc(selObs.length===1 ? (selObs[0].description||'') : '')+'</textarea>' +
+        '</div>' +
+        /* أزرار */
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+          '<button class="btn btn-ghost" id="bulkCaseCancel">إلغاء</button>' +
+          '<button class="btn btn-primary" id="bulkCaseSubmit" style="min-width:140px;">إنشاء '+selObs.length+' جلسة إرشادية</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(div);
+
+  document.getElementById('bulkCaseCancel').addEventListener('click', function(){ div.remove(); });
+  div.addEventListener('click', function(e){ if(e.target===div) div.remove(); });
+
+  document.getElementById('bulkCaseSubmit').addEventListener('click', async function(){
+    var cat    = document.getElementById('bulkCaseCat').value || 'other';
+    var pri    = document.getElementById('bulkCasePri').value || 'normal';
+    var reason = document.getElementById('bulkCaseReason').value.trim();
+    var btn    = document.getElementById('bulkCaseSubmit');
+    btn.disabled = true; btn.textContent = 'جاري الإنشاء… (0/'+selObs.length+')';
+    try{
+      for (var _ci=0; _ci<selObs.length; _ci++){
+        btn.textContent = 'جاري الإنشاء… ('+(_ci+1)+'/'+selObs.length+')';
+        var o = selObs[_ci];
+        var caseReason = reason || (o.observation_type ? o.observation_type+(o.description?': '+o.description:'') : (o.description||''));
+        await DB.createCounselingCase({
+          school: State.user.school,
+          student_name: o.student_name||'',
+          student_grade: o.student_grade||'',
+          student_section: o.student_section||'',
+          referred_by_name: o.teacher_name||'',
+          referral_reason: caseReason,
+          category: cat,
+          priority: pri,
+          counselor_id: State.user.id,
+          counselor_name: State.user.full_name,
+          status: 'open',
+          sessions: [],
+          contact_log: [],
+          counselor_notes: '',
+          counseling_goal: '',
+          counseling_interventions: '',
+          counseling_progress: '',
+          next_session_date: '',
+          parent_phone: '',
+          close_summary: ''
+        });
+        /* إغلاق الملاحظة المصدر تلقائياً */
+        if (o.id){
+          try{ await DB.updateObservation(o.id, { status:'reviewed' }); }catch(ne){}
+        }
+      }
+      invalidateCounselorData();
+      CounselorUI.obsSelectedIds = [];
+      toast('تم إنشاء '+selObs.length+' جلسة إرشادية.');
+      div.remove();
+      await render();
+    }catch(e){ toast('فشل الإنشاء: '+e.message); btn.disabled=false; btn.textContent='إنشاء '+selObs.length+' جلسة إرشادية'; }
   });
 }
 
@@ -7790,7 +7942,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', obsShowClosed:false, _prefillObs:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', obsShowClosed:false, _prefillObs:null, obsSelectedIds:[] };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -8134,6 +8286,17 @@ async function screenCounselorCases(){
         '<button class="btn btn-ghost btn-sm" data-action="printObs" style="margin-right:auto;white-space:nowrap;">🖨 طباعة</button>' +
       '</div>';
 
+    /* شريط الإجراء الجماعي */
+    var bulkBar = CounselorUI.obsSelectedIds.length ?
+      '<div id="obsBulkActionBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 9%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 28%,transparent);border-radius:10px;padding:8px 14px;margin-bottom:10px;">' +
+        '<span class="obs-bulk-count" style="font-size:13px;font-weight:700;color:var(--navy,#1B3F72);">'+CounselorUI.obsSelectedIds.length+' ملاحظات محددة</span>' +
+        '<div style="flex:1;"></div>' +
+        '<button class="btn btn-sm btn-primary no-print" data-action="obsBulkSession" style="font-size:12px;">🗓 جلسة إرشادية للمحددين</button>' +
+        '<button class="btn btn-sm btn-ghost no-print" data-action="obsBulkClose" style="font-size:12px;color:var(--danger,#dc2626);">✕ إغلاق المحددين</button>' +
+        '<button class="btn btn-sm btn-ghost no-print" data-action="obsClearBulk" style="font-size:12px;">إلغاء التحديد</button>' +
+      '</div>'
+    : '<div id="obsBulkActionBar" style="display:none;"></div>';
+
     var rows = obsFiltered.map(function(obs){
       var sev = obs.severity || 'info';
       var sevColor = severityColor[sev] || 'var(--accent,#2563eb)';
@@ -8142,30 +8305,36 @@ async function screenCounselorCases(){
       var obsText = obs.description || '';
       var obsType = obs.observation_type || '';
       var isClosed = obs.status === 'closed' || obs.status === 'reviewed';
-      return '<div class="obs-print-card" style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));'+(isClosed?'opacity:0.6;':'')+';">' +
-        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
-          '<span style="font-weight:800;font-size:14.5px;">'+esc(obs.student_name||'—')+'</span>' +
-          (obs.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(obs.student_grade)+(obs.student_section?' / '+esc(obs.student_section):'')+'</span>' : '') +
-          '<span style="background:color-mix(in srgb,'+sevColor+' 18%,transparent);color:'+sevColor+';border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">'+sevLabel+'</span>' +
-          '<span style="font-size:11.5px;color:var(--muted);">'+fmtDate(obs.created_at)+'</span>' +
-          (isClosed ? '<span style="font-size:11.5px;color:var(--muted);background:var(--card-2,#f4f6f8);border-radius:20px;padding:2px 10px;">✓ تمت المراجعة</span>' : '') +
-        '</div>' +
-        /* نص الملاحظة */
-        (obsType || obsText ? '<div style="margin-bottom:10px;padding:10px 14px;background:color-mix(in srgb,'+sevColor+' 8%,var(--surface));border-right:3px solid '+sevColor+';border-radius:0 8px 8px 0;">' +
-          (obsType ? '<div style="font-size:11px;font-weight:700;color:'+sevColor+';margin-bottom:4px;">نوع الملاحظة: '+esc(obsType)+'</div>' : '') +
-          (obsText ? '<div style="font-size:13.5px;line-height:1.8;color:var(--text);">'+esc(obsText)+'</div>' : '') +
-        '</div>' : '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;font-style:italic;">لم يُضف المعلم تفاصيل.</div>') +
-        /* سطر المعلم والأزرار */
-        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-          '<span style="font-size:11.5px;color:var(--muted);margin-left:auto;">المعلم: '+esc(teacherName)+'</span>' +
-          (!isClosed ? (
-            '<button class="btn btn-ghost btn-sm no-print" data-action="obsClose" data-id="'+esc(obs.id||'')+'" style="font-size:12px;padding:3px 10px;color:var(--muted);">✕ إغلاق</button>' +
-            '<button class="btn btn-sm btn-primary no-print" data-action="obsCreateCase" data-student="'+esc(obs.student_name||'')+'" data-grade="'+esc(obs.student_grade||'')+'" data-section="'+esc(obs.student_section||'')+'" data-teacher="'+esc(teacherName)+'" data-text="'+esc(obsText)+'" style="font-size:12px;padding:3px 10px;">🗓 جلسة إرشادية</button>'
-          ) : '') +
+      var isSelected = CounselorUI.obsSelectedIds.indexOf(obs.id||'') >= 0;
+      return '<div class="obs-print-card" style="border:1.5px solid color-mix(in srgb,'+sevColor+' 30%,transparent);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:color-mix(in srgb,'+sevColor+' 5%,var(--surface));'+(isClosed?'opacity:0.6;':'')+(isSelected?'outline:2px solid color-mix(in srgb,var(--navy,#1B3F72) 60%,transparent);':'')+'">' +
+        '<div style="display:flex;align-items:flex-start;gap:10px;">' +
+          (!isClosed ? '<input type="checkbox" class="obs-bulk-cb no-print" data-id="'+esc(obs.id||'')+'" '+(isSelected?'checked':'')+' style="width:16px;height:16px;margin-top:3px;accent-color:var(--navy,#1B3F72);cursor:pointer;flex-shrink:0;">' : '<div style="width:16px;flex-shrink:0;"></div>') +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+              '<span style="font-weight:800;font-size:14.5px;">'+esc(obs.student_name||'—')+'</span>' +
+              (obs.student_grade ? '<span style="font-size:12px;color:var(--muted);">'+esc(obs.student_grade)+(obs.student_section?' / '+esc(obs.student_section):'')+'</span>' : '') +
+              '<span style="background:color-mix(in srgb,'+sevColor+' 18%,transparent);color:'+sevColor+';border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:700;">'+sevLabel+'</span>' +
+              '<span style="font-size:11.5px;color:var(--muted);">'+fmtDate(obs.created_at)+'</span>' +
+              (isClosed ? '<span style="font-size:11.5px;color:var(--muted);background:var(--card-2,#f4f6f8);border-radius:20px;padding:2px 10px;">✓ تمت المراجعة</span>' : '') +
+            '</div>' +
+            /* نص الملاحظة */
+            (obsType || obsText ? '<div style="margin-bottom:10px;padding:10px 14px;background:color-mix(in srgb,'+sevColor+' 8%,var(--surface));border-right:3px solid '+sevColor+';border-radius:0 8px 8px 0;">' +
+              (obsType ? '<div style="font-size:11px;font-weight:700;color:'+sevColor+';margin-bottom:4px;">نوع الملاحظة: '+esc(obsType)+'</div>' : '') +
+              (obsText ? '<div style="font-size:13.5px;line-height:1.8;color:var(--text);">'+esc(obsText)+'</div>' : '') +
+            '</div>' : '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;font-style:italic;">لم يُضف المعلم تفاصيل.</div>') +
+            /* سطر المعلم والأزرار */
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+              '<span style="font-size:11.5px;color:var(--muted);margin-left:auto;">المعلم: '+esc(teacherName)+'</span>' +
+              (!isClosed ? (
+                '<button class="btn btn-ghost btn-sm no-print" data-action="obsClose" data-id="'+esc(obs.id||'')+'" style="font-size:12px;padding:3px 10px;color:var(--muted);">✕ إغلاق</button>' +
+                '<button class="btn btn-sm btn-primary no-print" data-action="obsCreateCase" data-student="'+esc(obs.student_name||'')+'" data-grade="'+esc(obs.student_grade||'')+'" data-section="'+esc(obs.student_section||'')+'" data-teacher="'+esc(teacherName)+'" data-text="'+esc(obsText)+'" style="font-size:12px;padding:3px 10px;">🗓 جلسة إرشادية</button>'
+              ) : '') +
+            '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
     }).join('');
-    return '<div id="obsPrintArea" style="margin-top:4px;">'+toolbar+rows+'</div>';
+    return '<div style="margin-top:4px;">'+toolbar+bulkBar+'<div id="obsPrintArea">'+rows+'</div></div>';
   })() : '';
 
   const casesTab = CounselorUI.tab === 'cases' ? (
@@ -8928,14 +9097,67 @@ function bindCounselorCases(){
       if (!confirm('هل تريد إغلاق هذه الملاحظة؟ سيُحدَّث وضعها إلى "تمت المراجعة".')) return;
       try{
         await DB.updateObservation(id, { status: 'reviewed' });
-        /* تحديث البيانات المحلية مباشرة بدون انتظار */
         if (_counselorCasesData && _counselorCasesData.counselorObservations){
           var obs = _counselorCasesData.counselorObservations.find(function(o){ return o.id===id; });
           if (obs) obs.status = 'reviewed';
         }
+        CounselorUI.obsSelectedIds = CounselorUI.obsSelectedIds.filter(function(x){ return x !== id; });
         render();
       } catch(e){ toast(arabicError(e)); }
     });
+  });
+
+  /* الإجراءات الجماعية — خانات التحديد */
+  document.querySelectorAll('.obs-bulk-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var id = this.getAttribute('data-id');
+      if (this.checked){
+        if (CounselorUI.obsSelectedIds.indexOf(id) < 0) CounselorUI.obsSelectedIds.push(id);
+      } else {
+        CounselorUI.obsSelectedIds = CounselorUI.obsSelectedIds.filter(function(x){ return x !== id; });
+      }
+      var bar = document.getElementById('obsBulkActionBar');
+      if (bar){
+        bar.style.display = CounselorUI.obsSelectedIds.length ? '' : 'none';
+        var cnt = bar.querySelector('.obs-bulk-count');
+        if (cnt) cnt.textContent = CounselorUI.obsSelectedIds.length+' ملاحظات محددة';
+      }
+    });
+  });
+
+  /* إلغاء التحديد الجماعي */
+  var obsClearBulkBtn = document.querySelector('[data-action="obsClearBulk"]');
+  if (obsClearBulkBtn) obsClearBulkBtn.addEventListener('click', function(){ CounselorUI.obsSelectedIds = []; render(); });
+
+  /* إغلاق جماعي */
+  var obsBulkCloseBtn = document.querySelector('[data-action="obsBulkClose"]');
+  if (obsBulkCloseBtn) obsBulkCloseBtn.addEventListener('click', async function(){
+    var ids = CounselorUI.obsSelectedIds.slice();
+    if (!ids.length) return;
+    if (!confirm('هل تريد إغلاق '+ids.length+' ملاحظة محددة؟')) return;
+    obsBulkCloseBtn.disabled = true; obsBulkCloseBtn.textContent = 'جاري الإغلاق…';
+    try{
+      for (var _bi=0; _bi<ids.length; _bi++){
+        await DB.updateObservation(ids[_bi], { status:'reviewed' });
+        if (_counselorCasesData && _counselorCasesData.counselorObservations){
+          var _bObs = _counselorCasesData.counselorObservations.find(function(o){ return o.id===ids[_bi]; });
+          if (_bObs) _bObs.status = 'reviewed';
+        }
+      }
+      CounselorUI.obsSelectedIds = [];
+      toast('تم إغلاق '+ids.length+' ملاحظة.');
+      render();
+    }catch(e){ toast(arabicError(e)); obsBulkCloseBtn.disabled=false; obsBulkCloseBtn.textContent='✕ إغلاق المحددين'; }
+  });
+
+  /* جلسة إرشادية جماعية */
+  var obsBulkSessionBtn = document.querySelector('[data-action="obsBulkSession"]');
+  if (obsBulkSessionBtn) obsBulkSessionBtn.addEventListener('click', function(){
+    var ids = CounselorUI.obsSelectedIds.slice();
+    if (!ids.length) return;
+    var observations = (_counselorCasesData && _counselorCasesData.counselorObservations) || [];
+    var selObs = observations.filter(function(o){ return ids.indexOf(o.id||'') >= 0; });
+    openBulkCaseModal(selObs);
   });
 
   /* فرز الأعمدة */
