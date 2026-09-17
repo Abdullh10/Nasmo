@@ -9840,14 +9840,12 @@ async function screenCoordinatorMyStudents(){
           '</select>' +
           '<span style="color:var(--muted);font-size:12px;">'+filteredCoordStudents.length+' / '+myStudents.length+' طالب</span>' +
         '</div>' +
-        (TeacherFormsUI.selectedStudentIds.length > 0 ?
-          '<div id="coordStBulkBar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
-            '<span class="coord-st-bulk-count" style="font-size:13.5px;font-weight:700;color:var(--navy,#1B3F72);">'+TeacherFormsUI.selectedStudentIds.length+' طلاب محددون</span>' +
-            '<div style="flex:1;"></div>' +
-            '<button class="btn btn-sm btn-primary" data-action="coordBulkRefer" style="font-size:12.5px;">📋 تحويل للموجه الطلابي</button>' +
-            '<button class="btn btn-sm btn-ghost" data-action="coordClearBulk" style="font-size:12.5px;">إلغاء التحديد</button>' +
-          '</div>'
-        : '<div id="coordStBulkBar" style="display:none;"></div>') +
+        '<div id="coordStBulkBar" style="'+(TeacherFormsUI.selectedStudentIds.length > 0 ? 'display:flex' : 'display:none')+';align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
+          '<span class="coord-st-bulk-count" style="font-size:13.5px;font-weight:700;color:var(--navy,#1B3F72);">'+TeacherFormsUI.selectedStudentIds.length+' طلاب محددون</span>' +
+          '<div style="flex:1;"></div>' +
+          '<button class="btn btn-sm btn-primary" data-action="coordBulkRefer" style="font-size:12.5px;">📋 تحويل للموجه الطلابي</button>' +
+          '<button class="btn btn-sm btn-ghost" data-action="coordClearBulk" style="font-size:12.5px;">إلغاء التحديد</button>' +
+        '</div>' +
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
           '<thead><tr><th style="width:36px;"><input type="checkbox" id="coordStSelectAll" title="تحديد الكل" style="width:15px;height:15px;accent-color:var(--navy,#1B3F72);cursor:pointer;"></th><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
           '<tbody>'+studentRows+'</tbody>' +
@@ -10900,14 +10898,13 @@ async function screenTeacherTasks(){
 
   /* شريط الإجراء الجماعي للطلاب */
   const _selCount = TeacherFormsUI.selectedStudentIds.length;
-  const studentBulkBar = _selCount > 0 ?
-    '<div id="teacherStBulkBar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
+  const studentBulkBar =
+    '<div id="teacherStBulkBar" style="'+(_selCount > 0 ? 'display:flex' : 'display:none')+';align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
       '<span class="st-bulk-count" style="font-size:13.5px;font-weight:700;color:var(--navy,#1B3F72);">'+_selCount+' طلاب محددون</span>' +
       '<div style="flex:1;"></div>' +
       '<button class="btn btn-sm btn-primary" data-action="teacherBulkRefer" style="font-size:12.5px;">📋 تحويل للموجه الطلابي</button>' +
       '<button class="btn btn-sm btn-ghost" data-action="teacherClearBulk" style="font-size:12.5px;">إلغاء التحديد</button>' +
-    '</div>'
-  : '<div id="teacherStBulkBar" style="display:none;"></div>';
+    '</div>';
 
   const studentFilterBar = myStudents.length ? (
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;margin-bottom:8px;">' +
