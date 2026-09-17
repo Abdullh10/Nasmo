@@ -5930,7 +5930,7 @@ function _supSchedModalHtml(teachers){
         '<div class="field"><label>المعلم *</label>' +
           '<select class="input" id="supSchedTeacher">' +
             '<option value="">-- اختر المعلم --</option>' +
-            teachers.filter(function(t){ return t.role==='teacher'; }).map(function(t){
+            teachers.filter(function(t){ return t.role==='teacher' || t.role==='coordinator'; }).map(function(t){
               return '<option value="'+esc(t.id)+'|'+esc(t.full_name)+'">'+esc(t.full_name)+'</option>';
             }).join('') +
           '</select>' +
