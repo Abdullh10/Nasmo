@@ -5898,7 +5898,7 @@ const SUP_DOMAINS = [
 ];
 const SUP_RATING_LABELS = { 4:'مميز', 3:'حقق الهدف', 2:'فرصة تحسين', 1:'لم يحقق' };
 const SUP_RATING_COLORS = { 4:'#16a34a', 3:'#2563eb', 2:'#d97706', 1:'#dc2626' };
-let SupUI = { schedModal:false, evalModal:false, visit:null, repTab:'visits', teachersList:[] };
+let SupUI = { schedModal:false, evalModal:false, visit:null, editingVisit:null, repTab:'visits', teachersList:[] };
 
 function _supAvg(evaluation){
   if (!evaluation || typeof evaluation !== 'object') return null;
@@ -5924,30 +5924,34 @@ function _supAvgColor(avg){
 
 function _supSchedModalHtml(teachers){
   if (!SupUI.schedModal) return '';
+  var ev = SupUI.editingVisit;
+  var isEdit = !!ev;
+  var teacherOptions = teachers.filter(function(t){ return t.role==='teacher' || t.role==='coordinator'; }).map(function(t){
+    var sel = isEdit && ev.teacher_id === t.id ? 'selected' : '';
+    return '<option value="'+esc(t.id)+'|'+esc(t.full_name)+'" '+sel+'>'+esc(t.full_name)+'</option>';
+  }).join('');
   return '<div class="modal-overlay" data-action="closeSupSchedModal" style="z-index:3000;">' +
     '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:500px;">' +
-      '<div class="modal-header"><h3>جدولة زيارة إشرافية جديدة</h3><button class="modal-close" data-action="closeSupSchedModal">✕</button></div>' +
+      '<div class="modal-header"><h3>'+(isEdit?'تعديل الزيارة الإشرافية':'جدولة زيارة إشرافية جديدة')+'</h3><button class="modal-close" data-action="closeSupSchedModal">✕</button></div>' +
       '<div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px;">' +
         '<div class="field"><label>المعلم *</label>' +
           '<select class="input" id="supSchedTeacher">' +
             '<option value="">-- اختر المعلم --</option>' +
-            teachers.filter(function(t){ return t.role==='teacher' || t.role==='coordinator'; }).map(function(t){
-              return '<option value="'+esc(t.id)+'|'+esc(t.full_name)+'">'+esc(t.full_name)+'</option>';
-            }).join('') +
+            teacherOptions +
           '</select>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-          '<div class="field"><label>المادة</label><input class="input" id="supSchedSubject" placeholder="الرياضيات، علوم..."></div>' +
-          '<div class="field"><label>الصف</label><input class="input" id="supSchedGrade" placeholder="الأول ث"></div>' +
+          '<div class="field"><label>المادة</label><input class="input" id="supSchedSubject" value="'+esc(isEdit?ev.subject||'':'')+'" placeholder="الرياضيات، علوم..."></div>' +
+          '<div class="field"><label>الصف</label><input class="input" id="supSchedGrade" value="'+esc(isEdit?ev.grade||'':'')+'" placeholder="الأول ث"></div>' +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-          '<div class="field"><label>الفصل</label><input class="input" id="supSchedSection" placeholder="أ، ب..."></div>' +
-          '<div class="field"><label>الحصة</label><input class="input" id="supSchedPeriod" placeholder="الثانية"></div>' +
+          '<div class="field"><label>الفصل</label><input class="input" id="supSchedSection" value="'+esc(isEdit?ev.section||'':'')+'" placeholder="أ، ب..."></div>' +
+          '<div class="field"><label>الحصة</label><input class="input" id="supSchedPeriod" value="'+esc(isEdit?ev.period||'':'')+'" placeholder="الثانية"></div>' +
         '</div>' +
-        '<div class="field"><label>تاريخ الزيارة *</label><input class="input" type="date" id="supSchedDate"></div>' +
+        '<div class="field"><label>تاريخ الزيارة *</label><input class="input" type="date" id="supSchedDate" value="'+esc(isEdit?ev.visit_date||'':'')+'"></div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">' +
           '<button class="btn btn-ghost" data-action="closeSupSchedModal">إلغاء</button>' +
-          '<button class="btn btn-primary" data-action="saveSupSched">جدولة الزيارة</button>' +
+          '<button class="btn btn-primary" data-action="saveSupSched">'+(isEdit?'حفظ التعديل':'جدولة الزيارة')+'</button>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -6042,7 +6046,8 @@ async function screenPrincipalAcademicSupervision(){
               '<td style="padding:10px 12px;font-size:12.5px;font-weight:700;color:'+_supAvgColor(avg)+';">'+avgLabel+'</td>' +
               '<td style="padding:10px 12px;white-space:nowrap;">' +
                 '<button class="btn btn-ghost btn-sm" data-action="supOpenEval" data-id="'+esc(v.id)+'">'+( v.status==='completed' ? '📋 عرض النتيجة' : '✍️ تعبئة البطاقة')+'</button> ' +
-                (v.status==='scheduled' ? '<button class="btn btn-ghost btn-sm" data-action="supCancel" data-id="'+esc(v.id)+'">إلغاء</button>' : '') +
+                '<button class="btn btn-ghost btn-sm" data-action="supEdit" data-id="'+esc(v.id)+'" title="تعديل بيانات الزيارة">✏️</button> ' +
+                '<button class="btn btn-ghost btn-sm" data-action="supDelete" data-id="'+esc(v.id)+'" style="color:#dc2626;" title="حذف الزيارة">🗑️</button>' +
               '</td>' +
             '</tr>';
           }).join('') +
@@ -6125,13 +6130,13 @@ function bindPrincipalAcademicSupervision(){
   var openBtn = document.querySelector('[data-action="openSupSchedModal"]');
   if (openBtn) openBtn.addEventListener('click', function(){ SupUI.schedModal = true; render().then(bindPrincipalAcademicSupervision); });
   document.querySelectorAll('[data-action="closeSupSchedModal"]').forEach(function(el){
-    el.addEventListener('click', function(){ SupUI.schedModal = false; render().then(bindPrincipalAcademicSupervision); });
+    el.addEventListener('click', function(){ SupUI.schedModal = false; SupUI.editingVisit = null; render().then(bindPrincipalAcademicSupervision); });
   });
   document.querySelectorAll('[data-action="closeSupEvalModal"]').forEach(function(el){
     el.addEventListener('click', function(){ SupUI.evalModal = false; SupUI.visit = null; render().then(bindPrincipalAcademicSupervision); });
   });
 
-  /* جدولة زيارة */
+  /* جدولة زيارة / تعديلها */
   var saveSchedBtn = document.querySelector('[data-action="saveSupSched"]');
   if (saveSchedBtn) saveSchedBtn.addEventListener('click', async function(){
     var teacherVal = (document.getElementById('supSchedTeacher')||{}).value || '';
@@ -6140,25 +6145,35 @@ function bindPrincipalAcademicSupervision(){
     if (this.disabled) return; this.disabled = true;
     var parts = teacherVal.split('|');
     var teacherId = parts[0]; var teacherName = parts.slice(1).join('|');
+    var subject = (document.getElementById('supSchedSubject')||{}).value || '';
+    var grade   = (document.getElementById('supSchedGrade')||{}).value || '';
+    var section = (document.getElementById('supSchedSection')||{}).value || '';
+    var period  = (document.getElementById('supSchedPeriod')||{}).value || '';
     try{
-      var obj = {
-        school: State.user.school,
-        teacher_id: teacherId, teacher_name: teacherName,
-        supervisor_id: State.user.id, supervisor_name: State.user.full_name,
-        subject:  (document.getElementById('supSchedSubject')||{}).value || '',
-        grade:    (document.getElementById('supSchedGrade')||{}).value || '',
-        section:  (document.getElementById('supSchedSection')||{}).value || '',
-        period:   (document.getElementById('supSchedPeriod')||{}).value || '',
-        visit_date: visitDate, status: 'scheduled', evaluation: {}
-      };
-      await DB.createSupervisoryVisit(obj);
-      /* إشعار للمعلم */
-      await DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name,
-        target_type: 'user', target_id: teacherId,
-        message: 'تم جدولة زيارة إشرافية لك بتاريخ ' + visitDate + (obj.subject?' في مادة '+obj.subject:'') + ' — ' + State.user.full_name
-      }).catch(function(){});
-      toast('تم جدولة الزيارة وإشعار المعلم.');
-      SupUI.schedModal = false; SupUI.teachersList = [];
+      if (SupUI.editingVisit){
+        /* وضع التعديل */
+        await DB.updateSupervisoryVisit(SupUI.editingVisit.id, {
+          teacher_id: teacherId, teacher_name: teacherName,
+          subject: subject, grade: grade, section: section, period: period, visit_date: visitDate
+        });
+        toast('تم تعديل بيانات الزيارة.');
+      } else {
+        /* جدولة جديدة */
+        var obj = {
+          school: State.user.school,
+          teacher_id: teacherId, teacher_name: teacherName,
+          supervisor_id: State.user.id, supervisor_name: State.user.full_name,
+          subject: subject, grade: grade, section: section, period: period,
+          visit_date: visitDate, status: 'scheduled', evaluation: {}
+        };
+        await DB.createSupervisoryVisit(obj);
+        await DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name,
+          target_type: 'user', target_id: teacherId,
+          message: 'تم جدولة زيارة إشرافية لك بتاريخ ' + visitDate + (subject?' في مادة '+subject:'') + ' — ' + State.user.full_name
+        }).catch(function(){});
+        toast('تم جدولة الزيارة وإشعار المعلم.');
+      }
+      SupUI.schedModal = false; SupUI.editingVisit = null; SupUI.teachersList = [];
       await render(); bindPrincipalAcademicSupervision();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
@@ -6174,13 +6189,26 @@ function bindPrincipalAcademicSupervision(){
     });
   });
 
-  /* إلغاء زيارة */
-  document.querySelectorAll('[data-action="supCancel"]').forEach(function(el){
+  /* تعديل بيانات الزيارة */
+  document.querySelectorAll('[data-action="supEdit"]').forEach(function(el){
     el.addEventListener('click', async function(){
-      if (!confirm('هل تريد إلغاء هذه الزيارة؟')) return;
+      var id = el.getAttribute('data-id');
+      var visits = await DB.listSupervisoryVisits(State.user.school).catch(function(){ return []; });
+      var v = visits.find(function(x){ return x.id===id; });
+      if (!v) return;
+      SupUI.editingVisit = v;
+      SupUI.schedModal = true;
+      await render(); bindPrincipalAcademicSupervision();
+    });
+  });
+
+  /* حذف زيارة */
+  document.querySelectorAll('[data-action="supDelete"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذه الزيارة نهائياً؟ لن يمكن التراجع.')) return;
       try{
-        await DB.updateSupervisoryVisit(el.getAttribute('data-id'), { status:'cancelled' });
-        toast('تم إلغاء الزيارة.');
+        await DB.deleteSupervisoryVisit(el.getAttribute('data-id'));
+        toast('تم حذف الزيارة.');
         await render(); bindPrincipalAcademicSupervision();
       }catch(e){ toast(arabicError(e)); }
     });
