@@ -10509,7 +10509,7 @@ function bindCoordinatorTeacherActivities(){
 }
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
-let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '', studentsCollapsed: true }; /* dashTab: 'main'|'agenda'|'profile'|'myInitiatives' */
+let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '', studentsCollapsed: true, selectedStudentIds: [] }; /* dashTab: 'main'|'agenda'|'profile'|'myInitiatives' */
 let GiftedUI = { modalOpen: false, counselors: [], selectedCounselorId: '' };
 let TeacherInitiativeUI = { modalOpen: false, editId: null };
 let GiftedReviewUI = { modalOpen: false, report: null };
@@ -11024,8 +11024,11 @@ async function screenTeacherTasks(){
     const recBadge = rec
       ? '<span class="badge pending" style="font-size:10.5px;margin-inline-start:5px;cursor:pointer;" title="'+esc(rec.rec_for_teacher||'')+'">توصية إرشادية</span>'
       : '';
+    const sid = s.id || s.full_name;
+    const isChecked = TeacherFormsUI.selectedStudentIds.indexOf(sid) >= 0;
     return (
-      '<tr>' +
+      '<tr class="teacher-st-row" data-sid="'+esc(sid)+'">' +
+        '<td style="width:36px;text-align:center;"><input type="checkbox" class="teacher-st-cb" data-sid="'+esc(sid)+'" data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||s.student_grade||'')+'" data-section="'+esc(s.section||s.student_section||'')+'" '+(isChecked?'checked':'')+' style="width:16px;height:16px;accent-color:var(--navy,#1B3F72);cursor:pointer;"></td>' +
         '<td><b>'+esc(s.full_name)+'</b>'+recBadge+'</td>' +
         '<td>'+esc(s.grade||s.student_grade||'—')+'</td>' +
         '<td>'+esc(s.section||s.student_section||'—')+'</td>' +
@@ -11035,6 +11038,17 @@ async function screenTeacherTasks(){
       '</tr>'
     );
   }).join('');
+
+  /* شريط الإجراء الجماعي للطلاب */
+  const _selCount = TeacherFormsUI.selectedStudentIds.length;
+  const studentBulkBar = _selCount > 0 ?
+    '<div id="teacherStBulkBar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
+      '<span class="st-bulk-count" style="font-size:13.5px;font-weight:700;color:var(--navy,#1B3F72);">'+_selCount+' طلاب محددون</span>' +
+      '<div style="flex:1;"></div>' +
+      '<button class="btn btn-sm btn-primary" data-action="teacherBulkRefer" style="font-size:12.5px;">📋 تحويل للموجه الطلابي</button>' +
+      '<button class="btn btn-sm btn-ghost" data-action="teacherClearBulk" style="font-size:12.5px;">إلغاء التحديد</button>' +
+    '</div>'
+  : '<div id="teacherStBulkBar" style="display:none;"></div>';
 
   const studentFilterBar = myStudents.length ? (
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px;margin-bottom:8px;">' +
@@ -11057,9 +11071,10 @@ async function screenTeacherTasks(){
     '</div>' +
     (_stCollapsed ? '' :
       studentFilterBar +
+      studentBulkBar +
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-        '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
-        '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="6">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
+        '<thead><tr><th style="width:36px;"><input type="checkbox" id="teacherStSelectAll" title="تحديد الكل" style="width:15px;height:15px;accent-color:var(--navy,#1B3F72);cursor:pointer;"></th><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>الجلسات</th><th></th></tr></thead>' +
+        '<tbody>'+(studentRows||'<tr class="empty-row"><td colspan="7">لا يوجد طلاب بهذا الفلتر.</td></tr>')+'</tbody>' +
       '</table></div></div>' +
       '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
         '<button class="btn btn-ghost btn-sm" data-action="toggleStudentList" data-st-val="true" style="font-size:13px;">▲ إخفاء القائمة</button>' +
@@ -11623,6 +11638,79 @@ function bindTeacherTasks(){
       TeacherFormsUI.dashTab = 'profile';
       await render();
     });
+  });
+
+  /* ————— تحديد الطلاب جماعياً ————— */
+  function _updateTeacherBulkBar(){
+    var bar = document.getElementById('teacherStBulkBar');
+    if (!bar) return;
+    var n = TeacherFormsUI.selectedStudentIds.length;
+    if (n > 0){
+      bar.style.display = '';
+      var cnt = bar.querySelector('.st-bulk-count');
+      if (cnt) cnt.textContent = n+' طلاب محددون';
+    } else {
+      bar.style.display = 'none';
+    }
+    /* تزامن خانة "تحديد الكل" */
+    var selAll = document.getElementById('teacherStSelectAll');
+    if (selAll){
+      var allCbs = document.querySelectorAll('.teacher-st-cb');
+      selAll.indeterminate = (n > 0 && n < allCbs.length);
+      selAll.checked = (n > 0 && n === allCbs.length);
+    }
+  }
+
+  /* خانات التحديد الفردية */
+  document.querySelectorAll('.teacher-st-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var sid = this.getAttribute('data-sid');
+      if (this.checked){
+        if (TeacherFormsUI.selectedStudentIds.indexOf(sid) < 0) TeacherFormsUI.selectedStudentIds.push(sid);
+      } else {
+        TeacherFormsUI.selectedStudentIds = TeacherFormsUI.selectedStudentIds.filter(function(x){ return x !== sid; });
+      }
+      _updateTeacherBulkBar();
+    });
+  });
+
+  /* خانة "تحديد الكل" في رأس الجدول */
+  var _selAllCb = document.getElementById('teacherStSelectAll');
+  if (_selAllCb) _selAllCb.addEventListener('change', function(){
+    var allCbs = document.querySelectorAll('.teacher-st-cb');
+    if (this.checked){
+      TeacherFormsUI.selectedStudentIds = [];
+      allCbs.forEach(function(cb){ cb.checked = true; TeacherFormsUI.selectedStudentIds.push(cb.getAttribute('data-sid')); });
+    } else {
+      TeacherFormsUI.selectedStudentIds = [];
+      allCbs.forEach(function(cb){ cb.checked = false; });
+    }
+    _updateTeacherBulkBar();
+  });
+
+  /* إلغاء التحديد */
+  var _clearBulkBtn = document.querySelector('[data-action="teacherClearBulk"]');
+  if (_clearBulkBtn) _clearBulkBtn.addEventListener('click', function(){
+    TeacherFormsUI.selectedStudentIds = [];
+    render();
+  });
+
+  /* تحويل للموجه الطلابي — الجماعي */
+  var _bulkReferBtn = document.querySelector('[data-action="teacherBulkRefer"]');
+  if (_bulkReferBtn) _bulkReferBtn.addEventListener('click', function(){
+    var ids = TeacherFormsUI.selectedStudentIds.slice();
+    if (!ids.length) return;
+    /* جمع بيانات الطلاب المحددين من خانات التحديد */
+    var selectedStudents = [];
+    document.querySelectorAll('.teacher-st-cb:checked').forEach(function(cb){
+      selectedStudents.push({
+        name: cb.getAttribute('data-name') || '',
+        grade: cb.getAttribute('data-grade') || '',
+        section: cb.getAttribute('data-section') || ''
+      });
+    });
+    if (!selectedStudents.length) return;
+    openCounselorReferralModal(selectedStudents);
   });
 
   /* فتح/إغلاق ملف إحالات طالب – clone لمنع تكرار الـ handlers */
