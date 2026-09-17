@@ -10548,9 +10548,16 @@ async function screenCoordinatorSupVisits(){
         '</div>';
       }).join('');
   const badge = upcoming.length ? ' <span style="background:#2563eb;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-right:2px;">'+upcoming.length+'</span>' : '';
-  return dashTabsHtml() +
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml()
+  ) +
     '<div style="max-width:680px;margin:0 auto;padding:4px 0;">' +
-      '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">🏫 زيارة مدير المدرسة الصفية</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">' +
+        '<button class="btn btn-ghost btn-sm" data-action="dashTab" data-tab="forms">← رجوع</button>' +
+        '<div style="font-weight:700;font-size:15px;">🏫 زيارة مدير المدرسة الصفية'+badge+'</div>' +
+      '</div>' +
       (upcoming.length > 0 ? '<div style="font-size:13px;font-weight:700;color:#2563eb;margin-bottom:8px;">⏳ القادمة ('+upcoming.length+')</div>' + upcomingHtml : '') +
       '<div style="font-size:13px;font-weight:700;color:var(--muted);margin:'+(upcoming.length?'16px':'0')+'px 0 8px;">منجزة ('+done.length+')</div>' + doneHtml +
     '</div>';
