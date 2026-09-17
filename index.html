@@ -366,6 +366,12 @@ html[data-theme="dark"] .icon-btn:hover{ background:rgba(255,255,255,.12); }
 .tab:hover:not(.active){ background:var(--surface-2); color:var(--navy); }
 .tab.active{ background:linear-gradient(135deg,var(--navy),var(--navy-2)); color:#fff; box-shadow:0 2px 8px rgba(27,63,114,.28); }
 .tab-group-label{ align-self:center; font-size:10.5px; font-weight:700; color:var(--muted); white-space:nowrap; opacity:.7; padding:0 2px; flex-shrink:0; letter-spacing:.03em; }
+.coord-nav{ display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+.coord-groups{ display:flex; gap:6px; flex-wrap:wrap; }
+.coord-group-pill{ padding:7px 18px; border-radius:20px; font-size:12.5px; font-weight:700; color:var(--muted); background:var(--surface); border:1.5px solid var(--border); flex-shrink:0; white-space:nowrap; transition:var(--transition); cursor:pointer; }
+.coord-group-pill:hover:not(.active){ background:var(--surface-2); color:var(--navy); border-color:var(--navy); }
+.coord-group-pill.active{ background:linear-gradient(135deg,var(--navy),var(--navy-2)); color:#fff; border-color:transparent; box-shadow:0 2px 8px rgba(27,63,114,.28); }
+.coord-sub-tabs{ display:flex; gap:5px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
 details summary::-webkit-details-marker{ display:none; }
 details summary::marker{ display:none; }
 
@@ -2910,7 +2916,7 @@ function indicatorPeriodLabel(ind){
 }
 
 /* ---------------------- الحالة العامة والتوجيه ---------------------- */
-const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'forms', adminTab:'overview', notifications:[], communitiesCache:[], pendingApprovals:[] };
+const State = { user:null, screen:'login', params:{}, allSubs:[], dashTab:'overview', adminTab:'overview', notifications:[], communitiesCache:[], pendingApprovals:[] };
 
 /* ---------------------- التنبيهات والرسائل ---------------------- */
 let NotifUI = { open:false, compose:false };
@@ -3073,7 +3079,7 @@ function logout(){
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
   TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[] };
   try{ CredsPrint = { items:[] }; localStorage.removeItem('dtd_last_creds_batch_v1'); }catch(e){}
-  State.adminTab = 'overview'; State.dashTab = 'forms';
+  State.adminTab = 'overview'; State.dashTab = 'overview';
   _fcClear();
   go('login');
 }
@@ -3930,27 +3936,55 @@ function bindLogin(){
 }
 
 /* ----- لوحة التحكم ----- */
+function _coordGroupOf(tab){
+  if (tab==='overview') return 'home';
+  if (['community','teamStats','tasks','goals','visits','demoLesson'].indexOf(tab)>-1) return 'team';
+  if (['myStudents','teacherActivities','mySupVisits'].indexOf(tab)>-1) return 'teacher';
+  return 'general';
+}
 function dashTabsHtml(){
+  if (State.user.role==='coordinator'){
+    var cg = _coordGroupOf(State.dashTab);
+    var subTabsHtml = '';
+    if (cg==='team'){
+      subTabsHtml = '<div class="coord-sub-tabs no-print">' +
+        '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">👥 أعضاء المجتمع</button>' +
+        '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">📊 نشاط الفريق</button>' +
+        '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">✅ المهام</button>' +
+        '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">🎯 خطة التحسين</button>' +
+        '<button class="tab '+(State.dashTab==='visits'?'active':'')+'" data-action="dashTab" data-tab="visits">🔄 الزيارات التبادلية</button>' +
+        '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">🎓 حصة توضيحية</button>' +
+      '</div>';
+    } else if (cg==='teacher'){
+      subTabsHtml = '<div class="coord-sub-tabs no-print">' +
+        '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">🧑‍🎓 طلابي</button>' +
+        '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي التعليمية</button>' +
+        '<button class="tab '+(State.dashTab==='mySupVisits'?'active':'')+'" data-action="dashTab" data-tab="mySupVisits">🏫 زيارة المدير الصفية</button>' +
+      '</div>';
+    } else if (cg==='general'){
+      subTabsHtml = '<div class="coord-sub-tabs no-print">' +
+        '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">📄 النماذج</button>' +
+        '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">📈 مؤشرات البرنامج</button>' +
+      '</div>';
+    }
+    return (
+      '<div class="coord-nav no-print">' +
+        '<div class="coord-groups">' +
+          '<button class="coord-group-pill '+(cg==='home'?'active':'')+'" data-action="dashTab" data-tab="overview">🏠 الرئيسية</button>' +
+          '<button class="coord-group-pill '+(cg==='team'?'active':'')+'" data-action="coordGroup" data-group="team">👥 قيادة الفريق</button>' +
+          '<button class="coord-group-pill '+(cg==='teacher'?'active':'')+'" data-action="coordGroup" data-group="teacher">👩‍🏫 دوري كمعلم</button>' +
+          '<button class="coord-group-pill '+(cg==='general'?'active':'')+'" data-action="coordGroup" data-group="general">📄 عام</button>' +
+        '</div>' +
+        subTabsHtml +
+      '</div>'
+    );
+  }
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
-      (State.user.role==='coordinator'
-        ? '<button class="tab '+(State.dashTab==='overview'?'active':'')+'" data-action="dashTab" data-tab="overview">🏠 الرئيسية</button>' +
-          '<span class="tab-group-label">— قيادة الفريق —</span>' +
-          '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' +
-          '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' +
-          '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' +
-          '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين</button>' +
-          '<button class="tab '+(State.dashTab==='visits'?'active':'')+'" data-action="dashTab" data-tab="visits">الزيارات التبادلية</button>' +
-          '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">حصة توضيحية</button>' +
-          '<span class="tab-group-label">— دوري كمعلم —</span>' +
-          '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' +
-          '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي</button>' +
-          '<button class="tab '+(State.dashTab==='mySupVisits'?'active':'')+'" data-action="dashTab" data-tab="mySupVisits">🏫 زيارة المدير</button>' +
-          '<span class="tab-group-label">—</span>' +
-          '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
-          '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">المؤشرات</button>'
-        : '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
+      (State.user.role!=='coordinator'
+        ? '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
           '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>'
+        : ''
       ) +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
@@ -9904,7 +9938,6 @@ async function screenDashboard(){
       (AdminLoginLogUI.open ? loginLogModalHtml(AdminLoginLogUI.logs) : '')
     );
   }
-  if (State.user.role==='coordinator' && State.dashTab==='forms') State.dashTab = 'overview';
   if (State.dashTab==='overview' && State.user.role==='coordinator'){
     return await screenCoordinatorOverview();
   }
@@ -16532,6 +16565,11 @@ function bindGlobalAction(el){
   else if (action==='openView'){ el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); }); }
   else if (action==='openReview'){ el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); }); }
   else if (action==='dashTab'){ el.addEventListener('click', function(){ State.dashTab = el.getAttribute('data-tab'); go('dashboard'); }); }
+  else if (action==='coordGroup'){ el.addEventListener('click', function(){
+    var grp = el.getAttribute('data-group');
+    var first = {team:'community', teacher:'myStudents', general:'forms'}[grp];
+    if (first && _coordGroupOf(State.dashTab)!==grp){ State.dashTab = first; go('dashboard'); }
+  }); }
   else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); AdminLoginLogUI.open=false; go('dashboard'); }); }
   else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
   else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
