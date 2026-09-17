@@ -837,7 +837,7 @@ create policy "profiles_update" on profiles for update using ( id = auth.uid() o
 create policy "profiles_delete" on profiles for delete using ( my_role() = 'admin' );
 
 create policy "communities_select" on communities for select using ( school = my_school() or my_role() = 'admin' );
-create policy "communities_write" on communities for all using ( my_role() = 'admin' ) with check ( my_role() = 'admin' );
+create policy "communities_write" on communities for all using ( my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and school = my_school()) ) with check ( my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and school = my_school()) );
 
 create policy "notifications_select" on notifications for select using ( school = my_school() or my_role() = 'admin' );
 create policy "notifications_insert" on notifications for insert with check ( school = my_school() or my_role() = 'admin' );
@@ -7385,7 +7385,7 @@ async function screenAdminSettings(){
     'drop policy if exists "communities_select" on communities;',
     'drop policy if exists "communities_write" on communities;',
     "create policy \"communities_select\" on communities for select using ( school = my_school() or my_role() in ('admin','super_admin') );",
-    "create policy \"communities_write\" on communities for all using ( my_role() in ('admin','super_admin') ) with check ( my_role() in ('admin','super_admin') );",
+    "create policy \"communities_write\" on communities for all using ( my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and school = my_school()) ) with check ( my_role() in ('admin','super_admin') or (my_role() = 'coordinator' and school = my_school()) );",
     'drop policy if exists "notifications_select" on notifications;',
     'drop policy if exists "notifications_insert" on notifications;',
     'drop policy if exists "notifications_update" on notifications;',
