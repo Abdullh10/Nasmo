@@ -365,6 +365,7 @@ html[data-theme="dark"] .icon-btn:hover{ background:rgba(255,255,255,.12); }
 .tab{ padding:8px 16px; border-radius:8px; font-size:13px; font-weight:700; color:var(--muted); background:transparent; border:none; flex-shrink:0; white-space:nowrap; transition:var(--transition); }
 .tab:hover:not(.active){ background:var(--surface-2); color:var(--navy); }
 .tab.active{ background:linear-gradient(135deg,var(--navy),var(--navy-2)); color:#fff; box-shadow:0 2px 8px rgba(27,63,114,.28); }
+.tab-group-label{ align-self:center; font-size:10.5px; font-weight:700; color:var(--muted); white-space:nowrap; opacity:.7; padding:0 2px; flex-shrink:0; letter-spacing:.03em; }
 details summary::-webkit-details-marker{ display:none; }
 details summary::marker{ display:none; }
 
@@ -3932,17 +3933,25 @@ function bindLogin(){
 function dashTabsHtml(){
   return (
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
-      '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
-      '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين الفصلية</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='visits'?'active':'')+'" data-action="dashTab" data-tab="visits">الزيارات التبادلية</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">تسجيل حصة توضيحية</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي التعليمية</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='mySupVisits'?'active':'')+'" data-action="dashTab" data-tab="mySupVisits">🏫 زيارة مدير المدرسة الصفية</button>' : '') +
+      (State.user.role==='coordinator'
+        ? '<button class="tab '+(State.dashTab==='overview'?'active':'')+'" data-action="dashTab" data-tab="overview">🏠 الرئيسية</button>' +
+          '<span class="tab-group-label">— قيادة الفريق —</span>' +
+          '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' +
+          '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' +
+          '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' +
+          '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين</button>' +
+          '<button class="tab '+(State.dashTab==='visits'?'active':'')+'" data-action="dashTab" data-tab="visits">الزيارات التبادلية</button>' +
+          '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">حصة توضيحية</button>' +
+          '<span class="tab-group-label">— دوري كمعلم —</span>' +
+          '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' +
+          '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي</button>' +
+          '<button class="tab '+(State.dashTab==='mySupVisits'?'active':'')+'" data-action="dashTab" data-tab="mySupVisits">🏫 زيارة المدير</button>' +
+          '<span class="tab-group-label">—</span>' +
+          '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
+          '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">المؤشرات</button>'
+        : '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
+          '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>'
+      ) +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
@@ -9895,6 +9904,10 @@ async function screenDashboard(){
       (AdminLoginLogUI.open ? loginLogModalHtml(AdminLoginLogUI.logs) : '')
     );
   }
+  if (State.user.role==='coordinator' && State.dashTab==='forms') State.dashTab = 'overview';
+  if (State.dashTab==='overview' && State.user.role==='coordinator'){
+    return await screenCoordinatorOverview();
+  }
   if (State.dashTab==='community' && State.user.role==='coordinator'){
     return await screenCommunityMembers();
   }
@@ -10510,6 +10523,77 @@ function bindCoordinatorMyStudents(){
   });
 }
 
+/* ----- لوحة المنسق: الرئيسية (نظرة عامة) ----- */
+async function screenCoordinatorOverview(){
+  const hdr = (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml()
+  );
+  const communities = State.communitiesCache || [];
+  const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
+  if (!myCommunity){
+    return hdr + '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك. تواصل مع مدير النظام.</p>';
+  }
+  const [allUsers, subs, tasks, goals] = await Promise.all([
+    DB.listUsers({ school: State.user.school }),
+    DB.listSubmissions({ school: State.user.school }),
+    DB.listTasks({ school: State.user.school }),
+    DB.listGoals({ school: State.user.school })
+  ]);
+  const myMembers = allUsers.filter(function(u){ return u.community_id===myCommunity.id && (u.role==='teacher'||u.role==='coordinator'); });
+  const commSubs  = subs.filter(function(s){ return s.community_id===myCommunity.id || myMembers.some(function(m){ return m.id===s.created_by; }); });
+  const commTasks = tasks.filter(function(t){ return t.community_id===myCommunity.id || myMembers.some(function(m){ return m.id===t.assigned_to; }); });
+  const commGoals = goals.filter(function(g){ return g.community_id===myCommunity.id; });
+  const commLessons = tasks.filter(function(t){ try{ var d=JSON.parse(t.description||'{}'); return d._type==='demoLesson' && t.created_by===State.user.id; }catch(e){ return false; } });
+  const now = new Date();
+  const approvedCount = commSubs.filter(function(s){ return s.status==='approved'; }).length;
+  const pendingCount  = commSubs.filter(function(s){ return s.status==='pending'; }).length;
+  const returnedCount = commSubs.filter(function(s){ return s.status==='returned'; }).length;
+  const tasksDone     = commTasks.filter(function(t){ return t.status==='done'; }).length;
+  const goalsActive   = commGoals.filter(function(g){ return g.status==='in_progress'; }).length;
+  const overdueTasks  = commTasks.filter(function(t){
+    return t.status!=='done' && t.due_date && new Date(t.due_date) < now;
+  });
+  const kpiStyle = 'flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;text-align:center;';
+  const kpiNum   = 'font-size:28px;font-weight:800;color:var(--navy);line-height:1.1;';
+  const kpiLbl   = 'font-size:11.5px;color:var(--muted);margin-top:4px;font-weight:600;';
+  const kpiRow = (
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">' +
+      '<div style="'+kpiStyle+'"><div style="'+kpiNum+'">'+myMembers.length+'</div><div style="'+kpiLbl+'">أعضاء المجتمع</div></div>' +
+      '<div style="'+kpiStyle+'"><div style="'+kpiNum+';color:var(--success);">'+approvedCount+'</div><div style="'+kpiLbl+'">نماذج معتمدة</div></div>' +
+      '<div style="'+kpiStyle+'"><div style="'+kpiNum+';color:var(--teal);">'+tasksDone+'</div><div style="'+kpiLbl+'">مهام منجزة</div></div>' +
+      '<div style="'+kpiStyle+'"><div style="'+kpiNum+';color:#7c3aed;">'+goalsActive+'</div><div style="'+kpiLbl+'">أهداف نشطة</div></div>' +
+      '<div style="'+kpiStyle+'"><div style="'+kpiNum+';color:#0ea5e9;">'+commLessons.length+'</div><div style="'+kpiLbl+'">حصص توضيحية</div></div>' +
+    '</div>'
+  );
+  const alertItems = [];
+  if (pendingCount)  alertItems.push('<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fef3c7;border-radius:8px;font-size:13px;"><span style="font-weight:700;color:#b45309;">⏳ '+pendingCount+' نموذج بانتظار الاعتماد</span> <button class="btn btn-ghost btn-sm" data-action="dashTab" data-tab="forms" style="margin-inline-start:auto;font-size:12px;">عرض ←</button></div>');
+  if (returnedCount) alertItems.push('<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fee2e2;border-radius:8px;font-size:13px;"><span style="font-weight:700;color:#dc2626;">↩ '+returnedCount+' نموذج مُعاد للتعديل</span> <button class="btn btn-ghost btn-sm" data-action="dashTab" data-tab="forms" style="margin-inline-start:auto;font-size:12px;">عرض ←</button></div>');
+  if (overdueTasks.length) alertItems.push('<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#fee2e2;border-radius:8px;font-size:13px;"><span style="font-weight:700;color:#dc2626;">⚠️ '+overdueTasks.length+' مهمة متأخرة</span> <button class="btn btn-ghost btn-sm" data-action="dashTab" data-tab="tasks" style="margin-inline-start:auto;font-size:12px;">عرض ←</button></div>');
+  const alertsHtml = alertItems.length
+    ? '<div style="margin-bottom:24px;"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">يحتاج انتباهك</div><div style="display:flex;flex-direction:column;gap:8px;">'+alertItems.join('')+'</div></div>'
+    : '';
+  const shortcutStyle = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:18px 10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;cursor:pointer;font-size:12px;font-weight:700;color:var(--text);transition:var(--transition);flex:1;min-width:90px;';
+  const shortcuts = [
+    { tab:'community',       icon:'👥', label:'أعضاء المجتمع' },
+    { tab:'teamStats',       icon:'📊', label:'نشاط الفريق' },
+    { tab:'tasks',           icon:'✅', label:'المهام' },
+    { tab:'goals',           icon:'🎯', label:'خطة التحسين' },
+    { tab:'visits',          icon:'🔄', label:'الزيارات' },
+    { tab:'demoLesson',      icon:'🎓', label:'حصة توضيحية' },
+  ];
+  const shortcutsHtml = (
+    '<div style="margin-bottom:8px;"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;">الوصول السريع</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+    shortcuts.map(function(s){
+      return '<button style="'+shortcutStyle+'" data-action="dashTab" data-tab="'+s.tab+'"><span style="font-size:22px;">'+s.icon+'</span>'+esc(s.label)+'</button>';
+    }).join('') +
+    '</div></div>'
+  );
+  return hdr + '<div style="max-width:860px;">' + kpiRow + alertsHtml + shortcutsHtml + '</div>';
+}
+
 /* ----- لوحة المنسق: أنشطتي التعليمية (المنسق كمعلم) ----- */
 let _coordInitiativeSubs = [];
 async function screenCoordinatorSupVisits(){
@@ -10548,7 +10632,11 @@ async function screenCoordinatorSupVisits(){
         '</div>';
       }).join('');
   const badge = upcoming.length ? ' <span style="background:#2563eb;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-right:2px;">'+upcoming.length+'</span>' : '';
-  return dashTabsHtml() +
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml()
+  ) +
     '<div style="max-width:680px;margin:0 auto;padding:4px 0;">' +
       '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">🏫 زيارة مدير المدرسة الصفية</div>' +
       (upcoming.length > 0 ? '<div style="font-size:13px;font-weight:700;color:#2563eb;margin-bottom:8px;">⏳ القادمة ('+upcoming.length+')</div>' + upcomingHtml : '') +
