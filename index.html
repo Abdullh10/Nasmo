@@ -3941,6 +3941,7 @@ function dashTabsHtml(){
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي التعليمية</button>' : '') +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='mySupVisits'?'active':'')+'" data-action="dashTab" data-tab="mySupVisits">🏫 زيارة مدير المدرسة الصفية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalReview'?'active':'')+'" data-action="dashTab" data-tab="principalReview">مراجعة المهام والأهداف</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
@@ -9884,6 +9885,9 @@ async function screenDashboard(){
   if (State.dashTab==='teacherActivities' && State.user.role==='coordinator'){
     return await screenCoordinatorTeacherActivities();
   }
+  if (State.dashTab==='mySupVisits' && State.user.role==='coordinator'){
+    return await screenCoordinatorSupVisits();
+  }
   if (State.dashTab==='principalArchive' && isPrincipal(State.user)){
     return await screenPrincipalArchive();
   }
@@ -10091,6 +10095,7 @@ function bindDashboard(){
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
   else if (State.dashTab==='teamStats' && State.user.role==='coordinator') bindCoordinatorTeamStats();
   else if (State.dashTab==='teacherActivities' && State.user.role==='coordinator') bindCoordinatorTeacherActivities();
+  else if (State.dashTab==='mySupVisits' && State.user.role==='coordinator') {/* read-only, no bind needed */}
   else if (State.dashTab==='principalArchive' && isPrincipal(State.user)) bindPrincipalArchive();
   else if (State.dashTab==='principalReview' && isPrincipal(State.user)) bindPrincipalReview();
   else if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)) bindPrincipalDemoLessons();
@@ -10470,6 +10475,50 @@ function bindCoordinatorMyStudents(){
 
 /* ----- لوحة المنسق: أنشطتي التعليمية (المنسق كمعلم) ----- */
 let _coordInitiativeSubs = [];
+async function screenCoordinatorSupVisits(){
+  const visits = await DB.listMySupervisoryVisits(State.user.school, State.user.id).catch(function(){ return []; });
+  const upcoming = visits.filter(function(v){ return v.status==='scheduled'; });
+  const done     = visits.filter(function(v){ return v.status==='completed'; });
+  var upcomingHtml = upcoming.length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:20px 0;font-size:13.5px;">لا توجد زيارات مجدولة.</div>'
+    : upcoming.map(function(v){
+        return '<div style="background:var(--card,#fff);border:2px solid #2563eb33;border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
+            '<div>' +
+              '<div style="font-weight:700;font-size:14px;color:var(--text);">📅 '+esc(v.visit_date||'—')+'</div>' +
+              '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">'+esc([v.subject, v.grade, v.section, v.period?'الحصة '+v.period:''].filter(Boolean).join(' | '))+'</div>' +
+              '<div style="font-size:12px;color:var(--muted);margin-top:2px;">المشرف: '+esc(v.supervisor_name||'—')+'</div>' +
+            '</div>' +
+            '<span style="font-size:12px;font-weight:700;color:#2563eb;">مجدولة</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+  var doneHtml = done.length === 0
+    ? '<div style="text-align:center;color:var(--muted);padding:20px 0;font-size:13.5px;">لا توجد زيارات منجزة بعد.</div>'
+    : done.map(function(v){
+        var avg = typeof _supAvg === 'function' ? _supAvg(v.evaluation) : null;
+        return '<div style="background:var(--card,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:14px 16px;margin-bottom:10px;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
+            '<div>' +
+              '<div style="font-weight:700;font-size:14px;color:var(--text);">📅 '+esc(v.visit_date||'—')+'</div>' +
+              '<div style="font-size:12.5px;color:var(--muted);margin-top:3px;">'+esc([v.subject, v.grade, v.section, v.period?'الحصة '+v.period:''].filter(Boolean).join(' | '))+'</div>' +
+              '<div style="font-size:12px;color:var(--muted);margin-top:2px;">المشرف: '+esc(v.supervisor_name||'—')+'</div>' +
+            '</div>' +
+            (avg!==null ? '<div style="text-align:center;"><div style="font-size:18px;font-weight:800;color:'+(typeof _supAvgColor==='function'?_supAvgColor(avg):'#333')+';">'+avg.toFixed(1)+'</div><div style="font-size:11px;color:'+(typeof _supAvgColor==='function'?_supAvgColor(avg):'#333')+';">'+(typeof _supAvgLabel==='function'?_supAvgLabel(avg):'')+'</div></div>' : '') +
+          '</div>' +
+          (v.recommendations ? '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;">التوصيات:</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.6;">'+esc(v.recommendations)+'</div></div>' : '') +
+          (v.development_plan ? '<div style="margin-top:8px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px;">خطة التطوير:</div><div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.6;">'+esc(v.development_plan)+'</div></div>' : '') +
+        '</div>';
+      }).join('');
+  const badge = upcoming.length ? ' <span style="background:#2563eb;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-right:2px;">'+upcoming.length+'</span>' : '';
+  return dashTabsHtml() +
+    '<div style="max-width:680px;margin:0 auto;padding:4px 0;">' +
+      '<div style="font-weight:700;font-size:15px;margin-bottom:12px;">🏫 زيارة مدير المدرسة الصفية</div>' +
+      (upcoming.length > 0 ? '<div style="font-size:13px;font-weight:700;color:#2563eb;margin-bottom:8px;">⏳ القادمة ('+upcoming.length+')</div>' + upcomingHtml : '') +
+      '<div style="font-size:13px;font-weight:700;color:var(--muted);margin:'+(upcoming.length?'16px':'0')+'px 0 8px;">منجزة ('+done.length+')</div>' + doneHtml +
+    '</div>';
+}
+
 async function screenCoordinatorTeacherActivities(){
   const [schoolStudents, subs, myGiftedReports, myObservations] = await Promise.all([
     DB.listStudents({ school: State.user.school }),
