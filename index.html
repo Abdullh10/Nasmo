@@ -3455,12 +3455,13 @@ function openEditor(formType, submission){
       status: submission.status, prepSig: submission.preparer_signature, school: submission.school,
       createdByName: submission.created_by_name, createdBy: submission.created_by,
       returnComment: submission.principal_comment, principalSig: submission.principal_signature, approved_at: submission.approved_at,
+      community_id: submission.community_id || null,
       manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [],
       studentPickOpen: false, studentPickList: null, studentPickSelected: [],
       studentGradeFilters: {}, studentSectionFilters: {}
     };
   } else {
-    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [], studentPickOpen: false, studentPickList: null, studentPickSelected: [], studentGradeFilters: {}, studentSectionFilters: {} };
+    EditorState = { id:null, formType:formType, data: blankData(formType), status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, community_id: State.user.community_id || null, manualTeacherFields: new Set(), teachers: [], manualStudentFields: new Set(), students: [], studentPickOpen: false, studentPickList: null, studentPickSelected: [], studentGradeFilters: {}, studentSectionFilters: {} };
   }
   go('editor', { formType: formType });
 }
@@ -4030,10 +4031,18 @@ async function screenPrincipalCommunities(){
   ]);
   const communityNotifs = (State.notifications||[]).filter(function(n){ return n.target_type==='community'; });
 
+  /* بناء خريطة community_id للمستخدمين لاستخدامها كاحتياطي للنماذج القديمة التي تفتقر لـ community_id */
+  const userCommunityMap = {};
+  users.forEach(function(u){ if (u.community_id) userCommunityMap[u.id] = u.community_id; });
+
   const rows = communities.map(function(c){
     const leader = users.find(function(u){ return u.community_id===c.id && u.role==='coordinator'; });
     const members = users.filter(function(u){ return u.community_id===c.id && u.role==='teacher'; });
-    const cSubs = subs.filter(function(s){ return s.community_id===c.id; });
+    const cSubs = subs.filter(function(s){
+      if (s.community_id) return s.community_id===c.id;
+      /* احتياطي للنماذج القديمة: ربط بمجتمع منشئها */
+      return userCommunityMap[s.created_by] === c.id;
+    });
     const subCounts = { draft:0, pending:0, approved:0, returned:0 };
     cSubs.forEach(function(s){ subCounts[s.status] = (subCounts[s.status]||0)+1; });
     const cTasks = tasks.filter(function(t){ return t.community_id===c.id; });
@@ -16181,7 +16190,8 @@ async function persistEditor(targetStatus){
     created_by: EditorState.createdBy, created_by_name: EditorState.createdByName,
     payload: EditorState.data, status: targetStatus, preparer_signature: EditorState.prepSig,
     principal_signature: EditorState.principalSig, principal_comment: targetStatus==='pending' ? null : EditorState.returnComment,
-    submitted_at: targetStatus==='pending' ? nowIso() : null, approved_at: EditorState.approved_at || null
+    submitted_at: targetStatus==='pending' ? nowIso() : null, approved_at: EditorState.approved_at || null,
+    community_id: EditorState.community_id || null
   };
   try{
     var _savedRow;
