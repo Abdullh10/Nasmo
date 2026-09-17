@@ -9755,8 +9755,11 @@ async function screenCoordinatorMyStudents(){
     const recBadge = rec
       ? '<span class="badge pending" style="font-size:10.5px;margin-inline-start:5px;">توصية إرشادية</span>'
       : '';
+    const sid = s.id || s.full_name;
+    const isChecked = TeacherFormsUI.selectedStudentIds.indexOf(sid) >= 0;
     return (
-      '<tr>' +
+      '<tr class="coord-st-row" data-sid="'+esc(sid)+'">' +
+        '<td style="width:36px;text-align:center;"><input type="checkbox" class="coord-st-cb" data-sid="'+esc(sid)+'" data-name="'+esc(s.full_name)+'" data-grade="'+esc(s.grade||s.student_grade||'')+'" data-section="'+esc(s.section||s.student_section||'')+'" '+(isChecked?'checked':'')+' style="width:16px;height:16px;accent-color:var(--navy,#1B3F72);cursor:pointer;"></td>' +
         '<td><b>'+esc(s.full_name)+'</b>'+recBadge+'</td>' +
         '<td>'+esc(s.grade||s.student_grade||'—')+'</td>' +
         '<td>'+esc(s.section||s.student_section||'—')+'</td>' +
@@ -9837,8 +9840,16 @@ async function screenCoordinatorMyStudents(){
           '</select>' +
           '<span style="color:var(--muted);font-size:12px;">'+filteredCoordStudents.length+' / '+myStudents.length+' طالب</span>' +
         '</div>' +
+        (TeacherFormsUI.selectedStudentIds.length > 0 ?
+          '<div id="coordStBulkBar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--navy,#1B3F72) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--navy,#1B3F72) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
+            '<span class="coord-st-bulk-count" style="font-size:13.5px;font-weight:700;color:var(--navy,#1B3F72);">'+TeacherFormsUI.selectedStudentIds.length+' طلاب محددون</span>' +
+            '<div style="flex:1;"></div>' +
+            '<button class="btn btn-sm btn-primary" data-action="coordBulkRefer" style="font-size:12.5px;">📋 تحويل للموجه الطلابي</button>' +
+            '<button class="btn btn-sm btn-ghost" data-action="coordClearBulk" style="font-size:12.5px;">إلغاء التحديد</button>' +
+          '</div>'
+        : '<div id="coordStBulkBar" style="display:none;"></div>') +
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-          '<thead><tr><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
+          '<thead><tr><th style="width:36px;"><input type="checkbox" id="coordStSelectAll" title="تحديد الكل" style="width:15px;height:15px;accent-color:var(--navy,#1B3F72);cursor:pointer;"></th><th>الطالب</th><th>الصف</th><th>الشعبة</th><th>النماذج</th><th>إجراء</th></tr></thead>' +
           '<tbody>'+studentRows+'</tbody>' +
         '</table></div></div>' +
         '<div style="text-align:center;margin-top:10px;margin-bottom:4px;">' +
@@ -9923,6 +9934,72 @@ function bindCoordinatorMyStudents(){
   });
   const groupPlanBtn = document.querySelector('[data-action="coordGoGroupPlan"]');
   if (groupPlanBtn) groupPlanBtn.addEventListener('click', function(){ openEditor('groupPlan', null); });
+
+  /* ————— تحديد الطلاب جماعياً (منسق) ————— */
+  function _updateCoordBulkBar(){
+    var bar = document.getElementById('coordStBulkBar');
+    if (!bar) return;
+    var n = TeacherFormsUI.selectedStudentIds.length;
+    if (n > 0){
+      bar.style.display = '';
+      var cnt = bar.querySelector('.coord-st-bulk-count');
+      if (cnt) cnt.textContent = n+' طلاب محددون';
+    } else {
+      bar.style.display = 'none';
+    }
+    var selAll = document.getElementById('coordStSelectAll');
+    if (selAll){
+      var allCbs = document.querySelectorAll('.coord-st-cb');
+      selAll.indeterminate = (n > 0 && n < allCbs.length);
+      selAll.checked = (n > 0 && n === allCbs.length);
+    }
+  }
+
+  document.querySelectorAll('.coord-st-cb').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var sid = this.getAttribute('data-sid');
+      if (this.checked){
+        if (TeacherFormsUI.selectedStudentIds.indexOf(sid) < 0) TeacherFormsUI.selectedStudentIds.push(sid);
+      } else {
+        TeacherFormsUI.selectedStudentIds = TeacherFormsUI.selectedStudentIds.filter(function(x){ return x !== sid; });
+      }
+      _updateCoordBulkBar();
+    });
+  });
+
+  var _coordSelAllCb = document.getElementById('coordStSelectAll');
+  if (_coordSelAllCb) _coordSelAllCb.addEventListener('change', function(){
+    var allCbs = document.querySelectorAll('.coord-st-cb');
+    if (this.checked){
+      TeacherFormsUI.selectedStudentIds = [];
+      allCbs.forEach(function(cb){ cb.checked = true; TeacherFormsUI.selectedStudentIds.push(cb.getAttribute('data-sid')); });
+    } else {
+      TeacherFormsUI.selectedStudentIds = [];
+      allCbs.forEach(function(cb){ cb.checked = false; });
+    }
+    _updateCoordBulkBar();
+  });
+
+  var _coordClearBulkBtn = document.querySelector('[data-action="coordClearBulk"]');
+  if (_coordClearBulkBtn) _coordClearBulkBtn.addEventListener('click', function(){
+    TeacherFormsUI.selectedStudentIds = [];
+    render();
+  });
+
+  var _coordBulkReferBtn = document.querySelector('[data-action="coordBulkRefer"]');
+  if (_coordBulkReferBtn) _coordBulkReferBtn.addEventListener('click', function(){
+    if (!TeacherFormsUI.selectedStudentIds.length) return;
+    var selectedStudents = [];
+    document.querySelectorAll('.coord-st-cb:checked').forEach(function(cb){
+      selectedStudents.push({
+        name: cb.getAttribute('data-name') || '',
+        grade: cb.getAttribute('data-grade') || '',
+        section: cb.getAttribute('data-section') || ''
+      });
+    });
+    if (!selectedStudents.length) return;
+    openCounselorReferralModal(selectedStudents);
+  });
 }
 
 /* ----- لوحة المنسق: أنشطتي التعليمية (المنسق كمعلم) ----- */
