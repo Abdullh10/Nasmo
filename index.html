@@ -3077,7 +3077,6 @@ function logout(){
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
   TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[] };
   try{ CredsPrint = { items:[] }; localStorage.removeItem('dtd_last_creds_batch_v1'); }catch(e){}
-  try{ const uid = State.user && State.user.id; if (uid){ Object.keys(localStorage).filter(function(k){ return k.startsWith('exam_analyses_'+uid) || k.startsWith('teacher_notes_'+uid+'_'); }).forEach(function(k){ localStorage.removeItem(k); }); } }catch(e){}
   State.adminTab = 'overview'; State.dashTab = 'forms'; CoordActivitiesUI.subTab = 'activities';
   _fcClear();
   go('login');
