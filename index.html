@@ -3063,10 +3063,15 @@ function setUserSession(u){
 }
 function loadUserSession(){ try{ return JSON.parse(localStorage.getItem('dtd_session')); }catch(e){ return null; } }
 function logout(){
+  try{ const _tok = AUTH.accessToken; if (_tok){ fetch(CONFIG.SUPABASE_URL+'/auth/v1/logout', { method:'POST', headers:{ apikey:CONFIG.SUPABASE_ANON_KEY, Authorization:'Bearer '+_tok } }).catch(function(){}); } }catch(e){}
   try{ localStorage.removeItem('dtd_session'); }catch(e){} clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
   _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _studentRosterData = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
+  _coordTasksData = null; _coordTasksDataAt = 0; _coordVisitsData = null; _coordVisitsDataAt = 0; _coordGoalsData = null; _coordGoalsDataAt = 0;
+  _coordDemoLessonsCache = []; _teacherDemoLessonsCache = []; _teacherAllStudentsCache = []; _teacherGiftedStudentsCache = []; _teacherReferralCache = []; _myObservationsCache = [];
+  _adminUsersCache = null; _adminUsersCacheAt = 0; _adminCommCache = null; _adminCommCacheAt = 0; _adminStudentsCache = null; _adminStudentsCacheAt = 0; _adminSubmCache = null; _adminSubmCacheAt = 0;
+  PrincipalCommUI = { expanded: {} };
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
@@ -4299,6 +4304,7 @@ function bindPrincipalCommunities(){
 
 /* ----- تقرير موحَّد لزيارة الإشراف التربوي لمجتمع مهني محدَّد ----- */
 async function screenCommunityReport(communityId){
+  if (!['admin','super_admin','coordinator','principal','vice_principal'].includes(State.user.role)) { go('dashboard'); return ''; }
   const c = (State.communitiesCache||[]).find(function(x){ return x.id===communityId; });
   if (!c){
     return '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div><p>لم يتم العثور على المجتمع المهني.</p>';
@@ -13361,6 +13367,7 @@ let SuperAdminUI = { addSchoolOpen: false, managingSchool: null, broadcastOpen: 
 let PrincipalUI = { broadcastOpen: false, teachers: [] };
 
 async function screenSuperAdmin(){
+  if (State.user.role !== 'super_admin') { go('dashboard'); return ''; }
   const [allUsers, allSubs] = await Promise.all([
     DB.listUsers({}),
     isRemote() ? remoteFetch('submissions?select=school', { range:'0-49999' }) : Promise.resolve([])
