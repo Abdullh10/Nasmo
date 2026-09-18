@@ -3072,7 +3072,7 @@ function logout(){
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
   TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[] };
   try{ CredsPrint = { items:[] }; localStorage.removeItem('dtd_last_creds_batch_v1'); }catch(e){}
-  State.adminTab = 'overview'; State.dashTab = 'forms';
+  State.adminTab = 'overview'; State.dashTab = 'forms'; CoordActivitiesUI.subTab = 'activities';
   _fcClear();
   go('login');
 }
@@ -3934,13 +3934,10 @@ function dashTabsHtml(){
     '<div class="tabs no-print" style="margin-bottom:20px;">' +
       '<button class="tab '+(State.dashTab==='forms'?'active':'')+'" data-action="dashTab" data-tab="forms">النماذج</button>' +
       '<button class="tab '+(State.dashTab==='indicators'?'active':'')+'" data-action="dashTab" data-tab="indicators">مؤشرات البرنامج</button>' +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='community'?'active':'')+'" data-action="dashTab" data-tab="community">أعضاء المجتمع</button>' : '') +
+      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='myTeam'?'active':'')+'" data-action="dashTab" data-tab="myTeam">👥 فريقي</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='tasks'?'active':'')+'" data-action="dashTab" data-tab="tasks">المهام</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='goals'?'active':'')+'" data-action="dashTab" data-tab="goals">خطة التحسين الفصلية</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='visits'?'active':'')+'" data-action="dashTab" data-tab="visits">الزيارات التبادلية</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='demoLesson'?'active':'')+'" data-action="dashTab" data-tab="demoLesson">تسجيل حصة توضيحية</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='myStudents'?'active':'')+'" data-action="dashTab" data-tab="myStudents">طلابي</button>' : '') +
-      (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teamStats'?'active':'')+'" data-action="dashTab" data-tab="teamStats">نشاط الفريق</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='teacherActivities'?'active':'')+'" data-action="dashTab" data-tab="teacherActivities">📚 أنشطتي التعليمية</button>' : '') +
       (State.user.role==='coordinator' ? '<button class="tab '+(State.dashTab==='mySupVisits'?'active':'')+'" data-action="dashTab" data-tab="mySupVisits">🏫 زيارة مدير المدرسة الصفية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='communitiesEval'?'active':'')+'" data-action="dashTab" data-tab="communitiesEval">تقييم المجتمعات المهنية</button>' : '') +
@@ -3948,22 +3945,17 @@ function dashTabsHtml(){
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalDemoLessons'?'active':'')+'" data-action="dashTab" data-tab="principalDemoLessons">الحصص التوضيحية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='academicSupervision'?'active':'')+'" data-action="dashTab" data-tab="academicSupervision">🏫 الإشراف الأكاديمي</button>' : '') +
-      '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' +
+      (State.user.role!=='coordinator' ? '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalArchive'?'active':'')+'" data-action="dashTab" data-tab="principalArchive">📁 أرشيف النماذج</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
   );
 }
-async function screenCommunityMembers(){
+async function _coordCommunityContent(){
   const communities = State.communitiesCache || [];
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
   if (!myCommunity){
-    return (
-      '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
-      '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-      dashTabsHtml() +
-      '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>'
-    );
+    return '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>';
   }
   const teachers = (await DB.listUsers({ school: State.user.school })).filter(function(u){ return u.role==='teacher'; });
   const linked = teachers.filter(function(t){ return t.community_id===myCommunity.id; });
@@ -3988,9 +3980,6 @@ async function screenCommunityMembers(){
   }).join('') : '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون غير مرتبطين بمجتمع حاليًا. المعلمون الجدد يُنشئهم مدير النظام ويظهرون هنا تلقائيًا.</p>';
 
   return (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-    dashTabsHtml() +
     '<div class="program-card">' +
       '<div class="ph"><h3>أعضاء '+esc(myCommunity.name)+'</h3></div>' +
       linkedRows +
@@ -3999,6 +3988,14 @@ async function screenCommunityMembers(){
       '<div class="ph"><h3>معلمون غير مرتبطين بمجتمع</h3><p>اختر المعلمين الذين تريد إضافتهم إلى مجتمعك. هذه البيانات أنشأها مدير النظام مسبقًا.</p></div>' +
       unlinkedRows +
     '</div>'
+  );
+}
+async function screenCommunityMembers(){
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    (await _coordCommunityContent())
   );
 }
 function bindCommunityMembers(){
@@ -4015,6 +4012,21 @@ function bindCommunityMembers(){
       catch(e){ toast(arabicError(e)); }
     });
   });
+}
+async function screenCoordinatorMyTeam(){
+  const [communityHtml, teamHtml] = await Promise.all([
+    _coordCommunityContent(),
+    _coordTeamStatsContent()
+  ]);
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div class="section-head"><h2>👥 أعضاء المجتمع</h2></div>' +
+    communityHtml +
+    '<div class="section-head" style="margin-top:28px;"><h2>📊 نشاط الفريق</h2></div>' +
+    teamHtml
+  );
 }
 
 /* ----- لوحة مدير المدرسة: تقييم المجتمعات المهنية (رسائل وإحصائيات كل مجتمع منفصلة) ----- */
@@ -4379,16 +4391,11 @@ function bindCommunityReport(){
 }
 
 /* ----- لوحة منسق المجتمع المهني: نشاط الفريق وإحصائيات الأعضاء ----- */
-async function screenCoordinatorTeamStats(){
-  const hdr = (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-    dashTabsHtml()
-  );
+async function _coordTeamStatsContent(){
   const communities = State.communitiesCache || [];
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
   if (!myCommunity){
-    return hdr + '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك. تواصل مع مدير النظام.</p>';
+    return '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك. تواصل مع مدير النظام.</p>';
   }
   const [allUsers, subs, tasks, goals] = await Promise.all([
     DB.listUsers({ school: State.user.school }),
@@ -4543,7 +4550,6 @@ async function screenCoordinatorTeamStats(){
   ) : '';
 
   return (
-    hdr +
     '<div class="section-head"><h2>نشاط الفريق — '+esc(myCommunity.name)+'</h2></div>' +
     summary +
     communityHealthPanel +
@@ -4551,6 +4557,14 @@ async function screenCoordinatorTeamStats(){
       ? '<div style="margin-bottom:14px;"><input id="ts-search" class="input" style="max-width:280px;" placeholder="ابحث باسم المعلم…"></div><div id="ts-cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;">'+cards+'</div>'
       : '<p style="color:var(--muted);font-size:13.5px;">لا يوجد معلمون مرتبطون بمجتمعك بعد.</p>'
     )
+  );
+}
+async function screenCoordinatorTeamStats(){
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    (await _coordTeamStatsContent())
   );
 }
 
@@ -4690,6 +4704,7 @@ function bindCoordinatorTasks(){
 /* ----- لوحة منسق المجتمع المهني: جدول الزيارات التبادلية (المعلم الزائر/المعلم المزار) ----- */
 const VISIT_DAY_OPTIONS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
 let VisitsUI = { draft: null };
+let CoordActivitiesUI = { subTab: 'activities' };
 function blankVisitRow(){
   return { day:'', date:'', period:'', visitingTeacherId:'', visitingTeacherName:'', visitedTeacherId:'', visitedTeacherName:'' };
 }
@@ -4750,7 +4765,7 @@ function visitScheduleTableHtml(sch, opts){
     '</div>'
   );
 }
-async function screenCoordinatorVisits(){
+async function _coordVisitsContent(){
   const communities = State.communitiesCache || [];
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
   let teachers, all;
@@ -4788,9 +4803,6 @@ async function screenCoordinatorVisits(){
   ) : '';
 
   return (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-    dashTabsHtml() +
     '<div class="section-head"><h2>جدول الزيارات التبادلية</h2>' +
       (!draft && myCommunity ? '<button class="btn btn-primary" data-action="newVisitSchedule">+ تنسيق جدول جديد</button>' : '') +
     '</div>' +
@@ -4801,6 +4813,14 @@ async function screenCoordinatorVisits(){
       '<div style="margin-bottom:14px;"><input id="vs-search" class="input" style="max-width:260px;" placeholder="ابحث باسم معلم أو تاريخ…"></div>' +
       '<div id="vs-sent-list">' + sent.map(function(s){ return visitScheduleTableHtml(s, { deletable:true }); }).join('') + '</div>'
     ) : (draft ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يتم إرسال أي جدول زيارات للمعلمين بعد.</p>'))
+  );
+}
+async function screenCoordinatorVisits(){
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    (await _coordVisitsContent())
   );
 }
 function bindCoordinatorVisits(){
@@ -4876,7 +4896,7 @@ let _coordDemoLessonsCache = [];
 function blankDemoLesson(){
   return { communityId: (State.user&&State.user.community_id)||'', communityName:'', teacherId:'', teacherName:'', day:'', date:'', period:'', subject:'', lessonTitle:'' };
 }
-async function screenCoordinatorDemoLessons(){
+async function _coordDemoLessonsContent(){
   const communities = (State.communitiesCache || []).filter(function(c){ return c.school===State.user.school; });
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
   const communityId = DemoLessonUI.draft ? DemoLessonUI.draft.communityId : (State.user.community_id||'');
@@ -4953,9 +4973,6 @@ async function screenCoordinatorDemoLessons(){
   }).join('');
 
   return (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-    dashTabsHtml() +
     '<div class="section-head"><h2>الحصص التوضيحية</h2>' +
       (myCommunity ? '<button class="btn btn-primary" data-action="openDemoModal">+ تسجيل حصة توضيحية</button>' : '') +
     '</div>' +
@@ -4963,6 +4980,14 @@ async function screenCoordinatorDemoLessons(){
     (myCommunity ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
     (demoRows || '<p style="color:var(--muted);font-size:13.5px;">لم يتم تسجيل أي حصة توضيحية بعد.</p>') +
     modal
+  );
+}
+async function screenCoordinatorDemoLessons(){
+  return (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    (await _coordDemoLessonsContent())
   );
 }
 function bindCoordinatorDemoLessons(){
@@ -9895,8 +9920,14 @@ async function screenDashboard(){
       (AdminLoginLogUI.open ? loginLogModalHtml(AdminLoginLogUI.logs) : '')
     );
   }
+  if (State.dashTab==='myTeam' && State.user.role==='coordinator'){
+    return await screenCoordinatorMyTeam();
+  }
   if (State.dashTab==='community' && State.user.role==='coordinator'){
-    return await screenCommunityMembers();
+    State.dashTab = 'myTeam'; return await screenCoordinatorMyTeam();
+  }
+  if (State.dashTab==='teamStats' && State.user.role==='coordinator'){
+    State.dashTab = 'myTeam'; return await screenCoordinatorMyTeam();
   }
   if (State.dashTab==='tasks' && State.user.role==='coordinator'){
     return await screenCoordinatorTasks();
@@ -9908,16 +9939,15 @@ async function screenDashboard(){
     return await screenCoordinatorGoals();
   }
   if (State.dashTab==='visits' && State.user.role==='coordinator'){
-    return await screenCoordinatorVisits();
+    CoordActivitiesUI.subTab = 'visits'; State.dashTab = 'teacherActivities';
+    return await screenCoordinatorTeacherActivities();
   }
   if (State.dashTab==='demoLesson' && State.user.role==='coordinator'){
-    return await screenCoordinatorDemoLessons();
+    CoordActivitiesUI.subTab = 'demoLesson'; State.dashTab = 'teacherActivities';
+    return await screenCoordinatorTeacherActivities();
   }
   if (State.dashTab==='myStudents' && State.user.role==='coordinator'){
     return await screenCoordinatorMyStudents();
-  }
-  if (State.dashTab==='teamStats' && State.user.role==='coordinator'){
-    return await screenCoordinatorTeamStats();
   }
   if (State.dashTab==='teacherActivities' && State.user.role==='coordinator'){
     return await screenCoordinatorTeacherActivities();
@@ -10123,16 +10153,17 @@ function bindDashboard(){
   if (State.user.role==='super_admin') { bindSuperAdmin(); return; }
   if (State.user.role==='teacher') bindTeacherTasks();
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else if (State.adminTab==='overview') { /* handled by bindGlobalAction */ } else bindAdminUsers(); }
-  else if (State.dashTab==='community' && State.user.role==='coordinator') bindCommunityMembers();
+  else if (State.dashTab==='myTeam' && State.user.role==='coordinator') { bindCommunityMembers(); bindCoordinatorTeamStats(); }
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='communitiesEval' && isPrincipal(State.user)) bindPrincipalCommunities();
   else if (State.dashTab==='goals' && State.user.role==='coordinator') bindCoordinatorGoals();
-  else if (State.dashTab==='visits' && State.user.role==='coordinator') bindCoordinatorVisits();
-  else if (State.dashTab==='demoLesson' && State.user.role==='coordinator') bindCoordinatorDemoLessons();
   else if (State.dashTab==='myStudents' && State.user.role==='coordinator') bindCoordinatorMyStudents();
-  else if (State.dashTab==='teamStats' && State.user.role==='coordinator') bindCoordinatorTeamStats();
-  else if (State.dashTab==='teacherActivities' && State.user.role==='coordinator') bindCoordinatorTeacherActivities();
-  else if (State.dashTab==='mySupVisits' && State.user.role==='coordinator') {/* read-only, no bind needed */}
+  else if (State.dashTab==='teacherActivities' && State.user.role==='coordinator') {
+    if (CoordActivitiesUI.subTab === 'visits') bindCoordinatorVisits();
+    else if (CoordActivitiesUI.subTab === 'demoLesson') bindCoordinatorDemoLessons();
+    else bindCoordinatorTeacherActivities();
+  }
+  else if (State.dashTab==='mySupVisits' && State.user.role==='coordinator') {/* read-only */}
   else if (State.dashTab==='principalArchive' && isPrincipal(State.user)) bindPrincipalArchive();
   else if (State.dashTab==='principalReview' && isPrincipal(State.user)) bindPrincipalReview();
   else if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)) bindPrincipalDemoLessons();
@@ -10562,6 +10593,26 @@ async function screenCoordinatorSupVisits(){
 /* ----- لوحة المنسق: أنشطتي التعليمية (المنسق كمعلم) ----- */
 let _coordInitiativeSubs = [];
 async function screenCoordinatorTeacherActivities(){
+  const subTabsBar = (
+    '<div class="tabs" style="margin-bottom:16px;">' +
+      '<button class="tab '+(CoordActivitiesUI.subTab==='activities'?'active':'')+'" data-action="coordActSubTab" data-tab="activities">📚 أنشطتي</button>' +
+      '<button class="tab '+(CoordActivitiesUI.subTab==='visits'?'active':'')+'" data-action="coordActSubTab" data-tab="visits">🔄 الزيارات التبادلية</button>' +
+      '<button class="tab '+(CoordActivitiesUI.subTab==='demoLesson'?'active':'')+'" data-action="coordActSubTab" data-tab="demoLesson">🎯 حصة توضيحية</button>' +
+    '</div>' +
+    '<div style="margin-bottom:20px;"><button class="btn btn-ghost btn-sm" data-action="gotoPracticeBank">🏦 بنك الخبرات ↗</button></div>'
+  );
+  const pageHdr = (
+    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    subTabsBar
+  );
+  if (CoordActivitiesUI.subTab === 'visits') {
+    return pageHdr + (await _coordVisitsContent());
+  }
+  if (CoordActivitiesUI.subTab === 'demoLesson') {
+    return pageHdr + (await _coordDemoLessonsContent());
+  }
   const [schoolStudents, subs, myGiftedReports, myObservations] = await Promise.all([
     DB.listStudents({ school: State.user.school }),
     DB.listSubmissions({ school: State.user.school }),
@@ -10694,9 +10745,7 @@ async function screenCoordinatorTeacherActivities(){
   ) : '';
 
   return (
-    '<h2 style="font-size:20px;margin-bottom:4px;">لوحة منسق المجتمع المهني</h2>' +
-    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
-    dashTabsHtml() +
+    pageHdr +
     giftedModal + initiativeModal +
     '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;padding:14px 18px;background:var(--surface-2,#f4f6f8);border-radius:12px;border:1px solid var(--border,#e5e7eb);">' +
       '<button class="btn btn-ghost btn-sm" data-action="openInitiativeModal" style="color:#0F766E;font-weight:600;">💡 توثيق مبادرة تعليمية</button>' +
@@ -16480,6 +16529,10 @@ function bindGlobalAction(el){
     }catch(e){ toast(arabicError(e)); }
     finally{ this.disabled = false; }
     AdminLoginLogUI.open = false; render(); bindDashboard();
+  }); }
+  else if (action==='coordActSubTab'){ el.addEventListener('click', function(){
+    CoordActivitiesUI.subTab = el.getAttribute('data-tab');
+    go('dashboard');
   }); }
 }
 
