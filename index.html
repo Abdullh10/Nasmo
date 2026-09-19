@@ -3650,7 +3650,7 @@ function topNav(){
         '<div class="topnav-title">'+esc(SiteSettings.program_title)+'<small>'+esc(State.user.school)+(SiteSettings.academic_year?' · العام الدراسي '+esc(SiteSettings.academic_year):'')+'</small></div>' +
       '</div>' +
       '<div class="topnav-right">' +
-        '<div class="user-pill">'+(State.user.role==='admin'?'<span id="connStatusDot" class="conn-dot"></span>':'')+'<span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+roleLabel+'</span></div>' +
+        '<div class="user-pill">'+(State.user.role==='admin'?'<span id="connStatusDot" class="conn-dot"></span>':'')+'<span>'+esc(State.user.full_name)+'</span><span class="role-tag">'+esc(roleLabel)+'</span></div>' +
         '<div class="notif-wrap">' +
           '<button class="icon-btn" title="التنبيهات" data-action="toggleNotif">'+BELL_SVG+(totalAlertCount?('<span class="notif-badge">'+(totalAlertCount>9?'9+':totalAlertCount)+'</span>'):'')+'</button>' +
           panelHtml +
@@ -10118,7 +10118,7 @@ async function screenDashboard(){
         '<td><b>'+esc(def.title)+'</b><div style="color:var(--muted);font-size:12px;">نموذج رقم ('+def.no+')</div></td>' +
         '<td>'+esc(s.created_by_name||'')+'</td>' +
         '<td>'+fmtDateTime(s.updated_at)+'</td>' +
-        '<td><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></td>' +
+        '<td><span class="badge '+esc(s.status)+'">'+STATUS_LABEL[s.status]+'</span></td>' +
         '<td class="row-actions">'+action+'</td>' +
       '</tr>'
     );
@@ -11241,7 +11241,7 @@ function teacherStudentProfileHtml(studentName, myForms, sessTasks, allStudents,
               var def = formDef(s.form_type);
               return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">' +
                 '<span style="font-size:13px;flex:1;">'+esc(def?def.title:s.form_type)+'</span>' +
-                '<span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span>' +
+                '<span class="badge '+esc(s.status)+'">'+STATUS_LABEL[s.status]+'</span>' +
                 '<button class="btn btn-ghost btn-sm" data-action="'+(s.status==='draft'||s.status==='returned'?'openEdit':'openView')+'" data-id="'+s.id+'">'+( s.status==='draft'||s.status==='returned'?'إكمال':'عرض')+'</button>' +
               '</div>';
             }).join('') +
@@ -12781,7 +12781,7 @@ function bindTeacherTasks(){
       '</div>' +
       '<h2>النماذج</h2>' +
       '<table><thead><tr><th>النموذج</th><th>الطالب</th><th>تاريخ الإنشاء</th><th>الحالة</th></tr></thead><tbody>' +
-      myForms2.map(function(s){ var def=formDef(s.form_type); return '<tr><td>'+(def?def.title:s.form_type)+'</td><td>'+(s.payload.studentName||'—')+'</td><td>'+fmtDate(s.created_at)+'</td><td>'+STATUS_LABEL[s.status]+'</td></tr>'; }).join('') +
+      myForms2.map(function(s){ var def=formDef(s.form_type); return '<tr><td>'+(def?def.title:esc(s.form_type))+'</td><td>'+esc(s.payload.studentName||'—')+'</td><td>'+fmtDate(s.created_at)+'</td><td>'+STATUS_LABEL[s.status]+'</td></tr>'; }).join('') +
       '</tbody></table>' +
       (sessTasks2.length ? '<h2>جلسات الخطط الفردية</h2>' +
       '<table><thead><tr><th>الطالب</th><th>التاريخ</th><th>المادة</th><th>الحالة</th></tr></thead><tbody>' +
