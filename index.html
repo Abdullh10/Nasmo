@@ -4486,7 +4486,12 @@ async function _coordTeamStatsContent(){
     );
   }).join('');
 
-  var _cs = subs.filter(function(s){ return s.community_id===myCommunity.id; });
+  var _userCommMap = {};
+  allUsers.forEach(function(u){ if (u.community_id) _userCommMap[u.id] = u.community_id; });
+  var _cs = subs.filter(function(s){
+    if (s.community_id) return s.community_id === myCommunity.id;
+    return _userCommMap[s.created_by] === myCommunity.id;
+  });
   var _csApproved = _cs.filter(function(s){ return s.status==='approved'; }).length;
   var _csPending  = _cs.filter(function(s){ return s.status==='pending'; }).length;
   var _csReturned = _cs.filter(function(s){ return s.status==='returned'; }).length;
