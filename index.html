@@ -4752,7 +4752,10 @@ function visitRowCardHtml(row, idx, teachers){
 }
 function visitScheduleTableHtml(sch, opts){
   opts = opts || {};
+  const currentUserId = opts.userId || null;
   const rowsHtml = (sch.rows||[]).map(function(r){
+    const canDoc = currentUserId && r.visitingTeacherId === currentUserId;
+    const rowDataAttr = canDoc ? ' data-row="'+esc(JSON.stringify({ observerName: r.visitingTeacherName||'', observedTeacher: r.visitedTeacherName||'', date: r.date||'' }))+'"' : '';
     return (
       '<tr>' +
         '<td>'+esc(r.day||'—')+'</td>' +
@@ -4760,6 +4763,7 @@ function visitScheduleTableHtml(sch, opts){
         '<td>'+esc(r.period||'—')+'</td>' +
         '<td>'+esc(r.visitingTeacherName||'—')+'</td>' +
         '<td>'+esc(r.visitedTeacherName||'—')+'</td>' +
+        (currentUserId ? '<td>'+(canDoc ? '<button class="btn btn-primary btn-sm" data-action="startPeerObsFromVisit"'+rowDataAttr+'>📝 توثيق</button>' : '')+'</td>' : '') +
       '</tr>'
     );
   }).join('');
@@ -4768,8 +4772,8 @@ function visitScheduleTableHtml(sch, opts){
       '<div class="ph"><h3>جدول الزيارات التبادلية</h3><p>'+esc(sch.created_by_name||'')+' · '+fmtDate(sch.created_at)+'</p></div>' +
       '<div style="padding:14px 18px;">' +
         '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-          '<thead><tr><th>اليوم</th><th>التاريخ</th><th>الحصة</th><th>المعلم الزائر</th><th>المعلم المزار</th></tr></thead>' +
-          '<tbody>' + (rowsHtml || '<tr class="empty-row"><td colspan="5">لا توجد صفوف.</td></tr>') + '</tbody>' +
+          '<thead><tr><th>اليوم</th><th>التاريخ</th><th>الحصة</th><th>المعلم الزائر</th><th>المعلم المزار</th>'+(currentUserId?'<th></th>':'')+'</tr></thead>' +
+          '<tbody>' + (rowsHtml || '<tr class="empty-row"><td colspan="'+(currentUserId?6:5)+'">لا توجد صفوف.</td></tr>') + '</tbody>' +
         '</table></div></div>' +
         (opts.deletable ? '<div style="margin-top:10px;"><button class="btn btn-ghost btn-sm" data-action="deleteVisitSchedule" data-id="'+sch.id+'">حذف الجدول</button></div>' : '') +
       '</div>' +
@@ -11659,7 +11663,7 @@ async function screenTeacherTasks(){
   const visitSchedules = State.user.community_id
     ? rawVisits.filter(function(v){ return v.community_id===State.user.community_id; }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); })
     : [];
-  const visitScheduleCards = visitSchedules.map(function(s){ return visitScheduleTableHtml(s, {}); }).join('');
+  const visitScheduleCards = visitSchedules.map(function(s){ return visitScheduleTableHtml(s, { userId: State.user.id }); }).join('');
 
   /* — جدول نماذجي (مع فلتر المكتملة / النشطة) — */
   const isDoneForm = function(s){ return s.status==='approved'; };
@@ -16549,6 +16553,15 @@ function bindGlobalAction(el){
   else if (action==='coordActSubTab'){ el.addEventListener('click', function(){
     CoordActivitiesUI.subTab = el.getAttribute('data-tab');
     go('dashboard');
+  }); }
+  else if (action==='startPeerObsFromVisit'){ el.addEventListener('click', function(){
+    var rd; try{ rd = JSON.parse(el.getAttribute('data-row')); }catch(e){ rd = {}; }
+    var d = blankData('peerObservation');
+    d.observerName = rd.observerName || State.user.full_name;
+    d.observedTeacher = rd.observedTeacher || '';
+    d.date = rd.date || new Date().toISOString().slice(0,10);
+    EditorState = { id:null, formType:'peerObservation', data:d, status:'draft', prepSig:null, school:State.user.school, createdByName:State.user.full_name, createdBy:State.user.id, returnComment:null, principalSig:null, approved_at:null, community_id:State.user.community_id||null, manualTeacherFields:new Set(), teachers:[], manualStudentFields:new Set(), students:[], studentPickOpen:false, studentPickList:null, studentPickSelected:[], studentGradeFilters:{}, studentSectionFilters:{} };
+    go('editor', { formType:'peerObservation' });
   }); }
 }
 
