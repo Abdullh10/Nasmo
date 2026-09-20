@@ -10142,7 +10142,7 @@ async function screenDashboard(){
     '</div>'
   );
 
-  const list = State.user.role==='coordinator' ? mine : subs;
+  const list = State.user.role==='coordinator' ? mine : (isPrincipal(State.user) ? subs.filter(function(s){ return s.status!=='draft'; }) : subs);
   const sorted = list.slice().sort(function(a,b){
     const order = { pending:0, returned:1, draft:2, approved:3 };
     return (order[a.status]-order[b.status]) || (new Date(b.updated_at)-new Date(a.updated_at));
