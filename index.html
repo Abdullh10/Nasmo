@@ -4787,9 +4787,9 @@ async function _coordVisitsContent(){
       myCommunity ? DB.listUsers({ school: State.user.school }) : Promise.resolve([]),
       DB.listVisitSchedules({ school: State.user.school })
     ]);
-    teachers = allUsers.filter(function(u){ return u.role==='teacher' && u.community_id===(myCommunity && myCommunity.id); });
+    teachers = allUsers.filter(function(u){ return (u.role==='teacher'||u.role==='coordinator') && u.community_id===(myCommunity && myCommunity.id); });
     all = allVisits.filter(function(s){ return s.community_id===State.user.community_id; });
-    _coordVisitsData = { teachers, all }; _coordVisitsDataAt = Date.now();
+    _coordVisitsData = { teachers: teachers, all: all }; _coordVisitsDataAt = Date.now();
   }
   const sent = all.slice().sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
 
