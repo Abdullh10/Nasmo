@@ -7579,6 +7579,7 @@ async function screenExamAnalysis(){
   ):'';
   return (
     '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>'+
+    '<div class="form-sheet">'+
     printHeader+
     '<div class="section-head"><h2>تحليل درجات اختبار نهاية الفصل</h2>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="no-print">'+
@@ -7610,6 +7611,7 @@ async function screenExamAnalysis(){
       '</div>'
     ):'<p style="color:var(--muted);font-size:13px;margin-top:12px;">لم يتم رفع ملف درجات بعد — اختر الدرجة الكلية ثم نزّل النموذج وارفعه.</p>')+
     examSavedHtml()+
+    '</div>'+
     resultModal+
     pasteModal
   );
@@ -7701,6 +7703,7 @@ async function runExamAutoSort(){
   if (!plans.length){ render(); bindExamAnalysis(); return; }
   if (plans.length === 1){
     const s = await DB.getSubmission(plans[0].id);
+    if (ExamAnalysisUI.rows && ExamAnalysisUI.rows.length) { var _al=loadExamSaved(); _al.unshift({id:Date.now().toString(),savedAt:new Date().toISOString(),subject:ExamAnalysisUI.subject,term:ExamAnalysisUI.term,maxScore:ExamAnalysisUI.maxScore,rows:ExamAnalysisUI.rows}); if(_al.length>5)_al.length=5; try{localStorage.setItem(examSavedKey(),JSON.stringify(_al));}catch(e){} }
     ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
     openEditor(s.form_type, s);
   } else {
@@ -7763,7 +7766,7 @@ function bindExamAnalysis(){
   const saveBtn = document.querySelector('[data-action="saveExamAnalysis"]');
   if (saveBtn) saveBtn.addEventListener('click', saveExamAnalysis);
   const printBtn = document.querySelector('[data-action="printExamReport"]');
-  if (printBtn) printBtn.addEventListener('click', function(){ window.print(); });
+  if (printBtn) printBtn.addEventListener('click', function(){ exportFormToPdf('تحليل_الاختبار.pdf'); });
   const autoSortBtn = document.querySelector('[data-action="runExamAutoSort"]');
   if (autoSortBtn) autoSortBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true; var _origAS = this.textContent; this.textContent = 'جارٍ إنشاء الخطط…';
@@ -7798,6 +7801,7 @@ function bindExamAnalysis(){
   document.querySelectorAll('[data-action="openExamSortedPlan"]').forEach(function(el){
     el.addEventListener('click', async function(){
       const s = await DB.getSubmission(el.getAttribute('data-id'));
+      if (ExamAnalysisUI.rows && ExamAnalysisUI.rows.length) { var _al=loadExamSaved(); _al.unshift({id:Date.now().toString(),savedAt:new Date().toISOString(),subject:ExamAnalysisUI.subject,term:ExamAnalysisUI.term,maxScore:ExamAnalysisUI.maxScore,rows:ExamAnalysisUI.rows}); if(_al.length>5)_al.length=5; try{localStorage.setItem(examSavedKey(),JSON.stringify(_al));}catch(e){} }
       ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
       openEditor(s.form_type, s);
     });
