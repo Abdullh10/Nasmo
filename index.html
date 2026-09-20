@@ -2333,6 +2333,16 @@ const DB = {
     localStorage.setItem(LS_VISIT_SCHEDULES, JSON.stringify(list));
     return true;
   },
+  async updateVisitSchedule(id, patch){
+    if (isRemote()){
+      await remoteFetch('visit_schedules?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch });
+      return true;
+    }
+    let list = JSON.parse(localStorage.getItem(LS_VISIT_SCHEDULES) || '[]');
+    const i = list.findIndex(function(v){ return v.id===id; });
+    if (i > -1){ Object.assign(list[i], patch); localStorage.setItem(LS_VISIT_SCHEDULES, JSON.stringify(list)); }
+    return true;
+  },
   async listSupervisoryVisits(school){
     if (isRemote()){
       return await remoteFetch('supervisory_visits?school=eq.' + encodeURIComponent(school) + '&order=visit_date.desc') || [];
@@ -4782,7 +4792,10 @@ function visitScheduleTableHtml(sch, opts){
           '<thead><tr><th>اليوم</th><th>التاريخ</th><th>الحصة</th><th>الصف</th><th>الشعبة</th><th>المعلم الزائر</th><th>المعلم المزار</th>'+(currentUserId?'<th></th>':'')+'</tr></thead>' +
           '<tbody>' + (rowsHtml || '<tr class="empty-row"><td colspan="'+(currentUserId?8:7)+'">لا توجد صفوف.</td></tr>') + '</tbody>' +
         '</table></div></div>' +
-        (opts.deletable ? '<div style="margin-top:10px;"><button class="btn btn-ghost btn-sm" data-action="deleteVisitSchedule" data-id="'+sch.id+'">حذف الجدول</button></div>' : '') +
+        (opts.deletable ? '<div style="margin-top:10px;display:flex;gap:8px;">' +
+          '<button class="btn btn-ghost btn-sm" data-action="editVisitSchedule" data-id="'+esc(sch.id)+'">✏️ تعديل الجدول</button>' +
+          '<button class="btn btn-ghost btn-sm" style="color:var(--danger,#dc2626);" data-action="deleteVisitSchedule" data-id="'+esc(sch.id)+'">🗑 حذف الجدول</button>' +
+        '</div>' : '') +
       '</div>' +
     '</div>'
   );
@@ -4808,16 +4821,17 @@ async function _coordVisitsContent(){
     try { var saved = localStorage.getItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id); if (saved) VisitsUI.draft = JSON.parse(saved); } catch(e){}
   }
   const draft = VisitsUI.draft;
+  const isEditing = !!(draft && draft.editingId);
   const builder = draft ? (
     '<div class="program-card" style="margin-bottom:16px;">' +
-      '<div class="ph"><h3>جدول زيارات جديد (قيد التنسيق)</h3><p>أضف صفًا لكل زيارة، ثم أرسل الجدول كاملًا لمعلمي مجتمعك.</p></div>' +
+      '<div class="ph"><h3>'+(isEditing ? '✏️ تعديل الجدول' : 'جدول زيارات جديد (قيد التنسيق)')+'</h3><p>'+(isEditing ? 'عدّل الصفوف ثم احفظ — سيُحدَّث الجدول فوراً عند المعلمين.' : 'أضف صفًا لكل زيارة، ثم أرسل الجدول كاملًا لمعلمي مجتمعك.')+'</p></div>' +
       '<div style="padding:14px 18px;">' +
         draft.rows.map(function(row, idx){ return visitRowCardHtml(row, idx, teachers); }).join('') +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
           '<button class="add-row-btn" data-action="addVisitRow">+ إضافة صف</button>' +
         '</div>' +
         '<div class="modal-actions">' +
-          '<button class="btn btn-primary btn-block" data-action="sendVisitSchedule">إرسال نسخة للمعلمين</button>' +
+          '<button class="btn btn-primary btn-block" data-action="sendVisitSchedule">'+(isEditing ? '💾 حفظ التعديلات' : 'إرسال نسخة للمعلمين')+'</button>' +
           '<button class="btn btn-ghost btn-block" data-action="cancelVisitDraft">إلغاء</button>' +
         '</div>' +
       '</div>' +
@@ -4896,17 +4910,36 @@ function bindCoordinatorVisits(){
       toast('لا يمكن أن يكون المعلم الزائر والمعلم المزار نفس الشخص في الصف الواحد.'); this.disabled = false; return;
     }
     try{
-      await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
-      const visitedIds = [...new Set(rows.map(function(r){ return r.visitingTeacherId; }).concat(rows.map(function(r){ return r.visitedTeacherId; })))];
-      visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); /* push handled inside createNotification */ });
-      toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
+      const editingId = VisitsUI.draft.editingId || null;
+      if (editingId){
+        await DB.updateVisitSchedule(editingId, { rows: rows });
+        toast('تم تحديث الجدول وسيظهر التعديل فوراً عند المعلمين.');
+      } else {
+        await DB.createVisitSchedule({ school:State.user.school, community_id:State.user.community_id||null, created_by:State.user.id, created_by_name:State.user.full_name, status:'sent', rows: rows });
+        const visitedIds = [...new Set(rows.map(function(r){ return r.visitingTeacherId; }).concat(rows.map(function(r){ return r.visitedTeacherId; })))];
+        visitedIds.forEach(function(tid){ DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:tid, type:'general', title:'جدول زيارات جديد', body:'أرسل '+State.user.full_name+' جدول الزيارات التبادلية، راجع دورك.' }).catch(function(){}); });
+        toast('تم إرسال جدول الزيارات التبادلية لمعلمي المجتمع.');
+      }
+      _coordVisitsData = null; _coordVisitsDataAt = 0;
       VisitsUI.draft = null; localStorage.removeItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id); await render();
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+  document.querySelectorAll('[data-action="editVisitSchedule"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      const id = el.getAttribute('data-id');
+      const sch = (_coordVisitsData && _coordVisitsData.all || []).find(function(s){ return s.id===id; });
+      if (!sch){ toast('لم يُعثر على الجدول، يرجى إعادة التحميل.'); return; }
+      VisitsUI.draft = { editingId: id, rows: JSON.parse(JSON.stringify(sch.rows||[])) };
+      if (!VisitsUI.draft.rows.length) VisitsUI.draft.rows.push(blankVisitRow());
+      try{ localStorage.setItem('nasmo_visit_draft_'+State.user.school+'_'+State.user.id, JSON.stringify(VisitsUI.draft)); }catch(e){}
+      await render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
   });
   document.querySelectorAll('[data-action="deleteVisitSchedule"]').forEach(function(el){
     el.addEventListener('click', async function(){
       if (!confirm('هل تريد حذف هذا الجدول؟ سيختفي فورًا من شاشات جميع المعلمين.')) return;
-      try{ await DB.deleteVisitSchedule(el.getAttribute('data-id')); toast('تم حذف الجدول.'); await render(); }
+      try{ _coordVisitsData = null; _coordVisitsDataAt = 0; await DB.deleteVisitSchedule(el.getAttribute('data-id')); toast('تم حذف الجدول.'); await render(); }
       catch(e){ toast(arabicError(e)); }
     });
   });
