@@ -7059,7 +7059,7 @@ function openPlanForStudent(formType, student){
 
 let StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
 async function screenStudentRoster(){
-  if (!State.user || !['admin','super_admin','coordinator','principal'].includes(State.user.role)){ go('dashboard'); return ''; }
+  if (!State.user || !['admin','super_admin','coordinator','principal','teacher'].includes(State.user.role)){ go('dashboard'); return ''; }
   const isAdmin = State.user.role === 'admin';
   let students;
   if (_studentRosterData && (Date.now() - _studentRosterDataAt) < ROSTER_TTL_MS){
