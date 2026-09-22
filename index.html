@@ -1324,6 +1324,16 @@ function fileUrl(f){
 function hijriDateFmt(d){
   return new Intl.DateTimeFormat('ar-SA', {calendar:'islamic-umalqura', year:'numeric', month:'long', day:'numeric'}).format(d);
 }
+function fmtTaskDesc(t){
+  if (!t || !t.description) return '';
+  try{
+    var _d=JSON.parse(t.description);
+    if (_d._type==='demoLesson'){
+      return esc(_d.day||'')+(_d.date?' '+fmtDate(_d.date):'')+(_d.period?' · الحصة '+_d.period:'')+(_d.startTime?' ('+_d.startTime+(_d.endTime?' - '+_d.endTime:'')+')':'')+(_d.subject?' · مادة '+esc(_d.subject):'');
+    }
+  }catch(e){}
+  return esc(t.description);
+}
 function fmtDate(s){
   if(!s) return '—';
   const parts = String(s).slice(0,10).split('-');
@@ -4701,16 +4711,6 @@ async function screenCoordinatorTasks(){
     return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(b.created_at) - new Date(a.created_at));
   });
 
-  function fmtTaskDesc(t){
-    if (!t.description) return '';
-    try{
-      var d = JSON.parse(t.description);
-      if (d._type==='demoLesson'){
-        return esc(d.day||'')+(d.date?' '+fmtDate(d.date):'')+(d.period?' · الحصة '+d.period:'')+(d.startTime?' ('+d.startTime+(d.endTime?' - '+d.endTime:'')+')':[])+(d.subject?' · مادة '+esc(d.subject):'');
-      }
-    }catch(e){}
-    return esc(t.description);
-  }
   const rows = sorted.map(function(t){
     const done = t.status==='done';
     const wasReturned = !done && t.coordinator_status==='returned';
@@ -10843,7 +10843,7 @@ async function screenCoordinatorMyStudents(){
     return (
       '<div class="task-card"'+(overdue?' style="border-color:var(--danger);"':'')+' >' +
         '<div class="meta"><b>'+esc(t.title)+(overdue?' <span style="color:var(--danger);font-size:11px;">متأخرة</span>':'')+'</b>' +
-          (t.description?'<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'+esc(t.description)+'</div>':'') +
+          (t.description?'<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'+fmtTaskDesc(t)+'</div>':'') +
           '<span>المُكلِّف: '+esc(t.created_by_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+' · '+(done?'<span style="color:var(--success);font-weight:700;">مكتملة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التنفيذ</span>')+'</span></div>' +
         '<button class="btn '+(done?'btn-ghost':'btn-primary')+' btn-sm" data-action="openTaskDetail" data-id="'+t.id+'">'+(done?'تعديل التنفيذ':'تنفيذ المهمة')+'</button>' +
       '</div>'
@@ -12105,7 +12105,7 @@ async function screenTeacherTasks(){
     return (
       '<div class="task-card"'+(overdue?' style="border-color:var(--danger);"':'')+' >' +
         '<div class="meta"><b>'+commBadge+esc(t.title)+(overdue?' <span style="color:var(--danger);font-size:11px;">متأخرة</span>':'')+'</b>' +
-          (t.description ? '<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'+esc(t.description)+'</div>' : '') +
+          (t.description ? '<div style="color:var(--muted);font-size:12.5px;margin-top:2px;">'+fmtTaskDesc(t)+'</div>' : '') +
           '<span>المُكلِّف: '+esc(t.created_by_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+' · '+(done?'<span style="color:var(--success);font-weight:700;">مكتملة</span>':'<span style="color:var(--pending);font-weight:700;">بانتظار التنفيذ</span>')+'</span></div>' +
         '<button class="btn '+(done?'btn-ghost':'btn-primary')+' btn-sm" data-action="openTaskDetail" data-id="'+t.id+'">'+(done?'تعديل التنفيذ':'تنفيذ المهمة ورفع الشواهد')+'</button>' +
       '</div>'
@@ -13449,11 +13449,23 @@ async function screenTaskDetail(taskId, readonly){
   const isOwner = State.user.role==='teacher' && t.assigned_to===State.user.id;
   const ro = !!readonly || !isOwner;
   const files = TaskDetailCache.evidence_files.map(function(f, i){
-    const fSrc = fileUrl(f);
+    const isLink = f.type==='link';
+    const fSrc = isLink ? f.url : fileUrl(f);
+    const isImg = !isLink && (f.type||'').startsWith('image/');
+    const rmvBtn = ro ? '' : '<button type="button" class="rmv-ev" data-action="rmvTaskEvidence" data-i="'+i+'">✕</button>';
+    if (isLink){
+      return (
+        '<div class="evidence-thumb" style="width:auto;min-width:120px;max-width:220px;padding:8px 10px;display:flex;align-items:center;gap:6px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);">' +
+          '<span style="font-size:18px;">🔗</span>' +
+          '<a href="'+esc(fSrc)+'" target="_blank" rel="noopener" style="font-size:12px;color:var(--primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;">'+esc(f.name||fSrc)+'</a>' +
+          rmvBtn +
+        '</div>'
+      );
+    }
     return (
-      '<div class="evidence-thumb"><img src="'+esc(fSrc)+'">' +
-        '<a class="ev-download" href="'+esc(fSrc)+'" download="شاهد-'+(i+1)+'" title="تنزيل الشاهد" target="_blank">⬇</a>' +
-        (ro ? '' : '<button type="button" class="rmv-ev" data-action="rmvTaskEvidence" data-i="'+i+'">✕</button>') +
+      '<div class="evidence-thumb">'+(isImg?'<img src="'+esc(fSrc)+'">':'<a href="'+esc(fSrc)+'" target="_blank" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:28px;text-decoration:none;">📄</a>')+
+        '<a class="ev-download" href="'+esc(fSrc)+'" download="شاهد-'+(i+1)+'" title="تنزيل" target="_blank">⬇</a>' +
+        rmvBtn +
       '</div>'
     );
   }).join('');
@@ -13489,12 +13501,18 @@ async function screenTaskDetail(taskId, readonly){
       '<div class="form-sheet">' +
         '<div class="sheet-header"><div class="titles"><h1>'+esc(t.title)+'</h1>' +
           '<div class="sub">المُكلِّف: '+esc(t.created_by_name||'')+' — المعلم: '+esc(t.assigned_to_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+'</div></div></div>' +
-        (t.description ? ('<p style="color:var(--muted);font-size:13.5px;margin:-4px 0 14px;">'+esc(t.description)+'</p>') : '') +
+        (t.description ? ('<p style="color:var(--muted);font-size:13.5px;margin:-4px 0 14px;">'+fmtTaskDesc(t)+'</p>') : '') +
         inputField('ملاحظات التنفيذ','teacher_notes', TaskDetailCache.teacher_notes, { type:'textarea', readonly: ro }) +
         '<div class="block-title"><span class="dot"></span> الشواهد المرفوعة</div>' +
         '<div class="evidence-grid">' + files +
-          (ro ? '' : '<label class="evidence-add">+<input type="file" id="taskEvidenceInput" accept="image/*,application/pdf" multiple style="display:none;"></label>') +
+          (ro ? '' : '<label class="evidence-add" title="رفع صورة أو PDF">+<input type="file" id="taskEvidenceInput" accept="image/*,application/pdf" multiple style="display:none;"></label>') +
         '</div>' +
+        (ro ? '' :
+          '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;">' +
+            '<input type="url" class="input" id="taskLinkInput" placeholder="رابط Google Drive أو OneDrive أو أي رابط..." style="flex:1;">' +
+            '<button class="btn btn-ghost btn-sm" data-action="addTaskLink" style="white-space:nowrap;">🔗 إضافة رابط</button>' +
+          '</div>'
+        ) +
       '</div>' +
       (ro ? '' :
         '<div class="sheet-bar no-print" style="margin-top:16px;justify-content:flex-end;">' +
@@ -13529,10 +13547,20 @@ function bindTaskDetail(){
     el.addEventListener('click', function(){
       const idx = +el.getAttribute('data-i');
       const removed = TaskDetailCache.evidence_files[idx];
-      if (removed && removed.url) deleteFileFromStorage(removed.url);
+      if (removed && removed.type !== 'link' && removed.url) deleteFileFromStorage(removed.url);
       TaskDetailCache.evidence_files.splice(idx, 1);
       render(); bindTaskDetail();
     });
+  });
+  const addLinkBtn = document.querySelector('[data-action="addTaskLink"]');
+  if (addLinkBtn) addLinkBtn.addEventListener('click', function(){
+    const inp = document.getElementById('taskLinkInput');
+    const url = (inp ? inp.value.trim() : '');
+    if (!url || !/^https?:\/\//i.test(url)){ toast('يرجى إدخال رابط صحيح يبدأ بـ https://'); return; }
+    const label = url.includes('drive.google.com') ? 'Google Drive' : url.includes('onedrive') ? 'OneDrive' : 'رابط خارجي';
+    TaskDetailCache.evidence_files.push({ name:label, type:'link', url:url });
+    if (inp) inp.value = '';
+    render(); bindTaskDetail();
   });
   const completeBtn = document.querySelector('[data-action="completeTask"]');
   if (completeBtn) completeBtn.addEventListener('click', async function(){
