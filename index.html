@@ -11649,10 +11649,19 @@ function teacherWeekAgendaHtml(sessTasks, generalTasks, rawVisits, demoLessonTas
     if (!info.date) return;
     items.push({ date:info.date, type:'حصة', label:'حصة توضيحية: '+esc(info.lessonTitle||t.title), done:false, color:'#7c3aed', action:null });
   });
-  /* زيارات */
+  /* زيارات — يُعرض فقط ما يخص المعلم الحالي (زائر أو مزار) */
+  var _uid = State.user ? State.user.id : null;
+  var _uname = State.user ? (State.user.full_name||'') : '';
   (rawVisits||[]).filter(function(v){ return v.community_id===communityId; }).forEach(function(v){
-    (v.rows||v.schedule||[]).forEach(function(row){
-      if (row.date) items.push({ date:row.date, type:'زيارة', label:'زيارة: '+esc(row.notes||''), done:false, color:'#0891b2', action:null });
+    (v.rows||[]).forEach(function(row){
+      if (!row.date) return;
+      var isVisiting = (_uid && row.visitingTeacherId===_uid) || (row.visitingTeacherName && row.visitingTeacherName===_uname);
+      var isVisited  = row.visitedTeacherName && row.visitedTeacherName===_uname;
+      if (!isVisiting && !isVisited) return;
+      var role = isVisiting ? 'زائر' : 'مزار';
+      var other = isVisiting ? (row.visitedTeacherName||'') : (row.visitingTeacherName||'');
+      var lbl = 'زيارة تبادلية (أنت '+role+')'+(other?' مع '+esc(other):'')+(row.period?' · الحصة '+row.period:'')+(row.grade?' · '+esc(row.grade)+(row.section?' '+esc(row.section):''):'');
+      items.push({ date:row.date, type:'زيارة', label:lbl, done:false, color:'#0891b2', action:null });
     });
   });
   items = items.filter(function(i){ return i.date>=todayStr && i.date<=weekEndStr; });
