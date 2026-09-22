@@ -5009,10 +5009,20 @@ async function _coordDemoLessonsContent(){
   const demoRows = demoTasks.map(function(t){
     let info = {};
     try{ info = JSON.parse(t.description||'{}'); }catch(e){}
+    const principalAlert = info.principal_action === 'returned'
+      ? '<div style="background:var(--warning-bg,#fef3c7);border:1px solid var(--warning,#d97706);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;">' +
+          '<b>🔁 طلب إعادة الجدولة</b> — '+esc(info.principal_action_by||'مدير المدرسة')+' طلب إعادة جدولة هذه الحصة.' +
+        '</div>'
+      : info.principal_action === 'suggestion'
+      ? '<div style="background:var(--primary-bg,#eff6ff);border:1px solid var(--primary,#2563eb);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;">' +
+          '<b>💬 اقتراح من '+esc(info.principal_action_by||'مدير المدرسة')+':</b><br><span style="white-space:pre-wrap;">'+esc(info.principal_suggestion_text||'')+'</span>' +
+        '</div>'
+      : '';
     return (
       '<div class="program-card" style="margin-bottom:12px;">' +
         '<div class="ph"><h3>'+esc(info.lessonTitle||t.title)+'</h3><p>'+esc(t.assigned_to_name||'—')+' · '+fmtDate(t.created_at)+'</p></div>' +
         '<div style="padding:14px 18px;">' +
+          principalAlert +
           '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;font-size:13px;margin-bottom:10px;">' +
             '<div><span style="color:var(--muted);">المجتمع: </span><b>'+esc(info.communityName||'—')+'</b></div>' +
             '<div><span style="color:var(--muted);">اليوم: </span><b>'+esc(info.day||'—')+'</b></div>' +
@@ -5846,7 +5856,7 @@ async function screenNotificationsPanel(){
     (filtered.length ? notifCards : '<p style="color:var(--muted);font-size:13.5px;">لا توجد إشعارات في هذا القسم.</p>')
   );
 }
-let PrincipalDemoLessonsUI = { coordFilter:'', statusFilter:'' };
+let PrincipalDemoLessonsUI = { coordFilter:'', statusFilter:'', suggestionModal: null };
 async function screenPrincipalDemoLessons(){
   const allTasks = await DB.listTasks({ school: State.user.school });
   const demoTasks = allTasks.filter(function(t){
@@ -5870,9 +5880,18 @@ async function screenPrincipalDemoLessons(){
     try{ info = JSON.parse(t.description||'{}'); }catch(e){}
     const tgt = demoLessonTarget(t);
     const isPast = tgt && tgt < now;
-    const badge = isPast
+    let badge = isPast
       ? '<span style="background:var(--muted,#6b7280);color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">منتهية</span>'
       : '<span style="background:var(--success,#16a34a);color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:700;">قادمة</span>';
+    if (info.principal_action === 'returned') badge += '<br><span style="background:var(--warning,#d97706);color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin-top:4px;display:inline-block;">مُرجَعة للإعادة</span>';
+    else if (info.principal_action === 'suggestion') badge += '<br><span style="background:var(--primary,#2563eb);color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;margin-top:4px;display:inline-block;">💬 يوجد اقتراح</span>';
+    const encTitle = esc(info.lessonTitle||t.title||'');
+    const encCoordId = esc(t.created_by||'');
+    const encCoordName = esc(t.created_by_name||'');
+    const actions =
+      '<button class="btn btn-ghost btn-sm" style="color:var(--primary,#2563eb);" data-action="principalSuggestDemo" data-id="'+t.id+'" data-title="'+encTitle+'" data-coord-id="'+encCoordId+'" data-coord-name="'+encCoordName+'">💬 اقتراح</button>' +
+      (!isPast ? ' <button class="btn btn-ghost btn-sm" style="color:var(--warning,#d97706);" data-action="principalReturnDemo" data-id="'+t.id+'" data-title="'+encTitle+'" data-coord-id="'+encCoordId+'" data-coord-name="'+encCoordName+'">🔁 إرجاع</button>' : '') +
+      ' <button class="btn btn-ghost btn-sm" style="color:var(--danger);" data-action="principalDeleteDemo" data-id="'+t.id+'" data-coord-id="'+encCoordId+'" data-coord-name="'+encCoordName+'">🗑 حذف</button>';
     return (
       '<tr>' +
         '<td>'+esc(t.assigned_to_name||'—')+'</td>' +
@@ -5884,11 +5903,29 @@ async function screenPrincipalDemoLessons(){
         '<td>'+esc(info.communityName||'—')+'</td>' +
         '<td>'+esc(t.created_by_name||'—')+'</td>' +
         '<td>'+badge+'</td>' +
+        '<td class="row-actions">'+actions+'</td>' +
       '</tr>'
     );
   }).join('');
 
+  const suggModal = PrincipalDemoLessonsUI.suggestionModal ? (
+    '<div class="modal-backdrop" data-action="closePrincipalSuggestionModal">' +
+      '<div class="modal-box" onclick="event.stopPropagation()">' +
+        '<div class="modal-header"><h3>إضافة اقتراح لإعادة الجدولة</h3><button class="icon-btn" data-action="closePrincipalSuggestionModal">✕</button></div>' +
+        '<div class="modal-body">' +
+          '<p style="font-size:13px;color:var(--muted);margin-bottom:12px;">الحصة: <b>'+esc(PrincipalDemoLessonsUI.suggestionModal.taskTitle)+'</b></p>' +
+          '<div class="field"><label>نص الاقتراح</label><textarea class="input" id="principalSuggestionText" rows="4" placeholder="اكتب اقتراحك لإعادة جدولة الحصة أو تغيير موعدها..."></textarea></div>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button class="btn btn-primary btn-block" data-action="savePrincipalSuggestion" data-id="'+esc(PrincipalDemoLessonsUI.suggestionModal.taskId)+'" data-coord-id="'+esc(PrincipalDemoLessonsUI.suggestionModal.coordId)+'" data-title="'+esc(PrincipalDemoLessonsUI.suggestionModal.taskTitle)+'">إرسال الاقتراح للمنسق</button>' +
+          '<button class="btn btn-ghost btn-block" data-action="closePrincipalSuggestionModal">إلغاء</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  ) : '';
+
   return (
+    suggModal +
     '<h2 style="font-size:20px;margin-bottom:4px;">لوحة مدير المدرسة</h2>' +
     '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
     dashTabsHtml() +
@@ -5898,8 +5935,8 @@ async function screenPrincipalDemoLessons(){
       '<select class="input" id="pdlStatusFilter" style="min-width:160px;">'+statusOptions+'</select>' +
     '</div>' +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>المعلم المنفِّذ</th><th>المادة</th><th>عنوان الدرس</th><th>التاريخ</th><th>الوقت</th><th>الحصة</th><th>المجتمع المهني</th><th>المنسق</th><th>الحالة</th></tr></thead>' +
-      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="9">لا توجد حصص توضيحية مسجَّلة بعد.</td></tr>')+'</tbody>' +
+      '<thead><tr><th>المعلم المنفِّذ</th><th>المادة</th><th>عنوان الدرس</th><th>التاريخ</th><th>الوقت</th><th>الحصة</th><th>المجتمع المهني</th><th>المنسق</th><th>الحالة</th><th></th></tr></thead>' +
+      '<tbody>'+(rows||'<tr class="empty-row"><td colspan="10">لا توجد حصص توضيحية مسجَّلة بعد.</td></tr>')+'</tbody>' +
     '</table></div></div>'
   );
 }
@@ -5908,6 +5945,83 @@ function bindPrincipalDemoLessons(){
   if (coordSel) coordSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.coordFilter = this.value; await render(); });
   const statusSel = document.getElementById('pdlStatusFilter');
   if (statusSel) statusSel.addEventListener('change', async function(){ PrincipalDemoLessonsUI.statusFilter = this.value; await render(); });
+
+  /* إرجاع للإعادة الجدولة */
+  document.querySelectorAll('[data-action="principalReturnDemo"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد إرجاع هذه الحصة للمنسق لإعادة الجدولة؟')) return;
+      const id = el.getAttribute('data-id');
+      const coordId = el.getAttribute('data-coord-id');
+      const title = el.getAttribute('data-title');
+      try{
+        const allTasks = await DB.listTasks({ school: State.user.school });
+        const task = allTasks.find(function(t){ return t.id===id; });
+        if (!task){ toast('لم يُعثر على الحصة.'); return; }
+        let info = {}; try{ info = JSON.parse(task.description||'{}'); }catch(e){}
+        info.principal_action = 'returned';
+        info.principal_action_by = State.user.full_name;
+        info.principal_action_at = nowIso();
+        await DB.updateTask(id, { description: JSON.stringify(info) });
+        if (coordId){ DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name, target_type:'user', target_id: coordId, type:'general', title:'طلب إعادة جدولة حصة توضيحية', body: State.user.full_name+' طلب إعادة جدولة الحصة التوضيحية "'+title+'".' }).catch(function(){}); }
+        toast('تم إرسال طلب إعادة الجدولة للمنسق.');
+        await render();
+      }catch(e){ toast(arabicError(e)); }
+    });
+  });
+
+  /* فتح نافذة الاقتراح */
+  document.querySelectorAll('[data-action="principalSuggestDemo"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      PrincipalDemoLessonsUI.suggestionModal = { taskId: el.getAttribute('data-id'), taskTitle: el.getAttribute('data-title'), coordId: el.getAttribute('data-coord-id'), coordName: el.getAttribute('data-coord-name') };
+      render();
+    });
+  });
+
+  /* إغلاق نافذة الاقتراح */
+  document.querySelectorAll('[data-action="closePrincipalSuggestionModal"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalDemoLessonsUI.suggestionModal = null; render(); });
+  });
+
+  /* حفظ الاقتراح */
+  const saveSuggBtn = document.querySelector('[data-action="savePrincipalSuggestion"]');
+  if (saveSuggBtn) saveSuggBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
+    const id = this.getAttribute('data-id');
+    const coordId = this.getAttribute('data-coord-id');
+    const title = this.getAttribute('data-title');
+    const text = (document.getElementById('principalSuggestionText')||{}).value || '';
+    if (!text.trim()){ toast('يرجى كتابة نص الاقتراح.'); this.disabled = false; return; }
+    try{
+      const allTasks = await DB.listTasks({ school: State.user.school });
+      const task = allTasks.find(function(t){ return t.id===id; });
+      if (!task){ toast('لم يُعثر على الحصة.'); this.disabled = false; return; }
+      let info = {}; try{ info = JSON.parse(task.description||'{}'); }catch(e){}
+      info.principal_action = 'suggestion';
+      info.principal_action_by = State.user.full_name;
+      info.principal_action_at = nowIso();
+      info.principal_suggestion_text = text.trim();
+      await DB.updateTask(id, { description: JSON.stringify(info) });
+      if (coordId){ DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name, target_type:'user', target_id: coordId, type:'general', title:'اقتراح بشأن حصة توضيحية', body: State.user.full_name+' أرسل اقتراحاً بشأن الحصة "'+title+'":\n'+text.trim() }).catch(function(){}); }
+      toast('تم إرسال الاقتراح للمنسق.');
+      PrincipalDemoLessonsUI.suggestionModal = null;
+      await render();
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
+  });
+
+  /* حذف */
+  document.querySelectorAll('[data-action="principalDeleteDemo"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      if (!confirm('هل تريد حذف هذه الحصة التوضيحية نهائياً؟')) return;
+      const id = el.getAttribute('data-id');
+      const coordId = el.getAttribute('data-coord-id');
+      try{
+        await DB.deleteTask(id);
+        if (coordId){ DB.createNotification({ school: State.user.school, sender_id: State.user.id, sender_name: State.user.full_name, target_type:'user', target_id: coordId, type:'general', title:'حذف حصة توضيحية', body: State.user.full_name+' قام بحذف الحصة التوضيحية من الجدول.' }).catch(function(){}); }
+        toast('تم حذف الحصة التوضيحية.');
+        await render();
+      }catch(e){ toast(arabicError(e)); }
+    });
+  });
 }
 async function screenPrincipalGifted(){
   const reports = await DB.listGiftedReports(State.user.school, { forPrincipal: true }).catch(function(){ return []; });
