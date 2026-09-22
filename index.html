@@ -7615,6 +7615,18 @@ function bindStudentRoster(){
 let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
 function examSavedKey(){ return 'exam_analyses_'+(State.user?State.user.id:'anon'); }
 function loadExamSaved(){ try{ return JSON.parse(localStorage.getItem(examSavedKey())||'[]'); }catch(e){ return []; } }
+function _examDraftKey(){ return 'exam_draft_'+(State.user?State.user.id:'anon'); }
+function saveExamDraft(){
+  if (!ExamAnalysisUI.rows||!ExamAnalysisUI.rows.length) return;
+  try{ localStorage.setItem(_examDraftKey(), JSON.stringify({ rows:ExamAnalysisUI.rows, maxScore:ExamAnalysisUI.maxScore, customPassScore:ExamAnalysisUI.customPassScore, subject:ExamAnalysisUI.subject, term:ExamAnalysisUI.term })); }catch(e){}
+}
+function restoreExamDraft(){
+  try{
+    var d=JSON.parse(localStorage.getItem(_examDraftKey())||'null');
+    if (d&&d.rows&&d.rows.length){ ExamAnalysisUI.rows=d.rows; ExamAnalysisUI.maxScore=d.maxScore||40; ExamAnalysisUI.customPassScore=d.customPassScore||null; ExamAnalysisUI.subject=d.subject||''; ExamAnalysisUI.term=d.term||''; }
+  }catch(e){}
+}
+function clearExamDraft(){ try{ localStorage.removeItem(_examDraftKey()); }catch(e){} }
 function saveExamAnalysis(){
   if (!ExamAnalysisUI.rows||!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات لحفظها.'); return; }
   const list = loadExamSaved();
@@ -7974,6 +7986,7 @@ function parseExamPasteText(text){
 }
 async function screenExamAnalysis(){
   if (!State.user || !['admin','super_admin','coordinator','principal','teacher'].includes(State.user.role)){ go('dashboard'); return ''; }
+  if (!ExamAnalysisUI.rows) restoreExamDraft();
   const rows = ExamAnalysisUI.rows || [];
   const maxScore = ExamAnalysisUI.maxScore;
   const passScore = examPassScore();
@@ -8237,14 +8250,15 @@ function bindExamAnalysis(){
       ExamAnalysisUI.rows = parseExamRows(dataRows);
       ExamAnalysisUI.resultModal = null;
       if (!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات صالحة في الملف.'); return; }
+      saveExamDraft();
       render(); bindExamAnalysis();
     };
     if (isXlsx){ reader.readAsArrayBuffer(file); } else { reader.readAsText(file, 'UTF-8'); }
   });
   const subjectInput = document.getElementById('examSubjectInput');
-  if (subjectInput){ subjectInput.value = ExamAnalysisUI.subject||''; subjectInput.addEventListener('input', function(){ ExamAnalysisUI.subject = this.value; }); }
+  if (subjectInput){ subjectInput.value = ExamAnalysisUI.subject||''; subjectInput.addEventListener('input', function(){ ExamAnalysisUI.subject = this.value; saveExamDraft(); }); }
   const termInput = document.getElementById('examTermInput');
-  if (termInput){ termInput.value = ExamAnalysisUI.term||''; termInput.addEventListener('input', function(){ ExamAnalysisUI.term = this.value; }); }
+  if (termInput){ termInput.value = ExamAnalysisUI.term||''; termInput.addEventListener('input', function(){ ExamAnalysisUI.term = this.value; saveExamDraft(); }); }
   const saveBtn = document.querySelector('[data-action="saveExamAnalysis"]');
   if (saveBtn) saveBtn.addEventListener('click', saveExamAnalysis);
   const printBtn = document.querySelector('[data-action="printExamReport"]');
@@ -8264,6 +8278,7 @@ function bindExamAnalysis(){
       ExamAnalysisUI.rows=entry.rows; ExamAnalysisUI.maxScore=entry.maxScore||40;
       ExamAnalysisUI.subject=entry.subject||''; ExamAnalysisUI.term=entry.term||'';
       ExamAnalysisUI.filterGrade=''; ExamAnalysisUI.filterSection=''; ExamAnalysisUI.failOnly=false; ExamAnalysisUI.sortDir=''; ExamAnalysisUI.resultModal=null;
+      saveExamDraft();
       render(); bindExamAnalysis();
     });
   });
@@ -8306,6 +8321,7 @@ function bindExamAnalysis(){
     ExamAnalysisUI.rows = parsed;
     ExamAnalysisUI.resultModal = null;
     ExamAnalysisUI.pasteModalOpen = false;
+    saveExamDraft();
     render(); bindExamAnalysis();
   });
 }
