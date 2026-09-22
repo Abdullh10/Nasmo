@@ -4701,14 +4701,25 @@ async function screenCoordinatorTasks(){
     return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(b.created_at) - new Date(a.created_at));
   });
 
+  function fmtTaskDesc(t){
+    if (!t.description) return '';
+    try{
+      var d = JSON.parse(t.description);
+      if (d._type==='demoLesson'){
+        return esc(d.day||'')+(d.date?' '+fmtDate(d.date):'')+(d.period?' · الحصة '+d.period:'')+(d.startTime?' ('+d.startTime+(d.endTime?' - '+d.endTime:'')+')':[])+(d.subject?' · مادة '+esc(d.subject):'');
+      }
+    }catch(e){}
+    return esc(t.description);
+  }
   const rows = sorted.map(function(t){
     const done = t.status==='done';
     const wasReturned = !done && t.coordinator_status==='returned';
     const statusCls = done ? 'approved' : (wasReturned ? 'returned' : 'pending');
     const statusLbl = done ? 'مكتملة' : (wasReturned ? 'أُعيدت للمعلم وبانتظار التعديل' : 'بانتظار التنفيذ');
+    var desc = fmtTaskDesc(t);
     return (
       '<tr>' +
-        '<td><b>'+esc(t.title)+'</b>'+(t.description?('<div style="color:var(--muted);font-size:12px;">'+esc(t.description)+'</div>'):'')+'</td>' +
+        '<td><b>'+esc(t.title)+'</b>'+(desc?('<div style="color:var(--muted);font-size:12px;">'+desc+'</div>'):'')+'</td>' +
         '<td>'+esc(t.assigned_to_name||'')+'</td>' +
         '<td>'+(t.due_date?fmtDate(t.due_date):'—')+'</td>' +
         '<td><span class="badge '+statusCls+'">'+statusLbl+'</span></td>' +
