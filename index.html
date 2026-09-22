@@ -16571,7 +16571,16 @@ function bindEditor(){
         EditorState.manualTeacherFields.delete(target);
         setPath(EditorState.data, target, el.value);
         const selOpt = el.options[el.selectedIndex];
-        setPath(EditorState.data, target + '_id', (selOpt && selOpt.getAttribute('data-id')) || null);
+        const teacherId = (selOpt && selOpt.getAttribute('data-id')) || null;
+        setPath(EditorState.data, target + '_id', teacherId);
+        /* استدعاء التخصص تلقائياً إذا كان الحقل اسم مشارك/حاضر */
+        if (target.match(/\.(name)$/) && el.value) {
+          const specTarget = target.replace(/\.name$/, '.spec');
+          const teacher = (EditorState.teachers||[]).find(function(t){ return t.id===teacherId || t.full_name===el.value; });
+          if (teacher && teacher.specialty) {
+            setPath(EditorState.data, specTarget, teacher.specialty);
+          }
+        }
       }
       render(); bindEditor();
     });
