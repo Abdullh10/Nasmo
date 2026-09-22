@@ -8087,6 +8087,7 @@ async function screenExamAnalysis(){
         '<input class="input" id="examTermInput" placeholder="الفصل الدراسي" value="'+esc(ExamAnalysisUI.term||'')+'" style="max-width:160px;">'+
         '<button class="btn btn-ghost btn-sm" data-action="saveExamAnalysis">💾 حفظ التحليل</button>'+
         '<button class="btn btn-ghost btn-sm" data-action="printExamReport">🖨 طباعة التقرير</button>'+
+        '<button class="btn btn-ghost btn-sm" style="color:var(--danger,#dc2626);" data-action="clearExamAnalysis">🗑 مسح التحليل</button>'+
       '</div>'+
       examStatsHtml(rows, maxScore)+
       examFiltersHtml(rows)+
@@ -8274,6 +8275,13 @@ function bindExamAnalysis(){
   if (saveBtn) saveBtn.addEventListener('click', saveExamAnalysis);
   const printBtn = document.querySelector('[data-action="printExamReport"]');
   if (printBtn) printBtn.addEventListener('click', function(){ exportFormToPdf('تحليل_الاختبار.pdf'); });
+  const clearAnalysisBtn = document.querySelector('[data-action="clearExamAnalysis"]');
+  if (clearAnalysisBtn) clearAnalysisBtn.addEventListener('click', function(){
+    if (!confirm('هل تريد مسح التحليل الحالي؟ سيتم حذفه نهائياً.')) return;
+    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
+    clearExamDraft();
+    render(); bindExamAnalysis();
+  });
   const autoSortBtn = document.querySelector('[data-action="runExamAutoSort"]');
   if (autoSortBtn) autoSortBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true; var _origAS = this.textContent; this.textContent = 'جارٍ إنشاء الخطط…';
