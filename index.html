@@ -16054,7 +16054,7 @@ function renderIndicatorReport(d, ro, teachers){
     return (
       '<tr><td style="width:36px;">'+(i+1)+'</td>' +
         '<td>'+teacherSelectInlineHtml('participants.'+i+'.name', p.name, teachers, ro)+'</td>' +
-        '<td><input class="input" data-field="participants.'+i+'.spec" value="'+esc(p.spec)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td>'+(ro?'<span>'+esc(p.spec||'—')+'</span>':'<select class="input" data-field="participants.'+i+'.spec"><option value="">— اختر التخصص —</option>'+SPECIALTIES.map(function(s){ return '<option value="'+esc(s)+'"'+(p.spec===s?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select>')+'</td>' +
         (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="participants" data-idx="'+i+'">✕</button></td>') +
       '</tr>'
     );
@@ -16215,7 +16215,7 @@ function renderPlcMeeting(d, ro, teachers){
   const attRows = d.attendees.map(function(a,i){
     return (
       '<tr><td>'+teacherSelectInlineHtml('attendees.'+i+'.name', a.name, teachers, ro)+'</td>' +
-        '<td><input class="input" data-field="attendees.'+i+'.spec" value="'+esc(a.spec)+'" '+(ro?'disabled':'')+'></td>' +
+        '<td>'+(ro?'<span>'+esc(a.spec||'—')+'</span>':'<select class="input" data-field="attendees.'+i+'.spec"><option value="">— اختر التخصص —</option>'+SPECIALTIES.map(function(s){ return '<option value="'+esc(s)+'"'+(a.spec===s?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select>')+'</td>' +
         '<td style="text-align:center;"><input type="checkbox" data-action="toggleAttend" data-idx="'+i+'" '+(a.present?'checked':'')+' '+(ro?'disabled':'')+'></td>' +
         (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="attendees" data-idx="'+i+'">✕</button></td>') +
       '</tr>'
