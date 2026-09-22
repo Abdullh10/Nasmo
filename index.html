@@ -2822,6 +2822,8 @@ function formDef(id){ return FORM_DEFS.find(function(f){ return f.id===id; }); }
 
 const STATUS_LABEL = { draft:'مسودة', pending:'بانتظار الاعتماد', approved:'معتمد', returned:'مرتجع للتعديل' };
 const ROLE_LABEL = { coordinator:'منسق مجتمع مهني', principal:'مدير المدرسة', vice_principal:'وكيل المدرسة', teacher:'معلم', admin:'مدير نظام', counselor:'موجه طلابي', super_admin:'سوبر أدمن' };
+const SPECIALTIES = ['التربية الإسلامية','اللغة العربية','التنمية المستدامة','التربية الفنية','الكفايات اللغوية','الرياضيات','الأحياء','التفكير الناقد','الكيمياء','الفيزياء','التقنية الرقمية','التربية الصحية والبدنية','اللغة الإنجليزية','علم الأرض','الاجتماعيات','التاريخ','البحث ومصادر المعلومات'];
+function specialtySelectHtml(id, current){ return '<select class="input" id="'+id+'"><option value="">— اختر التخصص —</option>'+SPECIALTIES.map(function(s){ return '<option value="'+esc(s)+'"'+(current===s?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select>'; }
 function isPrincipal(u){ return u && (u.role==='principal' || u.role==='vice_principal'); }
 
 /* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
@@ -3940,7 +3942,7 @@ function showProfileModal(){
       '<h3 style="font-size:16px;font-weight:700;margin-bottom:4px;">ملفي الشخصي</h3>' +
       '<p style="font-size:12.5px;color:var(--muted);margin-bottom:18px;">اسم المستخدم والمدرسة والصلاحية لا يمكن تغييرها.</p>' +
       '<div class="field"><label>الاسم الكامل</label><input class="input" id="pmName" value="'+esc(u.full_name||'')+'"></div>' +
-      '<div class="field"><label>التخصص (اختياري)</label><input class="input" id="pmSpecialty" value="'+esc(u.specialty||'')+'"></div>' +
+      '<div class="field"><label>التخصص (اختياري)</label>'+specialtySelectHtml('pmSpecialty', u.specialty||'')+'</div>' +
       '<div class="field"><label>رقم الجوال (اختياري)</label><input class="input" id="pmPhone" value="'+esc(u.phone||'')+'"></div>' +
       '<div class="field"><label>البريد الإلكتروني (اختياري)</label><input class="input" id="pmEmail" type="email" value="'+esc(u.email||'')+'"></div>' +
       '<hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">' +
@@ -14619,7 +14621,7 @@ function userModal(users, communities){
           '<option value="">— بدون مجتمع —</option>' +
           communities.map(function(c){ return '<option value="'+c.id+'" '+(selectedCommunity===c.id?'selected':'')+'>'+esc(c.name)+' — '+esc(c.school)+'</option>'; }).join('') +
         '</select></div>' +
-        '<div class="field"><label>التخصص (اختياري)</label><input class="input" id="umSpecialty" value="'+esc(editing?editing.specialty||'':'')+'"></div>' +
+        '<div class="field"><label>التخصص (اختياري)</label>'+specialtySelectHtml('umSpecialty', editing?editing.specialty||'':'')+'</div>' +
         '<div class="field"><label>رقم الجوال (اختياري)</label><input class="input" id="umPhone" value="'+esc(editing?editing.phone||'':'')+'"></div>' +
         '<div class="field"><label>البريد الإلكتروني (اختياري)</label><input class="input" id="umEmail" type="email" value="'+esc(editing?editing.email||'':'')+'"></div>' +
         '<div class="modal-actions">' +
