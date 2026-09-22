@@ -3187,13 +3187,31 @@ function buildSignaturePad(name, existingDataUrl, readonly){
   }
   const cid = 'pad_' + name;
   setTimeout(function(){ mountPad(cid, name, existingDataUrl); }, 0);
+  const tabBase = 'border:none;font-size:12px;padding:5px 14px;cursor:pointer;';
   return (
     '<div class="sig-box" id="wrap_'+cid+'">' +
-      (sigSrc ? '<img class="sig-img" src="'+esc(sigSrc)+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
-      '<canvas id="'+cid+'" width="500" height="140"></canvas>' +
-      '<div class="sig-actions">' +
-        '<span class="sig-name">وقّع بإصبعك أو بالماوس داخل الإطار</span>' +
-        '<button type="button" class="btn btn-ghost btn-sm" data-action="clearPad" data-pad="'+cid+'">مسح التوقيع</button>' +
+      '<div style="display:flex;gap:0;margin-bottom:8px;border:1px solid var(--border);border-radius:7px;overflow:hidden;width:fit-content;">' +
+        '<button type="button" id="'+cid+'_tab_draw" data-action="sigTabSwitch" data-pad="'+cid+'" data-mode="draw" style="'+tabBase+'background:var(--primary,#2563eb);color:#fff;">✏️ رسم التوقيع</button>' +
+        '<button type="button" id="'+cid+'_tab_upload" data-action="sigTabSwitch" data-pad="'+cid+'" data-mode="upload" style="'+tabBase+'background:var(--bg-2,#f4f6f8);color:var(--text);">📷 رفع صورة</button>' +
+      '</div>' +
+      '<div id="'+cid+'_draw_panel">' +
+        (sigSrc ? '<img class="sig-img" src="'+esc(sigSrc)+'" alt="توقيع محفوظ" style="display:block;margin-bottom:8px;">' : '') +
+        '<canvas id="'+cid+'" width="500" height="140"></canvas>' +
+        '<div class="sig-actions">' +
+          '<span class="sig-name">وقّع بإصبعك أو بالماوس داخل الإطار</span>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-action="clearPad" data-pad="'+cid+'">مسح التوقيع</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="'+cid+'_upload_panel" style="display:none;">' +
+        '<label id="'+cid+'_upload_label" style="display:block;border:2px dashed var(--border);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;">' +
+          '<input type="file" accept="image/*" id="'+cid+'_file" style="display:none;">' +
+          '<div style="font-size:28px;margin-bottom:6px;">🖼️</div>' +
+          '<div style="font-size:13px;color:var(--muted);">اضغط لاختيار صورة التوقيع من الجهاز</div>' +
+        '</label>' +
+        '<div id="'+cid+'_img_wrap" style="display:none;margin-top:8px;text-align:center;">' +
+          '<img id="'+cid+'_img_preview" style="max-height:140px;max-width:100%;border-radius:8px;border:1px solid var(--border);">' +
+          '<div style="margin-top:6px;"><button type="button" class="btn btn-ghost btn-sm" data-action="clearUploadSig" data-pad="'+cid+'" style="color:var(--danger);">🗑 إزالة الصورة</button></div>' +
+        '</div>' +
       '</div>' +
     '</div>'
   );
@@ -3203,7 +3221,7 @@ function mountPad(cid, name){
   if (!canvas || (Pads[cid] && Pads[cid].el === canvas)) return;
   if (Pads[cid] && Pads[cid]._ac) Pads[cid]._ac.abort();
   const ctx = canvas.getContext('2d');
-  let drawing = false, hasInk = false;
+  let drawing = false, hasInk = false, uploadedDataUrl = null, mode = 'draw';
   const _ac = new AbortController();
   const sig = _ac.signal;
   function pos(e){
@@ -3221,11 +3239,69 @@ function mountPad(cid, name){
   canvas.addEventListener('touchstart', start, {passive:false, signal:sig});
   canvas.addEventListener('touchmove', move, {passive:false, signal:sig});
   canvas.addEventListener('touchend', end, {signal:sig});
+
+  /* --- تبديل وضع الإدخال --- */
+  const drawPanel = document.getElementById(cid+'_draw_panel');
+  const uploadPanel = document.getElementById(cid+'_upload_panel');
+  const drawTabBtn = document.getElementById(cid+'_tab_draw');
+  const uploadTabBtn = document.getElementById(cid+'_tab_upload');
+  function switchMode(m){
+    mode = m;
+    const activeStyle = 'background:var(--primary,#2563eb);color:#fff;';
+    const inactiveStyle = 'background:var(--bg-2,#f4f6f8);color:var(--text);';
+    if (m === 'draw'){
+      if (drawPanel) drawPanel.style.display = '';
+      if (uploadPanel) uploadPanel.style.display = 'none';
+      if (drawTabBtn) drawTabBtn.setAttribute('style', drawTabBtn.getAttribute('style').replace(/background:[^;]+;color:[^;]+;/, activeStyle));
+      if (uploadTabBtn) uploadTabBtn.setAttribute('style', uploadTabBtn.getAttribute('style').replace(/background:[^;]+;color:[^;]+;/, inactiveStyle));
+    } else {
+      if (drawPanel) drawPanel.style.display = 'none';
+      if (uploadPanel) uploadPanel.style.display = '';
+      if (uploadTabBtn) uploadTabBtn.setAttribute('style', uploadTabBtn.getAttribute('style').replace(/background:[^;]+;color:[^;]+;/, activeStyle));
+      if (drawTabBtn) drawTabBtn.setAttribute('style', drawTabBtn.getAttribute('style').replace(/background:[^;]+;color:[^;]+;/, inactiveStyle));
+    }
+  }
+  if (drawTabBtn) drawTabBtn.addEventListener('click', function(){ switchMode('draw'); }, {signal:sig});
+  if (uploadTabBtn) uploadTabBtn.addEventListener('click', function(){ switchMode('upload'); }, {signal:sig});
+
+  /* --- رفع صورة التوقيع --- */
+  const fileInput = document.getElementById(cid+'_file');
+  const uploadLabel = document.getElementById(cid+'_upload_label');
+  const imgWrap = document.getElementById(cid+'_img_wrap');
+  const imgPreview = document.getElementById(cid+'_img_preview');
+  if (fileInput) fileInput.addEventListener('change', function(){
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e){
+      uploadedDataUrl = e.target.result;
+      if (imgPreview) imgPreview.src = uploadedDataUrl;
+      if (imgWrap) imgWrap.style.display = '';
+      if (uploadLabel) uploadLabel.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }, {signal:sig});
+
   Pads[cid] = {
     el:canvas, name:name, _ac:_ac,
-    clear:function(){ ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false; },
-    isEmpty:function(){ return !hasInk; },
-    toDataUrl:function(){ return hasInk ? canvas.toDataURL('image/png') : null; }
+    getMode: function(){ return mode; },
+    clear:function(){
+      ctx.clearRect(0,0,canvas.width,canvas.height); hasInk=false;
+      uploadedDataUrl=null;
+      if (imgWrap) imgWrap.style.display='none';
+      if (uploadLabel) uploadLabel.style.display='';
+      if (imgPreview) imgPreview.src='';
+      if (fileInput) fileInput.value='';
+    },
+    clearUpload:function(){
+      uploadedDataUrl=null;
+      if (imgWrap) imgWrap.style.display='none';
+      if (uploadLabel) uploadLabel.style.display='';
+      if (imgPreview) imgPreview.src='';
+      if (fileInput) fileInput.value='';
+    },
+    isEmpty:function(){ return mode==='draw' ? !hasInk : !uploadedDataUrl; },
+    toDataUrl:function(){ return mode==='draw' ? (hasInk ? canvas.toDataURL('image/png') : null) : uploadedDataUrl; }
   };
 }
 function clearPad(cid){ if (Pads[cid]) Pads[cid].clear(); }
@@ -16250,6 +16326,9 @@ function bindEditor(){
   document.querySelectorAll('[data-action="clearPad"]').forEach(function(el){
     el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
   });
+  document.querySelectorAll('[data-action="clearUploadSig"]').forEach(function(el){
+    el.addEventListener('click', function(){ var p=Pads[el.getAttribute('data-pad')]; if(p) p.clearUpload(); });
+  });
   const resign = document.querySelector('[data-action="resign"]');
   if (resign) resign.addEventListener('click', function(){ EditorState.prepSig=null; render(); bindEditor(); });
 
@@ -16624,6 +16703,9 @@ function bindReview(){
   document.querySelector('[data-action="exportPdf"]').addEventListener('click', function(e){ exportFormToPdf(e.currentTarget.getAttribute('data-filename')); });
   document.querySelectorAll('[data-action="clearPad"]').forEach(function(el){
     el.addEventListener('click', function(){ clearPad(el.getAttribute('data-pad')); });
+  });
+  document.querySelectorAll('[data-action="clearUploadSig"]').forEach(function(el){
+    el.addEventListener('click', function(){ var p=Pads[el.getAttribute('data-pad')]; if(p) p.clearUpload(); });
   });
   document.querySelector('[data-action="approveSub"]').addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
