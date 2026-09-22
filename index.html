@@ -7612,7 +7612,7 @@ function bindStudentRoster(){
 }
 
 /* ----- شاشة المعلم: تحليل درجات اختبار نهاية الفصل والفرز الآلي للخطة العلاجية الجماعية ----- */
-let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
+let ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
 function examSavedKey(){ return 'exam_analyses_'+(State.user?State.user.id:'anon'); }
 function loadExamSaved(){ try{ return JSON.parse(localStorage.getItem(examSavedKey())||'[]'); }catch(e){ return []; } }
 function saveExamAnalysis(){
@@ -7663,7 +7663,7 @@ async function runExamIndividualSort(){
   if (added) invalidateAllScreenCaches();
   toast('تم إنشاء '+added+' خطة فردية جديدة'+(existing?' ('+existing+' موجودة مسبقاً)':'')+'.');
 }
-function examPassScore(){ return Math.round(ExamAnalysisUI.maxScore / 2); }
+function examPassScore(){ return ExamAnalysisUI.customPassScore != null ? ExamAnalysisUI.customPassScore : Math.round(ExamAnalysisUI.maxScore / 2); }
 function examTier(score, maxScore){
   if (score==null) return null;
   const p = score / maxScore;
@@ -7681,13 +7681,33 @@ function examKpiCard(label, value, color){
 function examStatsHtml(rows, maxScore){
   const valid = rows.filter(function(r){ return r.score!=null; });
   if (!valid.length) return '';
-  const passScore = Math.round(maxScore/2);
+  const passScore = examPassScore();
+  const n = valid.length;
   const passing = valid.filter(function(r){ return r.score >= passScore; }).length;
-  const failing = valid.length - passing;
-  const avg = valid.reduce(function(s,r){ return s+r.score; },0) / valid.length;
-  const maxS = Math.max.apply(null, valid.map(function(r){ return r.score; }));
-  const minS = Math.min.apply(null, valid.map(function(r){ return r.score; }));
-  const passRate = Math.round(passing / valid.length * 100);
+  const failing = n - passing;
+  const sorted = valid.map(function(r){ return r.score; }).sort(function(a,b){ return a-b; });
+  const avg = sorted.reduce(function(s,v){ return s+v; },0) / n;
+  const maxS = sorted[n-1];
+  const minS = sorted[0];
+  const range = maxS - minS;
+  const passRate = Math.round(passing / n * 100);
+
+  // Median
+  const mid = Math.floor(n/2);
+  const median = n%2!==0 ? sorted[mid] : ((sorted[mid-1]+sorted[mid])/2);
+
+  // Mode
+  const freq={};
+  sorted.forEach(function(v){ freq[v]=(freq[v]||0)+1; });
+  const maxFreq = Math.max.apply(null, Object.values(freq));
+  const modes = Object.keys(freq).filter(function(k){ return freq[k]===maxFreq; }).map(Number).sort(function(a,b){return a-b;});
+  const modeStr = (maxFreq===1||modes.length>3) ? 'لا يوجد' : modes.join('، ');
+
+  // Standard deviation & CV
+  const variance = sorted.reduce(function(s,v){ return s+Math.pow(v-avg,2); },0)/n;
+  const stdDev = Math.sqrt(variance);
+  const cv = avg>0 ? (stdDev/avg*100).toFixed(1)+'%' : '—';
+
   const tiers = [
     { label:'متميز',      color:'#16a34a', minP:0.90, maxP:2 },
     { label:'جيد',        color:'#2563eb', minP:0.75, maxP:0.90 },
@@ -7698,8 +7718,8 @@ function examStatsHtml(rows, maxScore){
     return Object.assign({},t,{ count: valid.filter(function(r){ const p=r.score/maxScore; return p>=t.minP && p<t.maxP; }).length });
   });
   const circ = 2*Math.PI*45;
-  const failArc = (failing/valid.length*circ).toFixed(2);
-  const passArc = (circ - failArc).toFixed(2);
+  const failArc = (failing/n*circ).toFixed(2);
+  const passArc = (circ-failArc).toFixed(2);
   const donut = '<svg width="110" height="110" viewBox="0 0 120 120">' +
     '<circle cx="60" cy="60" r="45" fill="none" stroke="var(--border)" stroke-width="15"/>' +
     (passing>0?'<circle cx="60" cy="60" r="45" fill="none" stroke="#16a34a" stroke-width="15" stroke-dasharray="'+passArc+' '+failArc+'" stroke-dashoffset="'+(-failArc)+'" transform="rotate(-90 60 60)"/>':'') +
@@ -7707,8 +7727,9 @@ function examStatsHtml(rows, maxScore){
     '<text x="60" y="55" text-anchor="middle" font-size="18" font-weight="bold" fill="var(--text)">'+passRate+'%</text>' +
     '<text x="60" y="72" text-anchor="middle" font-size="11" fill="var(--muted)">نجاح</text>' +
     '</svg>';
+
   const tierBars = tierCounts.map(function(t){
-    const pct = valid.length ? Math.round(t.count/valid.length*100) : 0;
+    const pct = n ? Math.round(t.count/n*100) : 0;
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">' +
       '<span style="width:88px;font-size:12px;color:'+t.color+';font-weight:600;text-align:right;">'+t.label+'</span>' +
       '<div style="flex:1;background:var(--border);border-radius:4px;height:16px;overflow:hidden;">' +
@@ -7717,20 +7738,123 @@ function examStatsHtml(rows, maxScore){
       '<span style="width:52px;font-size:12px;color:var(--muted);">'+t.count+' ('+pct+'%)</span>' +
     '</div>';
   }).join('');
-  return '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:18px;padding:16px;background:var(--surface);border-radius:12px;border:1px solid var(--border);">' +
+
+  // Section comparison table
+  const sectionGroups={};
+  valid.forEach(function(r){
+    const key=(r.grade||'—')+'||'+(r.section||'—');
+    if (!sectionGroups[key]) sectionGroups[key]={grade:r.grade||'—',section:r.section||'—',sc:[]};
+    sectionGroups[key].sc.push(r.score);
+  });
+  const sectionKeys=Object.keys(sectionGroups);
+  const sectionTable = sectionKeys.length>1 ? (function(){
+    const sRows=sectionKeys.sort().map(function(k){
+      const sg=sectionGroups[k];
+      const ss=sg.sc.slice().sort(function(a,b){return a-b;});
+      const sAvg=ss.reduce(function(a,v){return a+v;},0)/ss.length;
+      const sPct=Math.round(ss.filter(function(v){return v>=passScore;}).length/ss.length*100);
+      const color=sPct>=50?'#16a34a':'#dc2626';
+      return '<tr>'+
+        '<td style="padding:5px 8px;">'+esc(sg.grade)+'</td>'+
+        '<td style="padding:5px 8px;">'+esc(sg.section)+'</td>'+
+        '<td style="padding:5px 8px;font-variant-numeric:tabular-nums;">'+ss.length+'</td>'+
+        '<td style="padding:5px 8px;font-variant-numeric:tabular-nums;font-weight:600;">'+sAvg.toFixed(1)+'</td>'+
+        '<td style="padding:5px 8px;font-variant-numeric:tabular-nums;">'+ss[ss.length-1]+'</td>'+
+        '<td style="padding:5px 8px;font-variant-numeric:tabular-nums;">'+ss[0]+'</td>'+
+        '<td style="padding:5px 8px;font-variant-numeric:tabular-nums;color:'+color+';font-weight:600;">'+sPct+'%</td>'+
+      '</tr>';
+    });
+    const th='<th style="padding:5px 8px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;">';
+    return '<div style="margin-top:12px;overflow-x:auto;">'+
+      '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;">مقارنة الصفوف والشعب</div>'+
+      '<table style="border-collapse:collapse;width:100%;font-size:12.5px;">'+
+        '<thead><tr style="background:var(--surface-2);">'+
+          th+'الصف</th>'+th+'الشعبة</th>'+th+'العدد</th>'+th+'المتوسط</th>'+th+'الأعلى</th>'+th+'الأدنى</th>'+th+'النجاح%</th>'+
+        '</tr></thead>'+
+        '<tbody>'+sRows.join('')+'</tbody>'+
+      '</table></div>';
+  })() : '';
+
+  // Bell curve canvas (drawn in bindExamAnalysis)
+  const bellCurve = n>=3 && stdDev>0 ?
+    '<div style="margin-top:14px;"><div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;">منحنى التوزيع الطبيعي للدرجات</div>'+
+    '<canvas id="examBellCurve" width="460" height="110" style="max-width:100%;border-radius:6px;background:var(--surface-2);display:block;"></canvas></div>' : '';
+
+  return '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-bottom:4px;padding:16px;background:var(--surface);border-radius:12px;border:1px solid var(--border);">' +
     '<div style="flex-shrink:0;">'+donut+'</div>' +
     '<div style="flex:1;min-width:220px;">' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:12px;">' +
-        examKpiCard('إجمالي الطلاب', valid.length, '#6366f1') +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:8px;margin-bottom:12px;">' +
+        examKpiCard('إجمالي الطلاب', n, '#6366f1') +
         examKpiCard('ناجحون', passing, '#16a34a') +
         examKpiCard('دون المستوى', failing, '#dc2626') +
-        examKpiCard('المتوسط', avg.toFixed(1)+' / '+maxScore, '#2563eb') +
+        examKpiCard('المتوسط الحسابي', avg.toFixed(1)+' / '+maxScore, '#2563eb') +
+        examKpiCard('الوسيط', median+' / '+maxScore, '#7c3aed') +
+        examKpiCard('المنوال', modeStr, '#0891b2') +
+        examKpiCard('الانحراف المعياري', stdDev.toFixed(2), '#ea580c') +
+        examKpiCard('المدى', range+' درجة', '#64748b') +
+        examKpiCard('معامل الاختلاف', cv, '#be185d') +
         examKpiCard('أعلى درجة', maxS+' / '+maxScore, '#0891b2') +
         examKpiCard('أدنى درجة', minS+' / '+maxScore, '#d97706') +
       '</div>' +
       tierBars +
     '</div>' +
-  '</div>';
+  '</div>' +
+  sectionTable +
+  bellCurve;
+}
+function drawExamBellCurve(scores, avg, stdDev, passScore, maxScore){
+  const canvas = document.getElementById('examBellCurve');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const pad={l:36,r:20,t:20,b:28};
+  ctx.clearRect(0,0,W,H);
+  const xMin=Math.max(0,avg-3.5*stdDev), xMax=Math.min(maxScore,avg+3.5*stdDev);
+  const xRange=xMax-xMin||1;
+  function xC(x){ return pad.l+(x-xMin)/xRange*(W-pad.l-pad.r); }
+  function gauss(x){ return Math.exp(-0.5*Math.pow((x-avg)/stdDev,2))/(stdDev*Math.sqrt(2*Math.PI)); }
+  const steps=300, xs=[], ys=[];
+  let yMax=0;
+  for(let i=0;i<=steps;i++){ const x=xMin+i/steps*xRange; const y=gauss(x); xs.push(x); ys.push(y); if(y>yMax)yMax=y; }
+  function yC(y){ return pad.t+(1-y/yMax)*(H-pad.t-pad.b); }
+  const failX=xC(passScore);
+  // Fail shade
+  ctx.save(); ctx.beginPath(); ctx.moveTo(xC(xMin),yC(0));
+  xs.forEach(function(x,i){ if(x<=passScore) ctx.lineTo(xC(x),yC(ys[i])); });
+  ctx.lineTo(failX,yC(0)); ctx.closePath();
+  ctx.fillStyle='rgba(220,38,38,0.15)'; ctx.fill(); ctx.restore();
+  // Pass shade
+  ctx.save(); ctx.beginPath(); ctx.moveTo(failX,yC(0));
+  xs.forEach(function(x,i){ if(x>=passScore) ctx.lineTo(xC(x),yC(ys[i])); });
+  ctx.lineTo(xC(xMax),yC(0)); ctx.closePath();
+  ctx.fillStyle='rgba(22,163,74,0.1)'; ctx.fill(); ctx.restore();
+  // Curve
+  ctx.beginPath(); ctx.moveTo(xC(xs[0]),yC(ys[0]));
+  for(let i=1;i<=steps;i++) ctx.lineTo(xC(xs[i]),yC(ys[i]));
+  ctx.strokeStyle='#6366f1'; ctx.lineWidth=2.5; ctx.stroke();
+  // Score ticks
+  scores.forEach(function(s){
+    ctx.fillStyle=s>=passScore?'rgba(22,163,74,0.55)':'rgba(220,38,38,0.55)';
+    ctx.fillRect(xC(s)-1,H-pad.b-5,2,5);
+  });
+  // Mean line
+  const mX=xC(avg);
+  ctx.save(); ctx.setLineDash([5,3]); ctx.strokeStyle='#2563eb'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(mX,pad.t); ctx.lineTo(mX,H-pad.b); ctx.stroke(); ctx.restore();
+  // Pass line
+  ctx.save(); ctx.setLineDash([5,3]); ctx.strokeStyle='#dc2626'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(failX,pad.t); ctx.lineTo(failX,H-pad.b); ctx.stroke(); ctx.restore();
+  // X-axis
+  ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b);
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.setLineDash([]); ctx.stroke();
+  // Labels
+  ctx.fillStyle='#2563eb'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('م='+avg.toFixed(1),mX,pad.t-4);
+  ctx.fillStyle='#dc2626'; ctx.font='10px sans-serif';
+  ctx.fillText('نجاح='+passScore,failX,H-2);
+  ctx.fillStyle='#94a3b8'; ctx.font='10px sans-serif';
+  ctx.textAlign='left'; ctx.fillText(minS,pad.l,H-2);
+  ctx.textAlign='right'; ctx.fillText(maxS,W-pad.r,H-2);
 }
 function examFiltersHtml(rows){
   const grades = Array.from(new Set(rows.map(function(r){ return r.grade; }).filter(Boolean))).sort();
@@ -7772,6 +7896,17 @@ async function screenExamAnalysis(){
   const rows = ExamAnalysisUI.rows || [];
   const maxScore = ExamAnalysisUI.maxScore;
   const passScore = examPassScore();
+  // Compute global stats for z-score / percentile (over ALL rows with scores)
+  const allValid = rows.filter(function(r){ return r.score!=null; });
+  const _n = allValid.length;
+  const _avg = _n ? allValid.reduce(function(s,r){ return s+r.score; },0)/_n : 0;
+  const _std = _n>1 ? Math.sqrt(allValid.reduce(function(s,r){ return s+Math.pow(r.score-_avg,2); },0)/_n) : 0;
+  const _sortedScores = allValid.map(function(r){ return r.score; }).sort(function(a,b){ return a-b; });
+  function percentileRank(score){
+    const below = _sortedScores.filter(function(s){ return s<score; }).length;
+    return _n ? Math.round((below/_n)*100) : 0;
+  }
+
   let filtered = rows.filter(function(r){
     if (ExamAnalysisUI.failOnly && (r.score==null || r.score >= passScore)) return false;
     if (ExamAnalysisUI.filterGrade && r.grade !== ExamAnalysisUI.filterGrade) return false;
@@ -7785,12 +7920,25 @@ async function screenExamAnalysis(){
     const tierBadge = r.score==null
       ? '<span style="color:var(--muted);">لم تُحدَّد</span>'
       : '<span style="color:'+tier.color+';font-weight:600;">'+tier.icon+' '+tier.label+'</span>';
+    let zCell = '<td style="color:var(--muted);">—</td>';
+    let pctCell = '<td style="color:var(--muted);">—</td>';
+    if (r.score!=null && _std>0){
+      const z = (r.score-_avg)/_std;
+      const outlier = Math.abs(z)>2 ? ' <span title="خارج نطاق معيارين" style="color:#d97706;">⚠️</span>' : '';
+      zCell = '<td style="font-variant-numeric:tabular-nums;font-size:12px;color:'+(z<-1?'#dc2626':z>1?'#16a34a':'var(--text)')+';">'+z.toFixed(2)+outlier+'</td>';
+      const pct = percentileRank(r.score);
+      pctCell = '<td style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);">'+pct+'%</td>';
+    } else if (r.score!=null){
+      pctCell = '<td style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--muted);">'+percentileRank(r.score)+'%</td>';
+    }
     return '<tr>'+
       '<td><b>'+esc(r.name)+'</b></td>'+
       '<td>'+esc(r.grade||'—')+'</td>'+
       '<td>'+esc(r.section||'—')+'</td>'+
       '<td style="font-variant-numeric:tabular-nums;">'+(r.score==null?'<span style="color:var(--muted);">—</span>':r.score+' / '+maxScore)+'</td>'+
       '<td>'+tierBadge+'</td>'+
+      zCell+
+      pctCell+
     '</tr>';
   }).join('');
   const failCount = rows.filter(function(r){ return r.score!=null && r.score < passScore; }).length;
@@ -7819,7 +7967,8 @@ async function screenExamAnalysis(){
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="no-print">'+
         '<label style="font-size:13px;color:var(--muted);">الدرجة الكلية:</label>'+
         '<select class="input" id="examMaxScore" style="width:auto;min-width:80px;">'+maxScoreOpts+'</select>'+
-        '<span style="font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;">درجة النجاح: '+passScore+' من '+maxScore+'</span>'+
+        '<label style="font-size:13px;color:var(--muted);">درجة النجاح:</label>'+
+        '<input type="number" class="input" id="examPassScoreInput" min="1" max="'+maxScore+'" value="'+passScore+'" style="width:70px;" title="درجة النجاح (افتراضي: نصف الدرجة الكلية)">'+
         '<button class="btn btn-ghost btn-sm" data-action="downloadExamTemplate">تنزيل نموذج Excel</button>'+
         '<button class="btn btn-ghost btn-sm" data-action="triggerExamImport">رفع ملف الدرجات</button>'+
         '<button class="btn btn-ghost btn-sm" data-action="openExamPasteModal">📋 لصق الدرجات</button>'+
@@ -7836,7 +7985,7 @@ async function screenExamAnalysis(){
       examStatsHtml(rows, maxScore)+
       examFiltersHtml(rows)+
       '<div class="table-wrap"><div class="table-scroll"><table class="list">'+
-        '<thead><tr><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الشريحة</th></tr></thead>'+
+        '<thead><tr><th>الاسم</th><th>الصف</th><th>الشعبة</th><th>الدرجة</th><th>الشريحة</th><th title="الدرجة المعيارية — كم انحرافاً معيارياً فوق أو تحت المتوسط">Z</th><th title="الرتبة المئوية — نسبة الطلاب الذين درجتهم أقل">الرتبة%</th></tr></thead>'+
         '<tbody>'+(resultRows||'<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:20px;">لا توجد نتائج مطابقة لهذا الفلتر</td></tr>')+'</tbody>'+
       '</table></div></div>'+
       '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="no-print">'+
@@ -7938,7 +8087,7 @@ async function runExamAutoSort(){
   if (plans.length === 1){
     const s = await DB.getSubmission(plans[0].id);
     if (ExamAnalysisUI.rows && ExamAnalysisUI.rows.length) { var _al=loadExamSaved(); _al.unshift({id:Date.now().toString(),savedAt:new Date().toISOString(),subject:ExamAnalysisUI.subject,term:ExamAnalysisUI.term,maxScore:ExamAnalysisUI.maxScore,rows:ExamAnalysisUI.rows}); if(_al.length>5)_al.length=5; try{localStorage.setItem(examSavedKey(),JSON.stringify(_al));}catch(e){} }
-    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
+    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
     openEditor(s.form_type, s);
   } else {
     ExamAnalysisUI.resultModal = { totalAdded: totalAdded, plans: plans };
@@ -7946,9 +8095,20 @@ async function runExamAutoSort(){
   }
 }
 function bindExamAnalysis(){
-  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('dashboard'); });
+  document.querySelector('[data-action="back"]').addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('dashboard'); });
   const maxScoreSel = document.getElementById('examMaxScore');
-  if (maxScoreSel) maxScoreSel.addEventListener('change', function(){ ExamAnalysisUI.maxScore = Number(this.value)||40; render(); bindExamAnalysis(); });
+  if (maxScoreSel) maxScoreSel.addEventListener('change', function(){ ExamAnalysisUI.maxScore = Number(this.value)||40; ExamAnalysisUI.customPassScore = null; render(); bindExamAnalysis(); });
+  const passScoreInput = document.getElementById('examPassScoreInput');
+  if (passScoreInput){ passScoreInput.addEventListener('change', function(){ const v=Number(this.value); if(v>0&&v<=ExamAnalysisUI.maxScore){ ExamAnalysisUI.customPassScore=v; render(); bindExamAnalysis(); } }); }
+  // Bell curve
+  (function(){
+    const valid=(ExamAnalysisUI.rows||[]).filter(function(r){return r.score!=null;});
+    if(valid.length<3) return;
+    const sc=valid.map(function(r){return r.score;});
+    const avg2=sc.reduce(function(s,v){return s+v;},0)/sc.length;
+    const std2=Math.sqrt(sc.reduce(function(s,v){return s+Math.pow(v-avg2,2);},0)/sc.length);
+    if(std2>0) drawExamBellCurve(sc, avg2, std2, examPassScore(), ExamAnalysisUI.maxScore);
+  })();
   const filterGradeSel = document.getElementById('examFilterGrade');
   if (filterGradeSel) filterGradeSel.addEventListener('change', function(){ ExamAnalysisUI.filterGrade = this.value; render(); bindExamAnalysis(); });
   const filterSectionSel = document.getElementById('examFilterSection');
@@ -8036,7 +8196,7 @@ function bindExamAnalysis(){
     el.addEventListener('click', async function(){
       const s = await DB.getSubmission(el.getAttribute('data-id'));
       if (ExamAnalysisUI.rows && ExamAnalysisUI.rows.length) { var _al=loadExamSaved(); _al.unshift({id:Date.now().toString(),savedAt:new Date().toISOString(),subject:ExamAnalysisUI.subject,term:ExamAnalysisUI.term,maxScore:ExamAnalysisUI.maxScore,rows:ExamAnalysisUI.rows}); if(_al.length>5)_al.length=5; try{localStorage.setItem(examSavedKey(),JSON.stringify(_al));}catch(e){} }
-      ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
+      ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
       openEditor(s.form_type, s);
     });
   });
@@ -16757,7 +16917,7 @@ function bindGlobalAction(el){
   else if (action==='adminTab'){ el.addEventListener('click', function(){ State.adminTab = el.getAttribute('data-tab'); AdminLoginLogUI.open=false; go('dashboard'); }); }
   else if (action==='gotoPracticeBank'){ el.addEventListener('click', function(){ go('practiceBank'); }); }
   else if (action==='goStudentRoster'){ el.addEventListener('click', function(){ go('studentRoster'); }); }
-  else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('examAnalysis'); }); }
+  else if (action==='goExamAnalysis'){ el.addEventListener('click', function(){ ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false }; go('examAnalysis'); }); }
   else if (action==='openMyProfile'){ el.addEventListener('click', showProfileModal); }
   else if (action==='deleteDraft'){ el.addEventListener('click', async function(){
     if (!confirm('هل أنت متأكد من حذف هذه المسودة؟ لن تستطيع استرجاعها.')) return;
