@@ -3565,7 +3565,7 @@ function blankData(formType){
     case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'', evidenceFiles:[], oneDriveLink:'' };
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
     case 'plcMeetingMinutes': { const _plcComm = (State.communitiesCache||[]).find(function(c){ return c.id===State.user.community_id; }); return { school:State.user.school, plc:(_plcComm?_plcComm.name:''), date:today, time:'', meetingType:'اجتماع دوري', attendees:[{name:'',spec:'',present:true}], agenda:[''], summary:'', decisions:[{decision:'',responsible:'',deadline:''}] }; }
-    case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
+    case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ], evidenceFiles:[], oneDriveLink:'' };
     case 'plcSelfEval': return { school:State.user.school, plc:'', semester:'', criteria:blankSelfEvalCriteria(), reflection:'' };
     case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
     case 'behavioralPlan': return { school:State.user.school, grade:'', section:'', date:today, parentNotified:'لا', behaviorStudents:[ blankBehaviorRow() ], teacherOpinion:'' };
@@ -16523,7 +16523,8 @@ function renderMotivation(d, ro){
     inputField('وصف المبادرة','description',d.description,{type:'textarea',readonly:ro}) +
     '<div class="block-title"><span class="dot"></span> مؤشرات قياس الأثر</div>' +
     '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:40%;">المؤشر</th><th>القيمة قبل المبادرة</th><th>المستهدف</th><th>الفعلي</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+impacts+'</tbody></table></div>' +
-    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="impacts">+ إضافة مؤشر</button>')
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="impacts">+ إضافة مؤشر</button>') +
+    _formEvidenceSectionHtml(d, ro)
   );
 }
 
