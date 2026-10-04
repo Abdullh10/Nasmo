@@ -1268,6 +1268,21 @@ function checkEvidenceType(file){
   }
   return true;
 }
+const FORM_EVIDENCE_MAX_MB = 5;
+const FORM_EVIDENCE_ACCEPT_TYPES = ['image/', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument'];
+function checkFormEvidenceFile(file){
+  const extOk = /\.(jpg|jpeg|png|gif|webp|pdf|doc|docx)$/i.test(file.name||'');
+  const typeOk = FORM_EVIDENCE_ACCEPT_TYPES.some(function(t){ return file.type.startsWith(t); });
+  if (!typeOk && !extOk){
+    toast('الملف "' + file.name + '" غير مدعوم. المسموح به: صور، PDF، Word (.doc/.docx).');
+    return false;
+  }
+  if (file.size > FORM_EVIDENCE_MAX_MB * 1024 * 1024){
+    toast('الملف "' + file.name + '" يتجاوز الحد الأقصى (' + FORM_EVIDENCE_MAX_MB + ' MB).');
+    return false;
+  }
+  return true;
+}
 async function uploadFileToStorage(file){
   const ext = (file.name||'file').split('.').pop().toLowerCase() || 'bin';
   const uid = (AUTH && AUTH.user && AUTH.user.id) ? AUTH.user.id : 'anon';
@@ -3545,9 +3560,9 @@ let EditorState = null; // { formType, id(optional), data, status, prepSig, scho
 function blankData(formType){
   const today = new Date().toISOString().slice(0,10);
   switch(formType){
-    case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'', enrichmentPlan:'' };
+    case 'groupPlan': return { school:State.user.school, grade:'', section:'', subject:'', date:today, students:[ blankStudentRow() ], teacherOpinion:'', enrichmentPlan:'', evidenceFiles:[], oneDriveLink:'' };
     case 'indicatorReport': return { programType:'الفاعلية الجماعية للمعلمين', indicators:[], participants:[ {name:'', spec:''} ], descriptionItems:[], descriptionOther:'', recommendationItems:[], recommendationOther:'', parentNote:'' };
-    case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'' };
+    case 'individualAgreement': return { studentName:'', grade:'', section:'', sessions:[ blankSession() ], parentSuggested:'', evidenceFiles:[], oneDriveLink:'' };
     case 'modelLesson': return { day:'', date:today, school:State.user.school, period:'', plc:'', teacher:'', objectives:'', positives:['','','',''] };
     case 'plcMeetingMinutes': { const _plcComm = (State.communitiesCache||[]).find(function(c){ return c.id===State.user.community_id; }); return { school:State.user.school, plc:(_plcComm?_plcComm.name:''), date:today, time:'', meetingType:'اجتماع دوري', attendees:[{name:'',spec:'',present:true}], agenda:[''], summary:'', decisions:[{decision:'',responsible:'',deadline:''}] }; }
     case 'motivationInitiative': return { school:State.user.school, title:'', targetGroup:'المعلمين', types:[], description:'', execDate:today, strategy:'', impacts:[ {indicator:'', baseline:'', target:'', actual:''} ] };
@@ -16004,6 +16019,37 @@ const GP_SKILLS_OPTS = ['الفهم القرائي وتحليل النص','ال�
 const GP_TEACHER_OPINION_OPTS = ['تحسّن الطلاب بشكل ملحوظ في المهارات المستهدفة بعد التدخل العلاجي','حقق معظم الطلاب الهدف المستهدف ضمن الجدول الزمني المحدد','استجاب الطلاب بشكل إيجابي للأساليب العلاجية المستخدمة','لا يزال بعض الطلاب يحتاجون إلى دعم إضافي ومتابعة مستمرة','تباينت نتائج الطلاب وتطلّب الأمر تعديل الأساليب وتكثيف الدعم','تحسّن الأداء بصورة محدودة وتستلزم الحالة تدخلاً أكثر تخصصاً','أخرى'];
 const GP_TARGET_GOAL_OPTS = ['رفع مستوى الطالب إلى ما فوق حد الإتقان (50% فأكثر)','رفع درجة الطالب بنسبة 20% عن درجته الحالية','رفع درجة الطالب بنسبة 30% عن درجته الحالية','رفع درجة الطالب بنسبة 40% عن درجته الحالية','تحقيق نسبة 60% من الدرجة الكلية','تحقيق نسبة 70% من الدرجة الكلية (مستوى جيد)','إتقان المهارات الأساسية وتجاوز حد الإتقان','الانتقال من مستوى دون المتوسط إلى المتوسط','الانتقال من المستوى المتوسط إلى الجيد'];
 
+function _formEvidenceSectionHtml(d, ro){
+  var files = d.evidenceFiles || [];
+  var link = d.oneDriveLink || '';
+  var linkHtml = '';
+  if (link){
+    linkHtml = '<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">' +
+      '<a href="'+esc(link)+'" target="_blank" rel="noopener noreferrer" style="color:#0F766E;font-size:13px;">🔗 '+esc(link)+'</a>' +
+      (ro ? '' : '<button type="button" class="btn btn-ghost btn-sm" data-action="clearFormOneDriveLink" style="font-size:11px;padding:2px 8px;">✕ حذف الرابط</button>') +
+    '</div>';
+  } else if (!ro){
+    linkHtml = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">' +
+      '<input class="input" type="url" id="formOneDriveLinkInput" placeholder="رابط OneDrive أو Google Drive…" style="flex:1;font-size:13px;">' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-action="addFormOneDriveLink" style="white-space:nowrap;">➕ إضافة رابط</button>' +
+    '</div>';
+  }
+  return (
+    '<div class="block-title" style="margin-top:18px;"><span class="dot"></span> الشواهد والمستندات الداعمة ' +
+      '<span style="font-size:12px;font-weight:400;color:var(--muted);">(اختياري)</span>' +
+    '</div>' +
+    '<div class="field">' +
+      (ro ? '' : '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">يمكن إرفاق صور أو PDF أو Word (.doc/.docx)، أو إضافة رابط OneDrive — الحد الأقصى '+FORM_EVIDENCE_MAX_MB+' MB للملف الواحد.</div>') +
+      linkHtml +
+      '<div class="evidence-grid">' +
+        attachmentsGridHtml(files, !ro, 'rmvFormEvidence') +
+        (ro ? '' : '<label class="evidence-add" title="رفع ملف (صورة / PDF / Word)">+<input type="file" id="formEvidenceInput" accept="image/*,.pdf,.doc,.docx" multiple style="display:none;"></label>') +
+      '</div>' +
+      (files.length === 0 && ro ? '<div style="color:var(--muted);font-size:12px;">لا توجد شواهد مرفقة.</div>' : '') +
+    '</div>'
+  );
+}
+
 function renderGroupPlan(d, ro, students){
   const cards = d.students.map(function(s, i){
     const followupRows = (s.followups||[]).map(function(f, j){
@@ -16094,7 +16140,8 @@ function renderGroupPlan(d, ro, students){
     cards +
     (ro?'':'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"><button class="add-row-btn" data-action="addRow" data-list="students">+ إضافة طالب</button>'+studentMultiPickButtonHtml('students')+'</div>') +
     '<div class="block-title"><span class="dot"></span> رأي المعلم في فاعلية الخطة العلاجية</div>' +
-    teacherOpinionHtml
+    teacherOpinionHtml +
+    _formEvidenceSectionHtml(d, ro)
   );
 }
 
@@ -16347,7 +16394,8 @@ function renderIndividualAgreement(d, ro, teachers, students){
     sessions + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="sessions">+ إضافة جلسة متابعة أسبوعية</button>') +
     '<div class="block-title"><span class="dot"></span> الخطوات المقترحة من ولي أمر الطالب</div>' +
     inputField('','parentSuggested', d.parentSuggested, {type:'textarea', readonly:ro}) +
-    '<div class="upload-note">نظرًا لعدم امتلاك ولي الأمر حسابًا في النظام: يُرجى طباعة النموذج بعد الاعتماد للحصول على توقيع ولي الأمر يدويًا، أو رفع صورة توقيعه ضمن سجل الشواهد.</div>'
+    '<div class="upload-note">نظرًا لعدم امتلاك ولي الأمر حسابًا في النظام: يُرجى طباعة النموذج بعد الاعتماد للحصول على توقيع ولي الأمر يدويًا، أو رفع صورة توقيعه ضمن سجل الشواهد.</div>' +
+    _formEvidenceSectionHtml(d, ro)
   );
 }
 
@@ -16966,6 +17014,56 @@ function bindEditor(){
     if (this.disabled) return; this.disabled = true;
     try{ await persistEditor('approved'); } finally{ this.disabled = false; }
   });
+
+  /* رفع ملفات الشواهد للخطة الجماعية والخطة الفردية */
+  var _formEvidenceInput = document.getElementById('formEvidenceInput');
+  if (_formEvidenceInput){
+    _formEvidenceInput.addEventListener('change', async function(e){
+      var files = Array.from(e.target.files);
+      e.target.value = '';
+      for (var fi = 0; fi < files.length; fi++){
+        var file = files[fi];
+        if (!checkFormEvidenceFile(file)) continue;
+        try{
+          toast('جارٍ رفع الملف…');
+          var url = await uploadFileToStorage(file);
+          EditorState.data.evidenceFiles = EditorState.data.evidenceFiles || [];
+          EditorState.data.evidenceFiles.push({ name:file.name, type:file.type, url:url });
+          render(); bindEditor();
+        } catch(err){ toast(arabicError(err)); }
+      }
+    });
+  }
+  document.querySelectorAll('[data-action="rmvFormEvidence"]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.preventDefault();
+      var idx = +el.getAttribute('data-i');
+      var evArr = EditorState.data.evidenceFiles || [];
+      var removed = evArr[idx];
+      if (removed && removed.url) deleteFileFromStorage(removed.url);
+      evArr.splice(idx, 1);
+      EditorState.data.evidenceFiles = evArr;
+      render(); bindEditor();
+    });
+  });
+  var _addOneDriveLinkBtn = document.querySelector('[data-action="addFormOneDriveLink"]');
+  if (_addOneDriveLinkBtn){
+    _addOneDriveLinkBtn.addEventListener('click', function(){
+      var inp = document.getElementById('formOneDriveLinkInput');
+      if (!inp || !inp.value.trim()){ toast('أدخل رابطاً أولاً.'); return; }
+      var link = inp.value.trim();
+      if (!/^https?:\/\//i.test(link)){ toast('يرجى إدخال رابط صحيح يبدأ بـ https.'); return; }
+      EditorState.data.oneDriveLink = link;
+      render(); bindEditor();
+    });
+  }
+  var _clearOneDriveLinkBtn = document.querySelector('[data-action="clearFormOneDriveLink"]');
+  if (_clearOneDriveLinkBtn){
+    _clearOneDriveLinkBtn.addEventListener('click', function(){
+      EditorState.data.oneDriveLink = '';
+      render(); bindEditor();
+    });
+  }
 
   /* رفع ملف الشاهد لنموذج توثيق مبادرة تعليمية (محرر المنسق) */
   var _editorInitPickBtn = document.getElementById('editorInitFilePickBtn');
