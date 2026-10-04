@@ -2877,7 +2877,7 @@ const GOAL_TEMPLATES = [
   { category:'knowledgeSharing', title:'زيادة عدد الزيارات الصفية التبادلية بين المعلمين', unit:'زيارة' }
 ];
 function ratingLabel(rating){
-  return (rating===null || rating===undefined || rating==='') ? '' : (' '+rating+'/100');
+  return '';
 }
 function ratingInputHtml(id, current){
   const val = (current===null || current===undefined) ? 80 : current;
@@ -4209,10 +4209,9 @@ async function screenPrincipalCommunities(){
     const attendanceRate = meetingAttendanceRate(meetingSubs);
     const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
     const goalsRate = communityGoalsAvgProgress(cGoals);
-    const ratingRate = communityRatingAvg([cSubs, cTasks, cGoals, cShares]);
-    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate });
+    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
     return { community:c, leader:leader, members:members, subCounts:subCounts, totalSubs:cSubs.length, tasks:cTasks, doneTasks:doneTasks, goals:cGoals, notifs:cNotifs,
-      approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate, scorecard:scorecard };
+      approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, scorecard:scorecard };
   });
 
   PrincipalCommUI._rows = rows;
@@ -4226,14 +4225,14 @@ async function screenPrincipalCommunities(){
       '<div class="program-card" style="flex:1;min-width:200px;border-inline-start:4px solid var(--teal);padding:14px 18px;">' +
         '<div style="font-size:12px;color:var(--teal);font-weight:600;margin-bottom:6px;">الأفضل أداءً</div>' +
         '<div style="font-size:16px;font-weight:700;">'+esc(bestRow.community.name)+'</div>' +
-        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+(bestRow.leader?esc(bestRow.leader.full_name):'بلا منسق')+' · نتيجة: <b style="color:var(--teal);">'+bestRow.scorecard+'/100</b></div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+(bestRow.leader?esc(bestRow.leader.full_name):'بلا منسق')+' · نماذج معتمدة: <b style="color:var(--teal);">'+bestRow.subCounts.approved+'</b></div>' +
       '</div>'
     ) : '') +
     (worstRow ? (
       '<div class="program-card" style="flex:1;min-width:200px;border-inline-start:4px solid var(--danger);padding:14px 18px;">' +
         '<div style="font-size:12px;color:var(--danger);font-weight:600;margin-bottom:6px;">يحتاج دعمًا</div>' +
         '<div style="font-size:16px;font-weight:700;">'+esc(worstRow.community.name)+'</div>' +
-        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+(worstRow.leader?esc(worstRow.leader.full_name):'بلا منسق')+' · نتيجة: <b style="color:var(--danger);">'+worstRow.scorecard+'/100</b></div>' +
+        '<div style="font-size:13px;color:var(--muted);margin-top:4px;">'+(worstRow.leader?esc(worstRow.leader.full_name):'بلا منسق')+' · نماذج معتمدة: <b style="color:var(--danger);">'+worstRow.subCounts.approved+'</b></div>' +
       '</div>'
     ) : '') +
     '</div>'
@@ -4241,7 +4240,7 @@ async function screenPrincipalCommunities(){
 
   const summaryTable = (
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th><th>نسبة الحضور</th><th>التقييم الذاتي</th><th>تقدم الأهداف</th><th>متوسط تقييم المدير</th><th>نتيجة البرنامج النهائية (بطاقة الأداء)</th></tr></thead>' +
+      '<thead><tr><th>المجتمع المهني</th><th>المنسق (القائد)</th><th>الأعضاء</th><th>النماذج (معتمدة/قيد الانتظار/مرتجعة)</th><th>المهام (مكتملة/الإجمالي)</th><th>عدد الرسائل</th><th>نسبة الحضور</th><th>التقييم الذاتي</th><th>تقدم الأهداف</th><th>مستوى النشاط</th></tr></thead>' +
       '<tbody>' + (rows.length ? rows.map(function(r){
         return (
           '<tr>' +
@@ -4254,11 +4253,10 @@ async function screenPrincipalCommunities(){
             '<td>'+pctLabel(r.attendanceRate)+'</td>' +
             '<td>'+pctLabel(r.selfEvalRate)+'</td>' +
             '<td>'+pctLabel(r.goalsRate)+'</td>' +
-            '<td>'+ratingAvgLabel(r.ratingRate)+'</td>' +
-            '<td><b>'+(r.scorecard==null?'—':r.scorecard+'/100')+'</b></td>' +
+            '<td><b>'+(r.scorecard==null?'—':r.scorecard+'%')+'</b></td>' +
           '</tr>'
         );
-      }).join('') : '<tr class="empty-row"><td colspan="11">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
+      }).join('') : '<tr class="empty-row"><td colspan="10">لا توجد مجتمعات مهنية بهذه المدرسة بعد.</td></tr>') +
       '</tbody>' +
     '</table></div></div>'
   );
@@ -4281,7 +4279,7 @@ async function screenPrincipalCommunities(){
       '<div class="program-card">' +
         '<div class="ph">' +
           '<h3>'+esc(c.name)+'</h3>' +
-          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+(r.scorecard!=null?(' · نتيجة البرنامج النهائية: <b>'+r.scorecard+'/100</b>'):'')+'</p>' +
+          '<p>المنسق: '+(r.leader?esc(r.leader.full_name):'لم يُعيَّن منسق')+' · عدد المعلمين الأعضاء: '+r.members.length+(r.scorecard!=null?(' · مستوى النشاط: <b>'+r.scorecard+'%</b>'):'')+'</p>' +
         '</div>' +
         '<div class="kpi-grid">' +
           '<div class="kpi-card accent-success"><div class="v">'+r.subCounts.approved+'</div><div class="l">نماذج معتمدة</div></div>' +
@@ -4291,8 +4289,7 @@ async function screenPrincipalCommunities(){
           '<div class="kpi-card"><div class="v">'+pctLabel(r.attendanceRate)+'</div><div class="l">نسبة الحضور في اللقاءات</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(r.selfEvalRate)+'</div><div class="l">التقييم الذاتي</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(r.goalsRate)+'</div><div class="l">تقدم الأهداف ('+r.goals.length+')</div></div>' +
-          '<div class="kpi-card"><div class="v">'+ratingAvgLabel(r.ratingRate)+'</div><div class="l">متوسط تقييم المدير</div></div>' +
-          '<div class="kpi-card accent-success"><div class="v">'+(r.scorecard==null?'—':r.scorecard+'/100')+'</div><div class="l">نتيجة البرنامج النهائية</div></div>' +
+          '<div class="kpi-card accent-success"><div class="v">'+(r.scorecard==null?'—':r.scorecard+'%')+'</div><div class="l">مستوى نشاط المجتمع</div></div>' +
         '</div>' +
         '<div class="ind-row" style="cursor:pointer;" data-action="togglePrincipalComm" data-id="'+c.id+'">' +
           '<div class="ind-main"><div class="lbl">رسائل هذا المجتمع ('+r.notifs.length+')</div></div>' +
@@ -4312,7 +4309,7 @@ async function screenPrincipalCommunities(){
   const summaryCards = (
     '<div class="kpi-grid" style="margin-bottom:16px;">' +
       '<div class="kpi-card accent-pending"><div class="v">'+pendingSubsCount+'</div><div class="l">نماذج بانتظار الاعتماد</div></div>' +
-      '<div class="kpi-card accent-danger"><div class="v">'+commsBelowTarget+'</div><div class="l">مجتمعات أقل من الهدف (60/100)</div></div>' +
+      '<div class="kpi-card accent-danger"><div class="v">'+commsBelowTarget+'</div><div class="l">مجتمعات نشاطها أقل من 60%</div></div>' +
     '</div>'
   );
   return (
@@ -4414,7 +4411,7 @@ function bindPrincipalCommunities(){
       '<h2>تقرير المجتمعات المهنية</h2>' +
       '<h3>'+esc(State.user.school)+'</h3>' +
       '<p class="meta">التاريخ: '+new Date().toLocaleDateString('ar-SA')+'</p>' +
-      '<table><thead><tr><th>المجتمع</th><th>المنسق</th><th>الأعضاء</th><th>معتمدة</th><th>انتظار</th><th>مرتجعة</th><th>المهام</th><th>الحضور</th><th>التقييم الذاتي</th><th>الأهداف</th><th>تقييم المدير</th><th>النتيجة النهائية</th></tr></thead><tbody>' +
+      '<table><thead><tr><th>المجتمع</th><th>المنسق</th><th>الأعضاء</th><th>معتمدة</th><th>انتظار</th><th>مرتجعة</th><th>المهام</th><th>الحضور</th><th>التقييم الذاتي</th><th>الأهداف</th><th>مستوى النشاط</th></tr></thead><tbody>' +
       rows.map(function(r){
         return '<tr>' +
           '<td>'+esc(r.community.name)+'</td>' +
@@ -4427,8 +4424,7 @@ function bindPrincipalCommunities(){
           '<td>'+pctLabel(r.attendanceRate)+'</td>' +
           '<td>'+pctLabel(r.selfEvalRate)+'</td>' +
           '<td>'+pctLabel(r.goalsRate)+'</td>' +
-          '<td>'+ratingAvgLabel(r.ratingRate)+'</td>' +
-          '<td>'+(r.scorecard==null?'—':r.scorecard+'/100')+'</td>' +
+          '<td>'+(r.scorecard==null?'—':r.scorecard+'%')+'</td>' +
         '</tr>';
       }).join('') +
       '</tbody></table></body></html>';
@@ -4460,8 +4456,7 @@ async function screenCommunityReport(communityId){
   const attendanceRate = meetingAttendanceRate(meetingSubs);
   const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
   const goalsRate = communityGoalsAvgProgress(goals);
-  const ratingRate = communityRatingAvg([cSubs, tasks, goals, shares]);
-  const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, ratingRate:ratingRate });
+  const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
 
   const subsRows = approvedSubs.map(function(s){
     const def = formDef(s.form_type);
@@ -4493,14 +4488,13 @@ async function screenCommunityReport(communityId){
         '<div class="field-grid cols-3">' +
           inputField('المنسق (القائد)','leaderName', leader?leader.full_name:'لم يُعيَّن منسق', {readonly:true}) +
           inputField('عدد الأعضاء','membersCount', String(members.length), {readonly:true}) +
-          inputField('نتيجة البرنامج النهائية (من 100)','scorecard', scorecard==null?'—':String(scorecard), {readonly:true}) +
+          inputField('مستوى نشاط المجتمع','scorecard', scorecard==null?'—':String(scorecard)+'%', {readonly:true}) +
         '</div>' +
         '<div class="kpi-grid">' +
           '<div class="kpi-card accent-success"><div class="v">'+pctLabel(approvalRate)+'</div><div class="l">نسبة اعتماد النماذج</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(attendanceRate)+'</div><div class="l">نسبة الحضور في اللقاءات</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(selfEvalRate)+'</div><div class="l">التقييم الذاتي</div></div>' +
           '<div class="kpi-card"><div class="v">'+pctLabel(goalsRate)+'</div><div class="l">تقدم خطة التحسين</div></div>' +
-          '<div class="kpi-card"><div class="v">'+ratingAvgLabel(ratingRate)+'</div><div class="l">متوسط تقييم المدير</div></div>' +
         '</div>' +
         '<div class="block-title"><span class="dot"></span> النماذج المعتمدة ('+approvedSubs.length+')</div>' +
         '<div class="table-scroll"><table class="dyn-table"><thead><tr><th>النموذج</th><th>تاريخ الاعتماد</th></tr></thead><tbody>' +
@@ -5334,7 +5328,7 @@ function communityRatingAvg(itemGroups){
   return Math.max(0, Math.min(1, (ratings.reduce(function(a,b){ return a+b; },0) / ratings.length) / 100));
 }
 function communityScorecard(parts){
-  const vals = [parts.approvalRate, parts.attendanceRate, parts.selfEvalRate, parts.goalsRate, parts.ratingRate].filter(function(v){ return v!=null; });
+  const vals = [parts.approvalRate, parts.attendanceRate, parts.selfEvalRate, parts.goalsRate].filter(function(v){ return v!=null; });
   if (!vals.length) return null;
   return Math.round((vals.reduce(function(a,b){ return a+b; },0) / vals.length) * 100);
 }
@@ -5396,7 +5390,7 @@ async function screenCoordinatorGoals(){
     '</div>' +
     (State.user.community_id ? '' : '<p style="color:var(--muted);font-size:13.5px;">لم يُعيَّن مجتمع مهني لحسابك بعد. تواصل مع مدير النظام لربط حسابك بمجتمع.</p>') +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الموعد</th><th>الحالة</th><th>تقييم المدير</th><th></th></tr></thead>' +
+      '<thead><tr><th>الهدف</th><th>خط الأساس ← الهدف</th><th>القيمة الحالية</th><th>نسبة التحقق</th><th>الموعد</th><th>الحالة</th><th>حالة الاعتماد</th><th></th></tr></thead>' +
       '<tbody>' + (rows || '<tr class="empty-row"><td colspan="8">لا توجد أهداف بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>' +
     modal
@@ -5795,9 +5789,6 @@ async function screenPrincipalArchive(){
     const def = formDef(s.form_type);
     const comm = communities.find(function(c){ return c.id===s.community_id; });
     const approvedDate = s.approved_at ? fmtDate(s.approved_at) : (s.updated_at ? fmtDate(s.updated_at) : '—');
-    const rating = s.principal_rating != null ? (
-      '<span style="font-weight:700;color:var(--success);">'+s.principal_rating+'/100</span>'
-    ) : '<span style="color:var(--muted);">—</span>';
     return (
       '<tr data-type="'+esc(s.form_type)+'" data-comm="'+esc(s.community_id||'')+'" data-name="'+esc((s.created_by_name||'').toLowerCase())+'" data-date="'+(s.approved_at||s.updated_at||'').slice(0,10)+'">' +
         '<td class="no-print" style="text-align:center;"><input type="checkbox" class="arc-chk" data-id="'+esc(s.id)+'" style="width:16px;height:16px;cursor:pointer;"></td>' +
@@ -5808,7 +5799,6 @@ async function screenPrincipalArchive(){
         '<td>'+esc(s.created_by_name||'—')+'</td>' +
         '<td>'+esc(comm?comm.name:'—')+'</td>' +
         '<td style="font-variant-numeric:tabular-nums;white-space:nowrap;">'+approvedDate+'</td>' +
-        '<td>'+rating+'</td>' +
         '<td class="row-actions">' +
           '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض وطباعة</button>' +
         '</td>' +
@@ -5825,10 +5815,9 @@ async function screenPrincipalArchive(){
         '<th>المُعد</th>' +
         '<th>المجتمع المهني</th>' +
         '<th>تاريخ الاعتماد</th>' +
-        '<th>التقييم</th>' +
         '<th></th>' +
       '</tr></thead>' +
-      '<tbody id="arc-tbody">' + (rows || '<tr class="empty-row"><td colspan="7">لا توجد نماذج معتمدة بعد.</td></tr>') + '</tbody>' +
+      '<tbody id="arc-tbody">' + (rows || '<tr class="empty-row"><td colspan="6">لا توجد نماذج معتمدة بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>'
   );
 
@@ -6000,16 +5989,16 @@ async function screenPrincipalReview(){
     dashTabsHtml() +
     filterBtns +
     (showTasks ? (
-      '<div class="section-head"><h2>المهام المكتملة (بانتظار الاعتماد والتقييم)</h2></div>' +
+      '<div class="section-head"><h2>المهام المكتملة (بانتظار الاعتماد)</h2></div>' +
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-        '<thead><tr><th>المهمة</th><th>المعلم</th><th>المنسق المُكلِّف</th><th>تاريخ الإكمال</th><th>تقييم المدير</th><th></th></tr></thead>' +
+        '<thead><tr><th>المهمة</th><th>المعلم</th><th>المنسق المُكلِّف</th><th>تاريخ الإكمال</th><th>حالة الاعتماد</th><th></th></tr></thead>' +
         '<tbody id="pr-tasks-tbody">' + (taskRows || '<tr class="empty-row"><td colspan="6">لا توجد مهام مكتملة بعد.</td></tr>') + '</tbody>' +
       '</table></div></div>'
     ) : '') +
     (showGoals ? (
       '<div class="section-head" style="margin-top:24px;"><h2>خطط التحسين الفصلية وأهداف المجتمعات المهنية</h2></div>' +
       '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-        '<thead><tr><th>الهدف</th><th>المنسق</th><th>نسبة التحقق</th><th>تقييم المدير</th><th></th></tr></thead>' +
+        '<thead><tr><th>الهدف</th><th>المنسق</th><th>نسبة التحقق</th><th>حالة الاعتماد</th><th></th></tr></thead>' +
         '<tbody id="pr-goals-tbody">' + (goalRows || '<tr class="empty-row"><td colspan="5">لا توجد أهداف مسجَّلة بعد.</td></tr>') + '</tbody>' +
       '</table></div></div>'
     ) : '') +
@@ -6022,12 +6011,9 @@ function goalReviewModalHtml(g){
       '<div class="modal-box" onclick="event.stopPropagation()">' +
         '<h3>تقييم الهدف: '+esc(g.title)+'</h3>' +
         (g.principal_status ? ('<p>'+principalReviewBadgeHtml(g)+'</p>') : '') +
-        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('glRating', g.principal_rating)+
-          '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7;">90–100: خطة مثالية قابلة للنشر · 75–89: جيدة مع ملاحظات طفيفة · 60–74: تحتاج تحسيناً في عنصر واحد · أقل من 60: ترجع للمراجعة الشاملة</div>' +
-        '</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="glNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(g.principal_note||'')+'</textarea><div style="font-size:11px;color:var(--muted);margin-top:4px;">* مطلوب عند الإرجاع</div></div>' +
         '<div class="modal-actions">' +
-          '<button class="btn btn-gold btn-block" data-action="approveGoal">✓ اعتماد وتقييم</button>' +
+          '<button class="btn btn-gold btn-block" data-action="approveGoal">✓ اعتماد</button>' +
           '<button class="btn btn-danger btn-block" data-action="returnGoal">إرجاع للتعديل</button>' +
           '<button class="btn btn-ghost btn-block" data-action="closeGoalReviewModal">إغلاق</button>' +
         '</div>' +
@@ -6063,10 +6049,9 @@ function bindPrincipalReview(){
   if (closeBg) closeBg.addEventListener('click', closeModal);
   const approveBtn = document.querySelector('[data-action="approveGoal"]');
   if (approveBtn) approveBtn.addEventListener('click', async function(){
-    const rating = +document.getElementById('glRating').value;
     const note = document.getElementById('glNote').value.trim();
     try{
-      const approvedGoal = await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      const approvedGoal = await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'approved', principal_note: note||null, principal_reviewed_at: nowIso() });
       invalidatePendingCache();
       if (approvedGoal && approvedGoal.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:approvedGoal.created_by, type:'general', title:'تم اعتماد هدفك', body:'اعتمد '+State.user.full_name+' هدف التحسين الخاص بك.' }); }catch(e){}
@@ -6078,11 +6063,10 @@ function bindPrincipalReview(){
   });
   const returnBtn = document.querySelector('[data-action="returnGoal"]');
   if (returnBtn) returnBtn.addEventListener('click', async function(){
-    const rating = +document.getElementById('glRating').value;
     const note = document.getElementById('glNote').value.trim();
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
-      const returnedGoal = await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      const returnedGoal = await DB.updateGoal(PrincipalReviewUI.goalReviewId, { principal_status:'returned', principal_note: note, principal_reviewed_at: nowIso() });
       invalidatePendingCache();
       if (returnedGoal && returnedGoal.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:returnedGoal.created_by, type:'general', title:'تم إرجاع هدفك للتعديل', body:note }); }catch(e){}
@@ -6893,7 +6877,7 @@ async function screenPracticeBank(){
   }).join('');
 
   const approvedCards = approved.map(function(s){
-    const stars = s.principal_rating ? ('التقييم: '+s.principal_rating+'/100') : '';
+    const stars = '';
     const principalActions = isUserPrincipal ? (
       '<div class="row-actions" style="margin-top:8px;">' +
         '<button class="btn btn-ghost btn-sm" data-action="editPractice" data-id="'+s.id+'">تعديل</button>' +
@@ -6971,7 +6955,6 @@ function practiceReviewModalHtml(s){
         '<h3>مراجعة الممارسة: '+esc(s.title)+'</h3>' +
         '<p style="color:var(--muted);font-size:13.5px;">'+esc(s.description||'')+'</p>' +
         ((s.attachments && s.attachments.length) ? ('<div class="evidence-grid" style="margin:0 0 8px;">' + attachmentsGridHtml(s.attachments, false) + '</div>') : '') +
-        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('pkRating', s.principal_rating)+'</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="pkNote" placeholder="اكتب ملاحظتك...">'+esc(s.principal_note||'')+'</textarea></div>' +
         '<div class="modal-actions">' +
           '<button class="btn btn-gold btn-block" data-action="approvePractice">✓ اعتماد وعرضها في معرض المدرسة</button>' +
@@ -7094,10 +7077,9 @@ function bindPracticeBank(){
   const approveBtn = document.querySelector('[data-action="approvePractice"]');
   if (approveBtn) approveBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true; var _origAp = this.textContent; this.textContent = 'جارٍ الاعتماد…';
-    const rating = +document.getElementById('pkRating').value;
     const note = document.getElementById('pkNote').value.trim();
     try{
-      const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'approved', principal_note: note||null, principal_reviewed_at: nowIso() });
       if (updated && updated.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'تم اعتماد ممارستك', body:'اعتمد '+State.user.full_name+' ممارستك "'+esc(updated.title)+'" وعرضها في معرض المدرسة.' }); }catch(e){}
       }
@@ -7109,11 +7091,10 @@ function bindPracticeBank(){
   const returnBtn = document.querySelector('[data-action="returnPractice"]');
   if (returnBtn) returnBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true; var _origRt = this.textContent; this.textContent = 'جارٍ الإرجاع…';
-    const rating = +document.getElementById('pkRating').value;
     const note = document.getElementById('pkNote').value.trim();
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); this.disabled = false; this.textContent = _origRt; return; }
     try{
-      const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso() });
+      const updated = await DB.updatePracticeShare(PracticeBankUI.reviewId, { status:'returned', principal_note: note, principal_reviewed_at: nowIso() });
       if (updated && updated.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:updated.created_by, type:'general', title:'تم إرجاع ممارستك للتعديل', body:note }); }catch(e){}
       }
@@ -13720,12 +13701,11 @@ async function screenTaskDetail(taskId, readonly){
   const canReview = isUserPrincipal && t.status==='done';
   const reviewPanel = canReview ? (
     '<div class="review-panel no-print" style="margin-top:16px;">' +
-      '<h3>تقييم مدير المدرسة لإنجاز المهمة</h3>' +
+      '<h3>اعتماد مدير المدرسة لإنجاز المهمة</h3>' +
       (t.principal_status ? ('<p style="margin:0 0 10px;">'+principalReviewBadgeHtml(t)+'</p>') : '') +
       '<div class="review-grid">' +
-        '<div class="field"><label>التقييم (من 0 إلى 100)</label>'+ratingInputHtml('taskRating', t.principal_rating)+'</div>' +
         '<div class="field"><label>ملاحظة (مطلوبة عند الإرجاع)</label><textarea class="input" id="taskNote" placeholder="اكتب ملاحظتك التربوية...">'+esc(t.principal_note||'')+'</textarea></div>' +
-        '<button class="btn btn-gold btn-block" data-action="approveTask">✓ اعتماد وتقييم</button>' +
+        '<button class="btn btn-gold btn-block" data-action="approveTask">✓ اعتماد</button>' +
         '<button class="btn btn-danger btn-block" data-action="returnTask">إرجاع للتعديل</button>' +
       '</div>' +
     '</div>'
@@ -13828,10 +13808,9 @@ function bindTaskDetail(){
   });
   const approveTaskBtn = document.querySelector('[data-action="approveTask"]');
   if (approveTaskBtn) approveTaskBtn.addEventListener('click', async function(){
-    const rating = +document.getElementById('taskRating').value;
     const note = document.getElementById('taskNote').value.trim();
     try{
-      await DB.updateTask(TaskDetailCache.id, { principal_status:'approved', principal_rating: rating, principal_note: note||null, principal_reviewed_at: nowIso() });
+      await DB.updateTask(TaskDetailCache.id, { principal_status:'approved', principal_note: note||null, principal_reviewed_at: nowIso() });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (TaskDetailCache.assigned_to){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم اعتماد مهمتك: '+TaskDetailCache.title, body:'اعتمد '+State.user.full_name+' إنجازك للمهمة.' }); invalidateNotifCache(); }catch(e){}
@@ -13845,11 +13824,10 @@ function bindTaskDetail(){
   });
   const returnTaskBtn = document.querySelector('[data-action="returnTask"]');
   if (returnTaskBtn) returnTaskBtn.addEventListener('click', async function(){
-    const rating = +document.getElementById('taskRating').value;
     const note = document.getElementById('taskNote').value.trim();
     if (!note){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); return; }
     try{
-      await DB.updateTask(TaskDetailCache.id, { principal_status:'returned', principal_rating: rating, principal_note: note, principal_reviewed_at: nowIso(), status:'pending' });
+      await DB.updateTask(TaskDetailCache.id, { principal_status:'returned', principal_note: note, principal_reviewed_at: nowIso(), status:'pending' });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (TaskDetailCache.assigned_to){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:TaskDetailCache.assigned_to, type:'general', title:'تم إرجاع مهمتك للتعديل: '+TaskDetailCache.title, body:note }); invalidateNotifCache(); }catch(e){}
@@ -17203,10 +17181,9 @@ async function screenView(id){
   const stamp = s.status==='approved' ? (
     '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
   ) : '';
-  const evalBlock = (s.status==='approved' && (s.principal_rating || s.principal_note)) ? (
-    '<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة وتغذيته الراجعة</h3>' +
-      (s.principal_rating!=null ? ('<p style="margin:0 0 6px;font-size:18px;"><b>'+s.principal_rating+'/100</b></p>') : '') +
-      (s.principal_note ? ('<p style="color:var(--muted);font-size:13px;">'+esc(s.principal_note)+'</p>') : '') +
+  const evalBlock = (s.status==='approved' && s.principal_note) ? (
+    '<div class="review-panel no-print" style="margin-top:16px;"><h3>ملاحظات مدير المدرسة</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">'+esc(s.principal_note)+'</p>' +
     '</div>'
   ) : '';
   const isTeacherOrCoord = (State.user.role==='teacher' || State.user.role==='coordinator');
@@ -17329,7 +17306,6 @@ async function screenReview(id){
             '</div>' +
           '</div>' +
           '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
-          '<div class="field"><label>التقييم عند الاعتماد (من 0 إلى 100)</label>'+ratingInputHtml('reviewRating', s.principal_rating)+'</div>' +
           '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
           '<div class="field"><label>'+(State.user.role==='vice_principal' ? 'التوقيع الإلكتروني (بالنيابة عن مدير المدرسة)' : 'التوقيع الإلكتروني لمدير المدرسة')+'</label>' + buildSignaturePad('approve', null, false) + '</div>' +
           '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
@@ -17353,7 +17329,6 @@ function bindReview(){
     if (this.disabled) return; this.disabled = true;
     const pad = Pads['pad_approve'];
     if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); this.disabled = false; return; }
-    const rating = +document.getElementById('reviewRating').value;
     const note = document.getElementById('reviewNote').value.trim();
     let principalSigUrl;
     try{ principalSigUrl = await uploadSignatureToStorage(pad.toDataUrl()); }
@@ -17362,7 +17337,7 @@ function bindReview(){
       const _approverNote = State.user.role==='vice_principal'
         ? 'بالنيابة عن مدير المدرسة (' + (State.user.full_name||State.user.name||'') + ')'
         : 'اعتمد: ' + (State.user.full_name||State.user.name||'');
-      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment: _approverNote, principal_rating: rating, principal_note: note||null });
+      await DB.updateSubmission(ReviewCache.id, { status:'approved', principal_signature: principalSigUrl, approved_at: nowIso(), principal_comment: _approverNote, principal_note: note||null });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم اعتماد نموذجك', body:'اعتمد '+State.user.full_name+' نموذجك رسمياً.' }); invalidateNotifCache(); }catch(e){}
@@ -17376,8 +17351,7 @@ function bindReview(){
     const comment = document.getElementById('reviewComment').value.trim();
     if (!comment){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); this.disabled = false; return; }
     try{
-      const retRating = +(document.getElementById('reviewRating')||{value:0}).value || 0;
-      await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment, principal_rating: retRating||null });
+      await DB.updateSubmission(ReviewCache.id, { status:'returned', principal_comment: comment });
       invalidatePendingCache(); invalidateAllScreenCaches();
       if (ReviewCache.created_by){
         try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:ReviewCache.created_by, type:'general', title:'تم إرجاع نموذجك للتعديل', body:comment }); invalidateNotifCache(); }catch(e){}
