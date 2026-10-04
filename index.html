@@ -10544,11 +10544,11 @@ function bindCounselorCases(){
 }
 
 function buildPrincipalAnalyticsHtml(counts, totalSubs, pTasks, pGoals){
-  var total = totalSubs || 0;
+  var total = (counts.pending||0) + (counts.returned||0) + (counts.approved||0);
   if(!total && !((pTasks||[]).length) && !((pGoals||[]).length)) return '';
-  var STATUS_ORDER = ['pending','returned','draft','approved'];
-  var STATUS_COLORS = {pending:'#f59e0b',returned:'#ef4444',draft:'#94a3b8',approved:'#22c55e'};
-  var STATUS_NAMES  = {pending:'بانتظار الاعتماد',returned:'مرتجعة',draft:'مسودات',approved:'معتمدة'};
+  var STATUS_ORDER = ['pending','returned','approved'];
+  var STATUS_COLORS = {pending:'#f59e0b',returned:'#ef4444',approved:'#22c55e'};
+  var STATUS_NAMES  = {pending:'بانتظار الاعتماد',returned:'مرتجعة',approved:'معتمدة'};
   var cx=80,cy=80,r=60,sw=22;
   var gap=0.04;
   var donutPaths='';
@@ -10820,7 +10820,7 @@ async function screenDashboard(){
       '<div class="kpi-card accent-pending"><div class="v">'+counts.pending+'</div><div class="l">بانتظار اعتمادك</div></div>' +
       '<div class="kpi-card accent-success"><div class="v">'+counts.approved+'</div><div class="l">معتمدة هذا الفصل</div></div>' +
       '<div class="kpi-card accent-danger"><div class="v">'+counts.returned+'</div><div class="l">مُرتجعة</div></div>' +
-      '<div class="kpi-card"><div class="v">'+subs.length+'</div><div class="l">إجمالي النماذج بالمدرسة</div></div>' +
+      '<div class="kpi-card"><div class="v">'+subs.filter(function(s){return s.status!=='draft';}).length+'</div><div class="l">إجمالي النماذج بالمدرسة</div></div>' +
       '<div class="kpi-card"><div class="v">'+commCount+'</div><div class="l">المجتمعات المهنية</div></div>' +
       '<div class="kpi-card accent-pending"><div class="v">'+pendingTasksReview+'</div><div class="l">مهام بانتظار مراجعتك</div></div>' +
       '<div class="kpi-card accent-pending"><div class="v">'+pendingGoalsReview+'</div><div class="l">أهداف بانتظار مراجعتك</div></div>' +
@@ -10868,7 +10868,7 @@ async function screenDashboard(){
     ? '<button class="btn btn-primary" data-action="goPicker">+ إنشاء نموذج جديد</button>'
     : '';
 
-  const analyticsBlock = isPrincipal(State.user) ? buildPrincipalAnalyticsHtml(counts, subs.length, pTasks, pGoals) : '';
+  const analyticsBlock = isPrincipal(State.user) ? buildPrincipalAnalyticsHtml(counts, subs.filter(function(s){return s.status!=='draft';}).length, pTasks, pGoals) : '';
   const printBtn = isPrincipal(State.user)
     ? '<button class="btn btn-ghost btn-sm no-print" onclick="window.print()" style="margin-right:8px;" title="طباعة / تصدير التقرير">🖨️ تقرير</button>'
     : '';
