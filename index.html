@@ -4187,7 +4187,7 @@ async function screenPrincipalCommunities(){
   const userCommunityMap = {};
   users.forEach(function(u){ if (u.community_id) userCommunityMap[u.id] = u.community_id; });
 
-  const rows = communities.map(function(c){
+  const rawRows = communities.map(function(c){
     const leader = users.find(function(u){ return u.community_id===c.id && u.role==='coordinator'; });
     const members = users.filter(function(u){ return u.community_id===c.id && u.role==='teacher'; });
     const cSubs = subs.filter(function(s){
@@ -4205,14 +4205,18 @@ async function screenPrincipalCommunities(){
     const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; });
     const cNotifs = communityNotifs.filter(function(n){ return n.target_id===c.id; })
       .sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
-    const submittedCount = subCounts.pending + subCounts.approved + subCounts.returned;
-    const approvalRate = submittedCount ? (subCounts.approved / submittedCount) : null;
     const attendanceRate = meetingAttendanceRate(meetingSubs);
     const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
     const goalsRate = communityGoalsAvgProgress(cGoals);
-    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate });
     return { community:c, leader:leader, members:members, subCounts:subCounts, totalSubs:cSubs.length, tasks:cTasks, doneTasks:doneTasks, goals:cGoals, notifs:cNotifs,
-      approvalRate:approvalRate, attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate, scorecard:scorecard };
+      attendanceRate:attendanceRate, selfEvalRate:selfEvalRate, goalsRate:goalsRate };
+  });
+  /* النسبة النسبية: الأكثر نماذجاً معتمدة = 100%، والباقي يُحسب نسبةً إليه */
+  const maxApproved = rawRows.reduce(function(m, r){ return Math.max(m, r.subCounts.approved); }, 0);
+  const rows = rawRows.map(function(r){
+    const approvalRate = maxApproved > 0 ? (r.subCounts.approved / maxApproved) : null;
+    const scorecard = communityScorecard({ approvalRate:approvalRate, attendanceRate:r.attendanceRate, selfEvalRate:r.selfEvalRate, goalsRate:r.goalsRate });
+    return Object.assign({}, r, { approvalRate:approvalRate, scorecard:scorecard });
   });
 
   PrincipalCommUI._rows = rows;
