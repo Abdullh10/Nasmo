@@ -4205,7 +4205,8 @@ async function screenPrincipalCommunities(){
     const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; });
     const cNotifs = communityNotifs.filter(function(n){ return n.target_id===c.id; })
       .sort(function(a,b){ return new Date(b.created_at) - new Date(a.created_at); });
-    const approvalRate = cSubs.length ? (subCounts.approved / cSubs.length) : null;
+    const submittedCount = subCounts.pending + subCounts.approved + subCounts.returned;
+    const approvalRate = submittedCount ? (subCounts.approved / submittedCount) : null;
     const attendanceRate = meetingAttendanceRate(meetingSubs);
     const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
     const goalsRate = communityGoalsAvgProgress(cGoals);
@@ -4452,7 +4453,8 @@ async function screenCommunityReport(communityId){
   const meetingSubs = cSubs.filter(function(s){ return s.form_type==='plcMeetingMinutes'; });
   const selfEvalSubs = cSubs.filter(function(s){ return s.form_type==='plcSelfEval'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
   const peerObsSubs = cSubs.filter(function(s){ return s.form_type==='peerObservation'; }).sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); });
-  const approvalRate = cSubs.length ? (approvedSubs.length / cSubs.length) : null;
+  const nonDraftCommunity = cSubs.filter(function(s){ return s.status !== 'draft'; });
+  const approvalRate = nonDraftCommunity.length ? (approvedSubs.length / nonDraftCommunity.length) : null;
   const attendanceRate = meetingAttendanceRate(meetingSubs);
   const selfEvalRate = communitySelfEvalAvgRate(selfEvalSubs);
   const goalsRate = communityGoalsAvgProgress(goals);
