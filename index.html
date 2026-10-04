@@ -5085,7 +5085,7 @@ async function _coordDemoLessonsContent(){
     selectedCommunity ? DB.listUsers({ school: State.user.school }) : Promise.resolve([]),
     DB.listTasks({ school: State.user.school })
   ]);
-  const teachers = allUsers.filter(function(u){ return u.role==='teacher' && u.community_id===(selectedCommunity && selectedCommunity.id); });
+  const teachers = allUsers.filter(function(u){ return (u.role==='teacher' || (u.role==='coordinator' && u.id===State.user.id)) && u.community_id===(selectedCommunity && selectedCommunity.id); });
   const demoTasks = allTasks.filter(function(t){
     try{ const d=JSON.parse(t.description||'{}'); return d._type==='demoLesson' && t.created_by===State.user.id; }catch(e){ return false; }
   }).sort(function(a,b){ return new Date(b.created_at)-new Date(a.created_at); });
