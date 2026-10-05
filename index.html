@@ -3138,7 +3138,7 @@ function logout(){
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
-  TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[] };
+  TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[], selectedFormIds:[] };
   try{ CredsPrint = { items:[] }; localStorage.removeItem('dtd_last_creds_batch_v1'); }catch(e){}
   try{ const uid = State.user && State.user.id; if (uid){ Object.keys(localStorage).filter(function(k){ return k.startsWith('exam_analyses_'+uid) || k.startsWith('teacher_notes_'+uid+'_'); }).forEach(function(k){ localStorage.removeItem(k); }); } }catch(e){}
   State.adminTab = 'overview'; State.dashTab = 'forms'; CoordActivitiesUI.subTab = 'activities';
@@ -12454,20 +12454,24 @@ async function screenTeacherTasks(){
   const filteredForms = TeacherFormsUI.tab==='done'
     ? myForms.filter(isDoneForm).sort(function(a,b){ return new Date(b.updated_at||b.created_at) - new Date(a.updated_at||a.created_at); })
     : myForms.filter(function(s){ return !isDoneForm(s); });
-  const groupPlanDrafts = myForms.filter(function(s){ return s.form_type==='groupPlan' && s.status==='draft'; });
   const formsTabBtns = (
     '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">' +
       '<button class="btn '+(TeacherFormsUI.tab==='active'?'btn-primary':'btn-ghost')+' btn-sm" data-action="teacherFormsTab" data-tab="active">النشطة</button>' +
       '<button class="btn '+(TeacherFormsUI.tab==='done'?'btn-primary':'btn-ghost')+' btn-sm" data-action="teacherFormsTab" data-tab="done">المكتملة ('+approvedCount+')</button>' +
-      (groupPlanDrafts.length > 1
-        ? '<button class="btn btn-ghost btn-sm" data-action="deleteAllGroupPlanDrafts" style="color:var(--danger);margin-inline-start:auto;" data-ids="'+esc(JSON.stringify(groupPlanDrafts.map(function(s){return s.id;})))+'" data-count="'+groupPlanDrafts.length+'">🗑 حذف مسودات الخطة الجماعية ('+groupPlanDrafts.length+')</button>'
+      (TeacherFormsUI.tab==='active' && TeacherFormsUI.selectedFormIds.length > 0
+        ? '<button class="btn btn-ghost btn-sm" data-action="deleteSelectedForms" style="color:var(--danger);margin-inline-start:auto;">🗑 حذف المحدد ('+TeacherFormsUI.selectedFormIds.length+')</button>'
         : '') +
     '</div>'
   );
   const myFormsRows = filteredForms.map(function(s){
     const def = formDef(s.form_type);
+    const isSelectable = s.status==='draft';
+    const isSelected = TeacherFormsUI.selectedFormIds.indexOf(s.id) >= 0;
     return (
       '<tr>' +
+        (TeacherFormsUI.tab==='active'
+          ? '<td style="width:32px;padding:6px 10px;text-align:center;">'+(isSelectable?'<input type="checkbox" class="form-select-cb" data-id="'+s.id+'" '+(isSelected?'checked':'')+' style="cursor:pointer;width:15px;height:15px;">':'')+'</td>'
+          : '') +
         '<td><b>'+esc(def?def.title:s.form_type)+'</b></td>' +
         '<td>'+fmtDate(s.created_at)+'</td>' +
         '<td><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></td>' +
@@ -12568,8 +12572,8 @@ async function screenTeacherTasks(){
     '<p style="color:var(--muted);font-size:12.5px;margin:-6px 0 16px;">من هنا يمكنك إنشاء خطة علاجية جماعية للطلاب المتعثرين، ثم خطة فردية أكاديمية لمن يحتاج متابعة مكثّفة، وخطة علاجية سلوكية لمن لديهم سلوكيات مستهدَفة، بعد تسجيل بيانات طلابك في "بيانات الطلاب".</p>' +
     formsTabBtns +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>النموذج</th><th>تاريخ الإنشاء</th><th>الحالة</th><th></th></tr></thead>' +
-      '<tbody>'+(myFormsRows||'<tr class="empty-row"><td colspan="4">لا توجد نماذج في هذا القسم.</td></tr>')+'</tbody>' +
+      '<thead><tr>'+(TeacherFormsUI.tab==='active'?'<th style="width:32px;padding:6px 10px;text-align:center;"><input type="checkbox" id="selectAllForms" style="cursor:pointer;width:15px;height:15px;" title="تحديد الكل"></th>':'')+'<th>النموذج</th><th>تاريخ الإنشاء</th><th>الحالة</th><th></th></tr></thead>' +
+      '<tbody>'+(myFormsRows||'<tr class="empty-row"><td colspan="'+(TeacherFormsUI.tab==='active'?'5':'4')+'">لا توجد نماذج في هذا القسم.</td></tr>')+'</tbody>' +
     '</table></div></div>' +
     studentSummaryHtml +
     (visitScheduleCards ? (function(){
@@ -12922,7 +12926,29 @@ function bindTeacherTasks(){
     el.addEventListener('click', async function(){ TeacherFormsUI.dashTab = el.getAttribute('data-tab'); await render(); });
   });
   document.querySelectorAll('[data-action="teacherFormsTab"]').forEach(function(el){
-    el.addEventListener('click', async function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); await render(); });
+    el.addEventListener('click', async function(){ TeacherFormsUI.tab = el.getAttribute('data-tab'); TeacherFormsUI.selectedFormIds = []; await render(); });
+  });
+  /* تحديد/إلغاء تحديد جميع النماذج */
+  var _selectAllFormsEl = document.getElementById('selectAllForms');
+  if (_selectAllFormsEl) _selectAllFormsEl.addEventListener('change', async function(){
+    var allCbs = document.querySelectorAll('.form-select-cb');
+    if (this.checked) {
+      TeacherFormsUI.selectedFormIds = Array.from(allCbs).map(function(cb){ return cb.getAttribute('data-id'); });
+    } else {
+      TeacherFormsUI.selectedFormIds = [];
+    }
+    await render();
+  });
+  document.querySelectorAll('.form-select-cb').forEach(function(cb){
+    cb.addEventListener('change', async function(){
+      var id = cb.getAttribute('data-id');
+      if (cb.checked) {
+        if (TeacherFormsUI.selectedFormIds.indexOf(id) < 0) TeacherFormsUI.selectedFormIds.push(id);
+      } else {
+        TeacherFormsUI.selectedFormIds = TeacherFormsUI.selectedFormIds.filter(function(x){ return x !== id; });
+      }
+      await render();
+    });
   });
   document.querySelectorAll('[data-action="openTeacherSession"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -17440,13 +17466,14 @@ function bindGlobalAction(el){
     toast('تم حذف المسودة.');
     render();
   }); }
-  else if (action==='deleteAllGroupPlanDrafts'){ el.addEventListener('click', async function(){
-    const count = el.getAttribute('data-count');
-    if (!confirm('هل أنت متأكد من حذف جميع مسودات الخطة الجماعية ('+count+')؟ لن تستطيع استرجاعها.')) return;
+  else if (action==='deleteSelectedForms'){ el.addEventListener('click', async function(){
+    var ids = TeacherFormsUI.selectedFormIds.slice();
+    if (!ids.length) return;
+    if (!confirm('هل أنت متأكد من حذف '+ids.length+' مسودة؟ لن تستطيع استرجاعها.')) return;
     el.disabled = true;
     try{
-      const ids = JSON.parse(el.getAttribute('data-ids') || '[]');
       await Promise.all(ids.map(function(id){ return DB.deleteSubmission(id); }));
+      TeacherFormsUI.selectedFormIds = [];
       invalidateAllScreenCaches();
       toast('تم حذف '+ids.length+' مسودة.');
     }catch(e){ toast('حدث خطأ أثناء الحذف.'); el.disabled=false; return; }
