@@ -12454,10 +12454,14 @@ async function screenTeacherTasks(){
   const filteredForms = TeacherFormsUI.tab==='done'
     ? myForms.filter(isDoneForm).sort(function(a,b){ return new Date(b.updated_at||b.created_at) - new Date(a.updated_at||a.created_at); })
     : myForms.filter(function(s){ return !isDoneForm(s); });
+  const groupPlanDrafts = myForms.filter(function(s){ return s.form_type==='groupPlan' && s.status==='draft'; });
   const formsTabBtns = (
-    '<div style="display:flex;gap:8px;margin-bottom:10px;">' +
+    '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">' +
       '<button class="btn '+(TeacherFormsUI.tab==='active'?'btn-primary':'btn-ghost')+' btn-sm" data-action="teacherFormsTab" data-tab="active">النشطة</button>' +
       '<button class="btn '+(TeacherFormsUI.tab==='done'?'btn-primary':'btn-ghost')+' btn-sm" data-action="teacherFormsTab" data-tab="done">المكتملة ('+approvedCount+')</button>' +
+      (groupPlanDrafts.length > 1
+        ? '<button class="btn btn-ghost btn-sm" data-action="deleteAllGroupPlanDrafts" style="color:var(--danger);margin-inline-start:auto;" data-ids="'+esc(JSON.stringify(groupPlanDrafts.map(function(s){return s.id;})))+'" data-count="'+groupPlanDrafts.length+'">🗑 حذف مسودات الخطة الجماعية ('+groupPlanDrafts.length+')</button>'
+        : '') +
     '</div>'
   );
   const myFormsRows = filteredForms.map(function(s){
@@ -17434,6 +17438,18 @@ function bindGlobalAction(el){
     await DB.deleteSubmission(el.getAttribute('data-id'));
     invalidateAllScreenCaches();
     toast('تم حذف المسودة.');
+    render();
+  }); }
+  else if (action==='deleteAllGroupPlanDrafts'){ el.addEventListener('click', async function(){
+    const count = el.getAttribute('data-count');
+    if (!confirm('هل أنت متأكد من حذف جميع مسودات الخطة الجماعية ('+count+')؟ لن تستطيع استرجاعها.')) return;
+    el.disabled = true;
+    try{
+      const ids = JSON.parse(el.getAttribute('data-ids') || '[]');
+      await Promise.all(ids.map(function(id){ return DB.deleteSubmission(id); }));
+      invalidateAllScreenCaches();
+      toast('تم حذف '+ids.length+' مسودة.');
+    }catch(e){ toast('حدث خطأ أثناء الحذف.'); el.disabled=false; return; }
     render();
   }); }
   else if (action==='openLoginLogModal'){ el.addEventListener('click', async function(){
