@@ -3865,7 +3865,16 @@ function bindTopNav(){
   }
 
   const bellBtn = document.querySelector('[data-action="toggleNotif"]');
-  if (bellBtn) bellBtn.addEventListener('click', function(){ NotifUI.open = !NotifUI.open; if (!NotifUI.open) NotifUI.compose=false; render(); });
+  if (bellBtn) bellBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    NotifUI.open = !NotifUI.open;
+    if (!NotifUI.open) NotifUI.compose = false;
+    render();
+    if (NotifUI.open){
+      var _closeNotif = function(){ NotifUI.open = false; NotifUI.compose = false; render(); document.removeEventListener('click', _closeNotif); };
+      setTimeout(function(){ document.addEventListener('click', _closeNotif); }, 0);
+    }
+  });
 
   const deleteAllNotifBtn = document.querySelector('[data-action="deleteAllNotifs"]');
   if (deleteAllNotifBtn) deleteAllNotifBtn.addEventListener('click', async function(){
