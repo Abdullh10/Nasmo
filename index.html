@@ -323,7 +323,7 @@ html[data-theme="dark"] .icon-btn:hover{ background:rgba(255,255,255,.12); }
 .theme-toggle-btn svg{ width:18px; height:18px; }
 .notif-wrap{ position:relative; }
 .notif-badge{ position:absolute; top:-3px; inset-inline-start:-3px; background:var(--danger); color:#fff; font-size:10px; font-weight:800; min-width:16px; height:16px; line-height:16px; border-radius:8px; text-align:center; padding:0 4px; }
-.notif-panel{ position:absolute; top:48px; inset-inline-start:0; width:340px; max-width:90vw; background:var(--surface); color:var(--text); border-radius:12px; box-shadow:0 16px 40px rgba(0,0,0,.28); z-index:70; overflow:hidden; }
+.notif-panel{ position:fixed; top:68px; inset-inline-start:8px; width:340px; max-width:calc(100vw - 16px); background:var(--surface); color:var(--text); border-radius:12px; box-shadow:0 16px 40px rgba(0,0,0,.28); z-index:70; overflow:hidden; }
 .notif-panel-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border); }
 .notif-panel-head h4{ font-size:14px; }
 .notif-list{ max-height:380px; overflow-y:auto; }
@@ -3086,8 +3086,15 @@ async function loadPrincipalPendingApprovals(){
   items.sort(function(a,b){ return new Date(b.at) - new Date(a.at); });
   return items;
 }
+function _notifDismissKey(){ return State.user ? 'notif_dismissed_'+State.user.id : null; }
+function getDismissedNotifs(){ try{ return JSON.parse(localStorage.getItem(_notifDismissKey())||'[]'); }catch(e){ return []; } }
+function dismissNotifLocal(id){ var l=getDismissedNotifs(); if(l.indexOf(id)===-1){ l.push(id); try{ localStorage.setItem(_notifDismissKey(),JSON.stringify(l)); }catch(e){} } }
+function dismissAllNotifsLocal(ids){ var l=getDismissedNotifs(); ids.forEach(function(id){ if(l.indexOf(id)===-1) l.push(id); }); try{ localStorage.setItem(_notifDismissKey(),JSON.stringify(l)); }catch(e){} }
+
 function visibleNotifications(all, user){
+  var dismissed = getDismissedNotifs();
   return (all||[]).filter(function(n){
+    if (dismissed.indexOf(n.id) !== -1) return false;
     if (user.role !== 'super_admin' && n.school && n.school !== user.school) return false;
     if (n.target_type==='school') return true;
     if (n.target_type==='community'){
@@ -3753,7 +3760,7 @@ function topNav(){
       pendingHtml +
       '<div class="notif-panel-head" '+(pendingHtml?'style="border-top:1px solid var(--border);"':'')+'><h4>التنبيهات</h4>' +
         '<div style="display:flex;gap:6px;">' +
-          (visible.length && State.user.role==='admin' ? '<button class="btn btn-ghost btn-sm" data-action="deleteAllNotifs" style="color:var(--danger);">حذف الكل</button>' : '') +
+          (visible.length && State.user.role==='admin' ? '<button class="btn btn-ghost btn-sm" data-action="deleteAllNotifs" style="color:var(--danger);">حذف الكل</button>' : (visible.length ? '<button class="btn btn-ghost btn-sm" data-action="dismissAllNotifs" style="color:var(--muted);">مسح الكل</button>' : '')) +
           (canCompose ? '<button class="btn btn-ghost btn-sm" data-action="composeNotif">+ إرسال تنبيه</button>' : '') +
         '</div>' +
       '</div>' +
@@ -3762,7 +3769,9 @@ function topNav(){
           const unread = isNotifUnread(n, State.user.id);
           return (
             '<div class="notif-item '+(unread?'unread':'')+'" style="position:relative;" data-action="readNotif" data-id="'+n.id+'">' +
-              (State.user.role==='admin' ? '<button class="btn btn-ghost btn-sm" data-action="deleteNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;" title="حذف التنبيه للجميع">✕</button>' : '') +
+              (State.user.role==='admin'
+                ? '<button class="btn btn-ghost btn-sm" data-action="deleteNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;" title="حذف للجميع">✕</button>'
+                : '<button class="btn btn-ghost btn-sm" data-action="dismissNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;" title="إخفاء">✕</button>') +
               '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
               '<div class="ntitle">'+esc(n.title)+'</div>' +
               (n.body ? '<div class="nbody">'+esc(n.body)+'</div>' : '') +
@@ -3874,6 +3883,21 @@ function bindTopNav(){
       const id = el.getAttribute('data-id');
       try{ await DB.deleteNotification(id); invalidateNotifCache(); render(); }catch(e2){ toast('فشل الحذف: ' + e2.message); }
     });
+  });
+
+  document.querySelectorAll('[data-action="dismissNotif"]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      dismissNotifLocal(el.getAttribute('data-id'));
+      render();
+    });
+  });
+
+  const dismissAllBtn = document.querySelector('[data-action="dismissAllNotifs"]');
+  if (dismissAllBtn) dismissAllBtn.addEventListener('click', function(){
+    const ids = visibleNotifications(State.notifications||[], State.user).map(function(n){ return n.id; });
+    dismissAllNotifsLocal(ids);
+    render();
   });
 
   document.querySelectorAll('[data-action="readNotif"]').forEach(function(el){
