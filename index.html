@@ -8428,7 +8428,7 @@ async function runExamAutoSort(){
       const payload = blankData('groupPlan');
       payload.grade = g.grade; payload.section = '';
       payload.students = g.students.map(function(r){ const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; return row; });
-      sub = await DB.createSubmission({ form_type:'groupPlan', school: State.user.school, created_by: State.user.id, created_by_name: State.user.full_name, payload: payload, status:'draft' });
+      sub = await DB.createSubmission({ form_type:'groupPlan', school: State.user.school, created_by: State.user.id, created_by_name: State.user.full_name, community_id: State.user.community_id || null, payload: payload, status:'draft' });
       created = true; addedHere = g.students.length;
     }
     totalAdded += addedHere;
@@ -10777,14 +10777,26 @@ async function screenDashboard(){
     if (_coordScreenData && (Date.now() - _coordScreenDataAt) < COORD_SCREEN_TTL_MS){
       subs = _coordScreenData.subs;
     } else {
-      subs = await DB.listSubmissions({ school: State.user.school });
-      _coordScreenData = { subs }; _coordScreenDataAt = Date.now();
+      const _fetchParts = [DB.listSubmissions({ school: State.user.school })];
+      if (State.user.role === 'coordinator' && State.user.community_id) {
+        _fetchParts.push(remoteFetch('profiles?community_id=eq.' + encodeURIComponent(State.user.community_id) + '&school=eq.' + encodeURIComponent(State.user.school) + '&select=id'));
+      }
+      const _fetchResults = await Promise.all(_fetchParts);
+      subs = _fetchResults[0];
+      const _commMemberIds = (_fetchResults[1] || []).map(function(u){ return u.id; });
+      _coordScreenData = { subs: subs, commMembers: _commMemberIds }; _coordScreenDataAt = Date.now();
     }
     pTasks = []; pGoals = [];
   }
   State.allSubs = subs;
+  const _coordCommMembers = new Set((_coordScreenData && _coordScreenData.commMembers) || []);
   const mine = State.user.role==='coordinator'
-    ? subs.filter(function(s){ return s.created_by===State.user.id || (State.user.community_id && s.community_id===State.user.community_id); })
+    ? subs.filter(function(s){
+        if (s.created_by === State.user.id) return true;
+        if (State.user.community_id && s.community_id === State.user.community_id) return true;
+        if (!s.community_id && _coordCommMembers.has(s.created_by)) return true;
+        return false;
+      })
     : subs;
   const counts = { draft:0, pending:0, approved:0, returned:0 };
   mine.forEach(function(s){ counts[s.status] = (counts[s.status]||0)+1; });
@@ -15995,7 +16007,7 @@ async function screenEditor(){
 
   const sigBlock = (
     '<div class="sig-footer">' +
-      '<div><div class="who">توقيع المُعد ('+esc(State.user.full_name)+')</div>' +
+      '<div><div class="who">توقيع المُعد ('+esc(EditorState.createdByName || State.user.full_name)+')</div>' +
         (EditorState.prepSig ? '<div class="signed-chip">✓ تم التوقيع</div><div style="margin-top:8px;">'+buildSignaturePad('preparer', EditorState.prepSig, true)+'</div><button class="btn btn-ghost btn-sm" style="margin-top:8px;" data-action="resign">إعادة التوقيع</button>'
           : buildSignaturePad('preparer', null, false)) +
       '</div>' +
