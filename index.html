@@ -1566,6 +1566,7 @@ function renderHijriPickerPopup(){
       '<button type="button" data-action="hcalClear">مسح</button>' +
     '</div>'
   );
+  pop.addEventListener('click', function(e){ e.stopPropagation(); });
   document.body.appendChild(pop);
   positionHijriPopup(pop, HijriPicker.btn);
   pop.querySelectorAll('[data-nav]').forEach(function(el){
