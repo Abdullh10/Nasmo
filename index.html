@@ -985,6 +985,13 @@ create policy "visit_schedules_all" on visit_schedules for all using ( school = 
 -- alter table practice_shares drop constraint if exists practice_shares_principal_rating_check;
 -- alter table practice_shares add constraint practice_shares_principal_rating_check check (principal_rating between 0 and 100);
 
+-- ميزة "تحويل الخطط العلاجية للموجه الطلابي" — نفّذ مرة واحدة في SQL Editor:
+-- alter table submissions add column if not exists counselor_id uuid references profiles(id);
+-- alter table submissions add column if not exists counselor_name text;
+-- alter table submissions add column if not exists counselor_assigned_at timestamptz;
+-- alter table submissions add column if not exists counselor_report text;
+-- alter table submissions add column if not exists counselor_report_at timestamptz;
+
 -- ميزة "حساب الموجه الطلابي" — نفّذ هذه الأوامر مرة واحدة في SQL Editor:
 -- 1) توسيع قيود الدور في جدول profiles:
 -- alter table profiles drop constraint if exists profiles_role_check;
@@ -1768,6 +1775,19 @@ const DB = {
     const idx = subs.findIndex(function(s){ return s.id===id; });
     if (idx>-1){ subs[idx] = Object.assign({}, subs[idx], patch); localStorage.setItem(LS_SUBS, JSON.stringify(subs)); return subs[idx]; }
     return null;
+  },
+  async assignToCounselor(id, counselorId, counselorName){
+    return await DB.updateSubmission(id, { counselor_id: counselorId, counselor_name: counselorName, counselor_assigned_at: nowIso() });
+  },
+  async submitCounselorReport(id, report){
+    return await DB.updateSubmission(id, { counselor_report: report, counselor_report_at: nowIso() });
+  },
+  async listTreatmentPlansForCounselor(counselorId, school){
+    if (isRemote()){
+      return await remoteFetch('submissions?school=eq.'+encodeURIComponent(school)+'&form_type=in.(groupPlan,individualAgreement)&counselor_id=eq.'+encodeURIComponent(counselorId)+'&order=counselor_assigned_at.desc') || [];
+    }
+    const subs = JSON.parse(localStorage.getItem(LS_SUBS) || '[]');
+    return subs.filter(function(s){ return (s.form_type==='groupPlan'||s.form_type==='individualAgreement') && s.counselor_id===counselorId && s.school===school; });
   },
   async deleteSubmission(id){
     if (isRemote()){
@@ -3143,15 +3163,16 @@ function logout(){
   try{ const _tok = AUTH.accessToken; if (_tok){ fetch(CONFIG.SUPABASE_URL+'/auth/v1/logout', { method:'POST', headers:{ apikey:CONFIG.SUPABASE_ANON_KEY, Authorization:'Bearer '+_tok } }).catch(function(){}); } }catch(e){}
   try{ localStorage.removeItem('dtd_session'); }catch(e){} clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
   _notifCache = null; _commCache = null; _pendingCache = null;
-  _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _studentRosterData = null;
+  _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _counselorPlansCache = null; _studentRosterData = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
   _coordTasksData = null; _coordTasksDataAt = 0; _coordVisitsData = null; _coordVisitsDataAt = 0; _coordGoalsData = null; _coordGoalsDataAt = 0;
   _coordDemoLessonsCache = []; _teacherDemoLessonsCache = []; _teacherAllStudentsCache = []; _teacherGiftedStudentsCache = []; _teacherReferralCache = []; _myObservationsCache = [];
   _adminUsersCache = null; _adminUsersCacheAt = 0; _adminCommCache = null; _adminCommCacheAt = 0; _adminStudentsCache = null; _adminStudentsCacheAt = 0; _adminSubmCache = null; _adminSubmCacheAt = 0;
   PrincipalCommUI = { expanded: {} };
+  PrincipalTreatmentUI = { typeFilter:'', gradeFilter:'', assignModalId:null, reportModalId:null };
   AdminStudentUI = { modalOpen:false, editingId:null, pasteOpen:false, selectedIds:[], assignOpen:false, gradeFilter:'', sectionFilter:'', nameFilter:'', teacherSort:'alpha', pendingTeacherIds:[], transferOpen:false, transferStudentId:null };
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
-  CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'' };
+  CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'', _writingReportId:null };
   TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[], selectedFormIds:[] };
   try{ CredsPrint = { items:[] }; localStorage.removeItem('dtd_last_creds_batch_v1'); }catch(e){}
   try{ const uid = State.user && State.user.id; if (uid){ Object.keys(localStorage).filter(function(k){ return k.startsWith('exam_analyses_'+uid) || k.startsWith('teacher_notes_'+uid+'_'); }).forEach(function(k){ localStorage.removeItem(k); }); } }catch(e){}
@@ -3652,8 +3673,9 @@ let _coordGoalsData = null, _coordGoalsDataAt = 0;
 const COORD_TAB_TTL_MS = 60000;
 /* كاش بيانات لوحة الموجه الطلابي */
 let _counselorCasesData = null, _counselorCasesDataAt = 0;
+let _counselorPlansCache = null, _counselorPlansCacheAt = 0;
 const COUNSELOR_TTL_MS = 60000;
-function invalidateCounselorData(){ _counselorCasesData = null; }
+function invalidateCounselorData(){ _counselorCasesData = null; _counselorPlansCache = null; }
 /* كاش بيانات قائمة الطلاب */
 let _studentRosterData = null, _studentRosterDataAt = 0;
 const ROSTER_TTL_MS = 60000;
@@ -4134,6 +4156,7 @@ function dashTabsHtml(){
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalGifted'?'active':'')+'" data-action="dashTab" data-tab="principalGifted">⭐ الموهوبون</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='academicSupervision'?'active':'')+'" data-action="dashTab" data-tab="academicSupervision">🏫 الإشراف الأكاديمي</button>' : '') +
       (State.user.role!=='coordinator' ? '<button class="tab" data-action="gotoPracticeBank">بنك تبادل الخبرات</button>' : '') +
+      (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalTreatmentPlans'?'active':'')+'" data-action="dashTab" data-tab="principalTreatmentPlans">📋 الخطط العلاجية</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalArchive'?'active':'')+'" data-action="dashTab" data-tab="principalArchive">📁 أرشيف النماذج</button>' : '') +
       (isPrincipal(State.user) ? '<button class="tab '+(State.dashTab==='principalNotif'?'active':'')+'" data-action="dashTab" data-tab="principalNotif">🔔 الإشعارات</button>' : '') +
     '</div>'
@@ -6206,6 +6229,7 @@ async function screenNotificationsPanel(){
   );
 }
 let PrincipalDemoLessonsUI = { coordFilter:'', statusFilter:'', suggestionModal: null };
+let PrincipalTreatmentUI = { typeFilter:'', gradeFilter:'', assignModalId:null, reportModalId:null };
 async function screenPrincipalDemoLessons(){
   const allTasks = await DB.listTasks({ school: State.user.school });
   const demoTasks = allTasks.filter(function(t){
@@ -6808,6 +6832,180 @@ function bindPrincipalAcademicSupervision(){
         else { lbl.style.background = 'var(--card)'; lbl.style.color = 'var(--text)'; lbl.style.fontWeight='400'; lbl.style.borderColor='var(--border)'; }
       });
     });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   الخطط العلاجية — حساب المدير / الوكيل
+   ═══════════════════════════════════════════════════════ */
+async function screenPrincipalTreatmentPlans(){
+  const allSubs = await DB.listSubmissions({ school: State.user.school });
+  const plans = allSubs.filter(function(s){ return (s.form_type==='groupPlan'||s.form_type==='individualAgreement') && s.status==='approved'; })
+    .sort(function(a,b){ return new Date(b.approved_at||b.updated_at) - new Date(a.approved_at||a.updated_at); });
+  const allUsers = await DB.listUsers({ school: State.user.school });
+  const counselors = allUsers.filter(function(u){ return u.role==='counselor'; })
+    .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
+
+  /* جمع كل المراحل الدراسية المتاحة */
+  const grades = Array.from(new Set(plans.map(function(p){
+    return p.payload && (p.form_type==='groupPlan' ? p.payload.grade : p.payload.grade) || '';
+  }).filter(Boolean))).sort(function(a,b){ return a.localeCompare(b,'ar'); });
+
+  /* تطبيق الفلاتر */
+  let filtered = plans;
+  if (PrincipalTreatmentUI.typeFilter) filtered = filtered.filter(function(p){ return p.form_type===PrincipalTreatmentUI.typeFilter; });
+  if (PrincipalTreatmentUI.gradeFilter) filtered = filtered.filter(function(p){
+    var g = p.payload && p.payload.grade || '';
+    return g === PrincipalTreatmentUI.gradeFilter;
+  });
+
+  const totalCount = plans.length;
+  const assignedCount = plans.filter(function(p){ return !!p.counselor_id; }).length;
+  const reportedCount = plans.filter(function(p){ return !!p.counselor_report_at; }).length;
+  const pendingCount = plans.filter(function(p){ return p.counselor_id && !p.counselor_report_at; }).length;
+
+  /* مودال التحويل */
+  const assignModal = PrincipalTreatmentUI.assignModalId ? (function(){
+    const plan = plans.find(function(p){ return p.id===PrincipalTreatmentUI.assignModalId; });
+    if (!plan) return '';
+    const studentLabel = plan.form_type==='groupPlan'
+      ? 'خطة جماعية — صف: ' + esc(plan.payload && plan.payload.grade || '—')
+      : 'خطة فردية — الطالب: ' + esc(plan.payload && plan.payload.studentName || '—');
+    return (
+      '<div class="modal-overlay" data-action="closeTreatmentModal">' +
+        '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:440px;">' +
+          '<div class="modal-header"><h3>تحويل للموجه الطلابي</h3><button class="btn btn-ghost btn-sm" data-action="closeTreatmentModal">✕</button></div>' +
+          '<div style="padding:16px;">' +
+            '<p style="margin-bottom:12px;font-size:13.5px;color:var(--muted);">'+studentLabel+'</p>' +
+            (counselors.length === 0
+              ? '<p style="color:var(--danger);font-size:13px;">لا يوجد موجهون طلابيون في المدرسة. أضف حساباً بدور "موجه طلابي" أولاً.</p>'
+              : '<div class="field"><label>اختر الموجه الطلابي</label><select class="input" id="treatAssignCounselorSel"><option value="">— اختر الموجه —</option>'+
+                  counselors.map(function(c){ return '<option value="'+esc(c.id)+'|'+esc(c.full_name)+'">'+esc(c.full_name)+'</option>'; }).join('') +
+                '</select></div>' +
+                '<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">' +
+                  '<button class="btn btn-ghost" data-action="closeTreatmentModal">إلغاء</button>' +
+                  '<button class="btn btn-primary" data-action="confirmTreatmentAssign" data-id="'+plan.id+'">تأكيد التحويل</button>' +
+                '</div>'
+            ) +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  })() : '';
+
+  /* صفوف الجدول */
+  const rows = filtered.length ? filtered.map(function(p){
+    const isGroup = p.form_type === 'groupPlan';
+    const typeLabel = isGroup ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#e0f2fe;color:#0369a1;font-weight:700;">جماعية</span>' : '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fef3c7;color:#b45309;font-weight:700;">فردية</span>';
+    const studentLabel = isGroup
+      ? esc(p.payload && p.payload.grade ? 'صف: '+p.payload.grade+(p.payload.section?' - '+p.payload.section:'') : '—')
+      : esc(p.payload && p.payload.studentName || '—');
+    const subject = esc(p.payload && p.payload.subject || p.payload && p.payload.sessions && p.payload.sessions[0] && p.payload.sessions[0].subject || '—');
+    const teacherName = esc(p.created_by_name || '—');
+    const approvedDate = p.approved_at ? fmtDate(p.approved_at) : '—';
+    let statusCell;
+    if (p.counselor_report_at){
+      statusCell = '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#166534;font-weight:700;">✓ وصل التقرير</span>';
+    } else if (p.counselor_id){
+      statusCell = '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fef9c3;color:#854d0e;font-weight:700;">بانتظار تقرير '+esc(p.counselor_name||'')+'</span>';
+    } else {
+      statusCell = '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface);color:var(--muted);border:1px solid var(--border);">لم تُحوَّل بعد</span>';
+    }
+    const actionBtn = p.counselor_report_at
+      ? '<button class="btn btn-ghost btn-sm" data-action="viewTreatmentReport" data-id="'+p.id+'" style="font-size:11.5px;">عرض التقرير</button>'
+      : '<button class="btn btn-ghost btn-sm" data-action="assignTreatmentPlan" data-id="'+p.id+'" style="font-size:11.5px;">'+(p.counselor_id?'إعادة التحويل':'تحويل للموجه')+'</button>';
+    return (
+      '<tr>' +
+        '<td>'+typeLabel+'</td>' +
+        '<td>'+studentLabel+'</td>' +
+        '<td>'+subject+'</td>' +
+        '<td>'+teacherName+'</td>' +
+        '<td>'+approvedDate+'</td>' +
+        '<td>'+statusCell+'</td>' +
+        '<td class="row-actions">'+actionBtn+' <button class="btn btn-ghost btn-sm" data-action="viewSub" data-id="'+p.id+'" style="font-size:11.5px;">عرض النموذج</button></td>' +
+      '</tr>'
+    );
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px;">لا توجد خطط علاجية معتمدة بعد.</td></tr>';
+
+  /* عرض التقرير مودال */
+  const reportModal = PrincipalTreatmentUI.reportModalId ? (function(){
+    const plan = plans.find(function(p){ return p.id===PrincipalTreatmentUI.reportModalId; });
+    if (!plan) return '';
+    return (
+      '<div class="modal-overlay" data-action="closeTreatmentReportModal">' +
+        '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">' +
+          '<div class="modal-header"><h3>تقرير الموجه الطلابي</h3><button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal">✕</button></div>' +
+          '<div style="padding:16px;">' +
+            '<div style="margin-bottom:8px;font-size:13px;color:var(--muted);">الموجه: <b>'+esc(plan.counselor_name||'—')+'</b> — بتاريخ: <b>'+(plan.counselor_report_at?fmtDate(plan.counselor_report_at):'—')+'</b></div>' +
+            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;white-space:pre-wrap;font-size:13.5px;line-height:1.7;">'+esc(plan.counselor_report||'')+'</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  })() : '';
+
+  return assignModal + reportModal + (
+    '<h2 style="font-size:20px;margin-bottom:4px;">' + (isPrincipal(State.user)?ROLE_LABEL[State.user.role]||'مدير المدرسة':'مدير المدرسة') + '</h2>' +
+    '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
+    dashTabsHtml() +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">' +
+      '<div class="kpi-card"><div class="v">'+totalCount+'</div><div class="l">إجمالي الخطط</div></div>' +
+      '<div class="kpi-card accent-success"><div class="v">'+assignedCount+'</div><div class="l">محوَّلة للموجه</div></div>' +
+      (pendingCount ? '<div class="kpi-card" style="border-color:var(--warning);"><div class="v" style="color:var(--warning);">'+pendingCount+'</div><div class="l">بانتظار التقرير</div></div>' : '') +
+      (reportedCount ? '<div class="kpi-card" style="border-color:var(--success);"><div class="v" style="color:var(--success);">'+reportedCount+'</div><div class="l">وصل التقرير</div></div>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">' +
+      '<select class="input" id="treatTypeFilter" style="max-width:170px;">' +
+        '<option value="" '+(PrincipalTreatmentUI.typeFilter===''?'selected':'')+'>— كل الأنواع —</option>' +
+        '<option value="groupPlan" '+(PrincipalTreatmentUI.typeFilter==='groupPlan'?'selected':'')+'>الخطط الجماعية</option>' +
+        '<option value="individualAgreement" '+(PrincipalTreatmentUI.typeFilter==='individualAgreement'?'selected':'')+'>الخطط الفردية</option>' +
+      '</select>' +
+      '<select class="input" id="treatGradeFilter" style="max-width:170px;">' +
+        '<option value="">— كل المراحل —</option>' +
+        grades.map(function(g){ return '<option value="'+esc(g)+'" '+(PrincipalTreatmentUI.gradeFilter===g?'selected':'')+'>'+esc(g)+'</option>'; }).join('') +
+      '</select>' +
+      '<span style="color:var(--muted);font-size:13px;">'+filtered.length+' خطة</span>' +
+    '</div>' +
+    '<div class="table-scroll"><table class="submissions-table">' +
+      '<thead><tr><th>النوع</th><th>الطالب / الصف</th><th>المادة</th><th>المعلم</th><th>تاريخ الاعتماد</th><th>الحالة</th><th>الإجراء</th></tr></thead>' +
+      '<tbody>'+rows+'</tbody>' +
+    '</table></div>'
+  );
+}
+function bindPrincipalTreatmentPlans(){
+  var tf = document.getElementById('treatTypeFilter');
+  if (tf) tf.addEventListener('change', function(){ PrincipalTreatmentUI.typeFilter = this.value; render(); });
+  var gf = document.getElementById('treatGradeFilter');
+  if (gf) gf.addEventListener('change', function(){ PrincipalTreatmentUI.gradeFilter = this.value; render(); });
+  document.querySelectorAll('[data-action="assignTreatmentPlan"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalTreatmentUI.assignModalId = el.getAttribute('data-id'); render().then(function(){ bindPrincipalTreatmentPlans(); }); });
+  });
+  document.querySelectorAll('[data-action="viewTreatmentReport"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalTreatmentUI.reportModalId = el.getAttribute('data-id'); render().then(function(){ bindPrincipalTreatmentPlans(); }); });
+  });
+  document.querySelectorAll('[data-action="closeTreatmentModal"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalTreatmentUI.assignModalId = null; render().then(function(){ bindPrincipalTreatmentPlans(); }); });
+  });
+  document.querySelectorAll('[data-action="closeTreatmentReportModal"]').forEach(function(el){
+    el.addEventListener('click', function(){ PrincipalTreatmentUI.reportModalId = null; render().then(function(){ bindPrincipalTreatmentPlans(); }); });
+  });
+  document.querySelectorAll('[data-action="confirmTreatmentAssign"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var sel = document.getElementById('treatAssignCounselorSel');
+      if (!sel || !sel.value){ toast('اختر موجهاً أولاً'); return; }
+      var parts = sel.value.split('|');
+      var cId = parts[0]; var cName = parts.slice(1).join('|');
+      try{
+        await DB.assignToCounselor(el.getAttribute('data-id'), cId, cName);
+        toast('تم التحويل للموجه '+cName+' بنجاح ✓');
+        PrincipalTreatmentUI.assignModalId = null;
+        PrincipalUI.cachedSubs = null;
+        await render(); bindPrincipalTreatmentPlans();
+      }catch(e){ toast(arabicError(e)); }
+    });
+  });
+  document.querySelectorAll('[data-action="viewSub"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); });
   });
 }
 
@@ -9111,7 +9309,7 @@ function bindAdminSettings(){
 /* ============================================================
    حساب الموجه الطلابي
    ============================================================ */
-let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', obsShowClosed:false, _prefillObs:null };
+let CounselorUI = { statusFilter:'', gradeFilter:'', priorityFilter:'', categoryFilter:'', referrerFilter:'', searchText:'', showArchived:false, repeatFilter:'', sortField:'created_at', sortDir:'desc', modalOpen:false, editingId:null, tab:'cases', sessionText:'', studentProfile:null, obsSortField:'created_at', obsSortDir:'desc', obsSevFilter:'', obsShowClosed:false, _prefillObs:null, _writingReportId:null };
 
 const COUNSELING_GOAL_PRESETS = [
   'تعزيز الثقة بالنفس وتقدير الذات لدى الطالب',
@@ -9191,6 +9389,12 @@ async function screenCounselorCases(){
     _counselorCasesData = { cases, schoolUsers, schoolStudents, counselorGiftedReports, counselorObservations };
     _counselorCasesDataAt = Date.now();
   }
+  /* خطط علاجية محوَّلة */
+  let counselorPlans = [];
+  if (!_counselorPlansCache || (Date.now() - _counselorPlansCacheAt) > COUNSELOR_TTL_MS){
+    counselorPlans = await DB.listTreatmentPlansForCounselor(State.user.id, State.user.school).catch(function(){ return []; });
+    _counselorPlansCache = counselorPlans; _counselorPlansCacheAt = Date.now();
+  } else { counselorPlans = _counselorPlansCache; }
   counselorObservations = counselorObservations || [];
   const teachers = schoolUsers.filter(function(u){ return u.role==='teacher'||u.role==='coordinator'||isPrincipal(u); })
     .sort(function(a,b){ return (a.full_name||'').localeCompare(b.full_name||'','ar'); });
@@ -9493,6 +9697,69 @@ async function screenCounselorCases(){
     return '<div style="margin-top:4px;">'+toolbar+'<div id="obsPrintArea">'+rows+'</div></div>';
   })() : '';
 
+  /* تبويب الخطط العلاجية المحوَّلة للموجه */
+  const treatmentPlansTabHtml = CounselorUI.tab === 'treatmentPlans' ? (function(){
+    if (!counselorPlans.length){
+      return '<div style="color:var(--muted);font-size:13.5px;padding:30px 0;text-align:center;">لا توجد خطط علاجية محوَّلة إليك بعد.</div>';
+    }
+    const planRows = counselorPlans.map(function(p){
+      const isGroup = p.form_type==='groupPlan';
+      const typeLabel = isGroup
+        ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#e0f2fe;color:#0369a1;font-weight:700;">جماعية</span>'
+        : '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fef3c7;color:#b45309;font-weight:700;">فردية</span>';
+      const studentLabel = isGroup
+        ? esc(p.payload && p.payload.grade ? 'صف: '+p.payload.grade+(p.payload.section?' - '+p.payload.section:'') : '—')
+        : esc(p.payload && p.payload.studentName || '—');
+      const subject = esc(p.payload && p.payload.subject || p.payload && p.payload.sessions && p.payload.sessions[0] && p.payload.sessions[0].subject || '—');
+      const assignedDate = p.counselor_assigned_at ? fmtDate(p.counselor_assigned_at) : '—';
+      const statusCell = p.counselor_report_at
+        ? '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#166534;font-weight:700;">✓ تم إرسال التقرير</span>'
+        : '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:#fef9c3;color:#854d0e;font-weight:700;">بانتظار التقرير</span>';
+      const reportBtn = p.counselor_report_at
+        ? '<button class="btn btn-ghost btn-sm" data-action="editCounselorReport" data-id="'+p.id+'" style="font-size:11.5px;">تعديل التقرير</button>'
+        : '<button class="btn btn-primary btn-sm" data-action="writeCounselorReport" data-id="'+p.id+'" style="font-size:11.5px;">كتابة التقرير</button>';
+      return (
+        '<tr>' +
+          '<td>'+typeLabel+'</td>' +
+          '<td>'+studentLabel+'</td>' +
+          '<td>'+subject+'</td>' +
+          '<td>'+esc(p.created_by_name||'—')+'</td>' +
+          '<td>'+assignedDate+'</td>' +
+          '<td>'+statusCell+'</td>' +
+          '<td class="row-actions">'+reportBtn+' <button class="btn btn-ghost btn-sm" data-action="viewSub" data-id="'+p.id+'" style="font-size:11.5px;">عرض</button></td>' +
+        '</tr>'
+      );
+    }).join('');
+    /* مودال كتابة التقرير */
+    const writeReportModal = CounselorUI._writingReportId ? (function(){
+      const plan = counselorPlans.find(function(p){ return p.id===CounselorUI._writingReportId; });
+      if (!plan) return '';
+      const existing = plan.counselor_report || '';
+      return (
+        '<div class="modal-overlay" data-action="closeCounselorReportModal">' +
+          '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">' +
+            '<div class="modal-header"><h3>تقرير الإجراء الإرشادي</h3><button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal">✕</button></div>' +
+            '<div style="padding:16px;">' +
+              '<p style="margin-bottom:10px;font-size:13px;color:var(--muted);">اذكر الإجراءات والأساليب التي اتبعتها بناءً على اختصاصك، ونتائج متابعتك للطالب/المجموعة.</p>' +
+              '<textarea id="counselorReportText" class="input" style="width:100%;min-height:160px;resize:vertical;font-size:13.5px;" placeholder="الإجراءات المتبعة، نتائج المتابعة، التوصيات...">'+esc(existing)+'</textarea>' +
+              '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">' +
+                '<button class="btn btn-ghost" data-action="closeCounselorReportModal">إلغاء</button>' +
+                '<button class="btn btn-primary" data-action="submitCounselorReport" data-id="'+plan.id+'">إرسال التقرير</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    })() : '';
+    return (
+      writeReportModal +
+      '<div class="table-scroll"><table class="submissions-table">' +
+        '<thead><tr><th>النوع</th><th>الطالب / الصف</th><th>المادة</th><th>المعلم</th><th>تاريخ التحويل</th><th>الحالة</th><th>الإجراء</th></tr></thead>' +
+        '<tbody>'+planRows+'</tbody>' +
+      '</table></div>'
+    );
+  })() : '';
+
   const casesTab = CounselorUI.tab === 'cases' ? (
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">' +
       '<input id="counselorSearchInput" class="input" type="search" placeholder="🔍 بحث باسم الطالب أو المُحيل أو السبب…" value="'+esc(CounselorUI.searchText||'')+'" style="flex:1;min-width:200px;">' +
@@ -9587,6 +9854,7 @@ async function screenCounselorCases(){
     '</div>' +
     '<div class="tab-bar">' +
       '<button class="tab '+(CounselorUI.tab==='cases'?'active':'')+'" data-action="counselorTab" data-tab="cases">الحالات</button>' +
+      '<button class="tab '+(CounselorUI.tab==='treatmentPlans'?'active':'')+'" data-action="counselorTab" data-tab="treatmentPlans">📋 الخطط العلاجية'+(counselorPlans.length?' ('+counselorPlans.length+')':'')+' </button>' +
       '<button class="tab '+(CounselorUI.tab==='stats'?'active':'')+'" data-action="counselorTab" data-tab="stats">إحصائيات</button>' +
       '<button class="tab '+(CounselorUI.tab==='gifted'?'active':'')+'" data-action="counselorTab" data-tab="gifted">الموهوبون'+(counselorGiftedReports.length?' ('+counselorGiftedReports.length+')':'')+' </button>' +
       '<button class="tab '+(CounselorUI.tab==='observations'?'active':'')+'" data-action="counselorTab" data-tab="observations">🔍 الملاحظات الصفية'+(counselorObservations.length?' ('+counselorObservations.length+')':'')+' </button>' +
@@ -9596,7 +9864,7 @@ async function screenCounselorCases(){
     '<div style="margin:12px 0;">' +
       '<button class="btn btn-primary" data-action="addCase">+ إضافة حالة</button>' +
     '</div>' +
-    staleAlert + upcomingHtml + casesTab + giftedTab + obsTab + statsTab + profileHtml + caseModal
+    staleAlert + upcomingHtml + casesTab + treatmentPlansTabHtml + giftedTab + obsTab + statsTab + profileHtml + caseModal
   );
 }
 
@@ -10176,6 +10444,27 @@ function bindCounselorCases(){
   document.querySelectorAll('[data-action="counselorTab"]').forEach(function(el){
     el.addEventListener('click', function(){ CounselorUI.tab = el.getAttribute('data-tab'); render(); });
   });
+  document.querySelectorAll('[data-action="writeCounselorReport"],[data-action="editCounselorReport"]').forEach(function(el){
+    el.addEventListener('click', function(){ CounselorUI._writingReportId = el.getAttribute('data-id'); render(); });
+  });
+  document.querySelectorAll('[data-action="closeCounselorReportModal"]').forEach(function(el){
+    el.addEventListener('click', function(){ CounselorUI._writingReportId = null; render(); });
+  });
+  document.querySelectorAll('[data-action="submitCounselorReport"]').forEach(function(el){
+    el.addEventListener('click', async function(){
+      var txt = (document.getElementById('counselorReportText')||{}).value||'';
+      if (!txt.trim()){ toast('يرجى كتابة التقرير أولاً'); return; }
+      try{
+        await DB.submitCounselorReport(el.getAttribute('data-id'), txt.trim());
+        toast('تم إرسال التقرير بنجاح ✓');
+        CounselorUI._writingReportId = null; _counselorPlansCache = null;
+        await render();
+      }catch(e){ toast(arabicError(e)); }
+    });
+  });
+  document.querySelectorAll('[data-action="viewSub"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); });
+  });
   document.querySelectorAll('[data-action="counselorPriorityFilter"]').forEach(function(el){
     el.addEventListener('click', function(){
       var p = el.getAttribute('data-priority');
@@ -10751,6 +11040,9 @@ async function screenDashboard(){
   if (State.dashTab==='mySupVisits' && State.user.role==='coordinator'){
     return await screenCoordinatorSupVisits();
   }
+  if (State.dashTab==='principalTreatmentPlans' && isPrincipal(State.user)){
+    return await screenPrincipalTreatmentPlans();
+  }
   if (State.dashTab==='principalArchive' && isPrincipal(State.user)){
     return await screenPrincipalArchive();
   }
@@ -10973,6 +11265,7 @@ function bindDashboard(){
     else bindCoordinatorTeacherActivities();
   }
   else if (State.dashTab==='mySupVisits' && State.user.role==='coordinator') {/* read-only */}
+  else if (State.dashTab==='principalTreatmentPlans' && isPrincipal(State.user)) bindPrincipalTreatmentPlans();
   else if (State.dashTab==='principalArchive' && isPrincipal(State.user)) bindPrincipalArchive();
   else if (State.dashTab==='principalReview' && isPrincipal(State.user)) bindPrincipalReview();
   else if (State.dashTab==='principalDemoLessons' && isPrincipal(State.user)) bindPrincipalDemoLessons();
