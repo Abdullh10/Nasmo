@@ -16017,7 +16017,7 @@ function statusStrip(status){
 async function screenEditor(){
   const def = formDef(EditorState.formType);
   const readonly = false;
-  const teacherForms = ['individualAgreement','modelLesson','plcMeetingMinutes','indicatorReport','peerObservation'];
+  const teacherForms = ['individualAgreement','modelLesson','plcMeetingMinutes','indicatorReport','peerObservation','demoLessonEval'];
   if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
     EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){
       if (u.role !== 'teacher' && u.role !== 'coordinator') return false;
