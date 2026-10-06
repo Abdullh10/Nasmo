@@ -2805,6 +2805,18 @@ const DB = {
 if (!isRemote()) localSeed();
 
 /* ---------------------- تعريف النماذج ---------------------- */
+const DEMO_LESSON_CRITERIA_DEFAULT = [
+  'التهيئة والتمهيد',
+  'وضوح الأهداف ومناسبتها للمرحلة',
+  'تسلسل عرض المحتوى ووضوحه',
+  'التنوع في الأساليب والاستراتيجيات التدريسية',
+  'إشراك الطلاب وتفعيل مشاركتهم',
+  'إدارة الصف والوقت',
+  'توظيف الوسائل والتقنيات التعليمية',
+  'الربط بالحياة والمهارات',
+  'التقويم والتغذية الراجعة',
+  'الخلاصة والتختيم',
+];
 const FORM_DEFS = [
   { id:'groupPlan', no:1, title:'الخطة العلاجية (الجماعية)', desc:'تسجيل الطلاب المتعثرين ضمن مجموعة، والمهارات المستهدفة والأساليب والشواهد.', icon:'👥', color:'#0E7C7B', source:true, teacherAccess:true },
   { id:'indicatorReport', no:2, title:'التقرير العام للمؤشرات', desc:'توثيق فعاليات الفاعلية الجماعية أو الاستجابة للتدخل والمشاركين والوصف والتوصيات.', icon:'📊', color:'#0B2A4A', source:true },
@@ -2815,7 +2827,8 @@ const FORM_DEFS = [
   { id:'plcSelfEval', no:7, title:'التقييم الذاتي الفصلي لمجتمع التعلم', desc:'تقييم ذاتي لأداء المجتمع وفق معايير الرؤية المشتركة والفرق التعاونية والاستقصاء الجماعي والتوجه العملي والنتائج.', icon:'🧭', color:'#1F6F50', source:false },
   { id:'peerObservation', no:8, title:'الزيارة الصفية التبادلية', desc:'توثيق ملاحظة معلم زميل لحصة معلم آخر، وأبرز نقاط القوة وفرص التحسين والمتابعة.', icon:'👀', color:'#9D174D', source:false, teacherAccess:true },
   { id:'behavioralPlan', no:9, title:'الخطة العلاجية السلوكية', desc:'تسجيل السلوكيات المستهدفة لدى الطلاب، وتحليل أسبابها المحتملة، واستراتيجيات التدخل والمتابعة وإشعار ولي الأمر.', icon:'🧩', color:'#C2410C', source:false, teacherAccess:true },
-  { id:'teacherInitiative', no:10, title:'توثيق مبادرة تعليمية', desc:'توثيق مبادرات المعلم التعليمية مع الشواهد وإرسالها للمدير للاعتماد الرسمي.', icon:'💡', color:'#0F766E', source:false, teacherAccess:false }
+  { id:'teacherInitiative', no:10, title:'توثيق مبادرة تعليمية', desc:'توثيق مبادرات المعلم التعليمية مع الشواهد وإرسالها للمدير للاعتماد الرسمي.', icon:'💡', color:'#0F766E', source:false, teacherAccess:false },
+  { id:'demoLessonEval', no:11, title:'تقييم الحصة التوضيحية', desc:'تقييم أداء المعلم أثناء الحصة التوضيحية وفق محاور الأداء التدريسي، مع رصد نقاط القوة ومجالات التطوير.', icon:'⭐', color:'#1D4ED8', source:false, teacherAccess:true }
 ];
 
 const INITIATIVE_TYPES = [
@@ -3578,6 +3591,7 @@ function blankData(formType){
     case 'peerObservation': return { school:State.user.school, observerName:State.user.full_name, observedTeacher:'', subject:'', date:today, lessonTopic:'', observedPractice:'', strengths:['',''], improvements:['',''], followUp:'' };
     case 'behavioralPlan': return { school:State.user.school, grade:'', section:'', date:today, parentNotified:'لا', behaviorStudents:[ blankBehaviorRow() ], teacherOpinion:'' };
     case 'teacherInitiative': return { initiativeTitle:'', initiativeType:'', targetGroup:'', estimatedBeneficiaries:'', executionDate:today, description:'', evidenceType:'description', evidenceContent:'', expectedOutcome:'' };
+    case 'demoLessonEval': return { school:State.user.school, plc:'', day:'', date:today, period:'', teacher:'', subject:'', lessonTopic:'', objectives:'', criteria:DEMO_LESSON_CRITERIA_DEFAULT.map(function(item){ return { item:item, rating:'', notes:'' }; }), strengths:['',''], developments:['',''], recommendations:'', evaluatorName:State.user.full_name };
   }
   return {};
 }
@@ -16031,6 +16045,7 @@ async function screenEditor(){
     case 'peerObservation': body = renderPeerObservation(EditorState.data, readonly, teachers); break;
     case 'behavioralPlan': body = renderBehavioralPlan(EditorState.data, readonly, students); break;
     case 'teacherInitiative': body = renderTeacherInitiative(EditorState.data, readonly); break;
+    case 'demoLessonEval': body = renderDemoLessonEval(EditorState.data, readonly, teachers); break;
   }
 
   const returnBox = EditorState.status==='returned' && EditorState.returnComment
@@ -16771,6 +16786,60 @@ function renderPeerObservation(d, ro, teachers){
   );
 }
 
+function renderDemoLessonEval(d, ro, teachers){
+  const RATINGS = ['ممتاز','جيد جداً','جيد','مقبول'];
+  const dayOptions = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
+  const dayField = ro
+    ? inputField('اليوم','day',d.day,{readonly:true})
+    : '<div class="field"><label>اليوم</label><select class="input" data-field="day"><option value="">— اختر اليوم —</option>'+dayOptions.map(function(dy){ return '<option value="'+dy+'" '+(d.day===dy?'selected':'')+'>'+dy+'</option>'; }).join('')+'</select></div>';
+  const schoolCommunities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const communityField = ro
+    ? inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:true})
+    : '<div class="field"><label>مجتمع التعلم المهني</label><select class="input" data-field="plc"><option value="">— اختر المجتمع —</option>'+schoolCommunities.map(function(c){ return '<option value="'+esc(c.name)+'" '+(d.plc===c.name?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select></div>';
+  const criteriaRows = (d.criteria||[]).map(function(cr,i){
+    const ratingCell = ro
+      ? '<td>'+esc(cr.rating||'—')+'</td>'
+      : '<td><select class="input" data-field="criteria.'+i+'.rating"><option value="">— اختر —</option>'+RATINGS.map(function(r){ return '<option value="'+r+'"'+(cr.rating===r?' selected':'')+'>'+r+'</option>'; }).join('')+'</select></td>';
+    return (
+      '<tr><td style="width:34px;text-align:center;color:var(--muted);">'+(i+1)+'</td>' +
+      '<td>'+(ro?esc(cr.item):'<input class="input" data-field="criteria.'+i+'.item" value="'+esc(cr.item||'')+'">')+'</td>' +
+      ratingCell +
+      '<td><input class="input" data-field="criteria.'+i+'.notes" value="'+esc(cr.notes||'')+'" '+(ro?'disabled':'')+' placeholder="ملاحظة"></td>' +
+      (ro?'':'<td><button class="rmv" data-action="removeRow" data-list="criteria" data-idx="'+i+'">✕</button></td>') +
+      '</tr>'
+    );
+  }).join('');
+  const strengths = (d.strengths||[]).map(function(p,i){
+    return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;"><span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span><input class="input" data-field="strengths.'+i+'" value="'+esc(p)+'" '+(ro?'disabled':'')+' style="flex:1;">'+(ro?'':'<button class="rmv" data-action="removeRow" data-list="strengths" data-idx="'+i+'">✕</button>')+'</div>';
+  }).join('');
+  const developments = (d.developments||[]).map(function(p,i){
+    return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;"><span class="mono" style="color:var(--muted);padding-top:11px;">'+(i+1)+'-</span><input class="input" data-field="developments.'+i+'" value="'+esc(p)+'" '+(ro?'disabled':'')+' style="flex:1;">'+(ro?'':'<button class="rmv" data-action="removeRow" data-list="developments" data-idx="'+i+'">✕</button>')+'</div>';
+  }).join('');
+  return (
+    '<div class="field-grid cols-2">' +
+      inputField('المدرسة','school',d.school,{readonly:ro}) + communityField +
+    '</div>' +
+    '<div class="field-grid cols-4">' +
+      dayField + inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+      inputField('الحصة','period',d.period,{readonly:ro}) + inputField('المادة الدراسية','subject',d.subject,{readonly:ro}) +
+    '</div>' +
+    '<div class="field-grid cols-2">' +
+      teacherSelectHtml('المعلم المُنفِّذ','teacher',d.teacher,teachers,ro) + inputField('موضوع الحصة','lessonTopic',d.lessonTopic,{readonly:ro}) +
+    '</div>' +
+    inputField('الأهداف / الكفايات المستهدفة','objectives',d.objectives,{type:'textarea',readonly:ro}) +
+    '<div class="block-title"><span class="dot"></span> محاور التقييم</div>' +
+    '<div class="table-scroll"><table class="dyn-table"><thead><tr><th style="width:34px;">#</th><th>المحور</th><th style="width:130px;">التقدير</th><th>ملاحظات</th>'+(ro?'':'<th style="width:34px;"></th>')+'</tr></thead><tbody>'+criteriaRows+'</tbody></table></div>' +
+    (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="criteria">+ إضافة محور</button>') +
+    '<div class="block-title"><span class="dot"></span> نقاط القوة</div>' +
+    strengths + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="strengths">+ إضافة نقطة قوة</button>') +
+    '<div class="block-title"><span class="dot"></span> مجالات التطوير</div>' +
+    developments + (ro?'':'<button class="add-row-btn" data-action="addRow" data-list="developments">+ إضافة مجال تطوير</button>') +
+    '<div class="block-title"><span class="dot"></span> التوصيات والمقترحات</div>' +
+    inputField('','recommendations',d.recommendations,{type:'textarea',readonly:ro,placeholder:'التوصيات العامة للمعلم بناءً على نتائج التقييم...'}) +
+    inputField('اسم المقيِّم','evaluatorName',d.evaluatorName,{readonly:ro})
+  );
+}
+
 /* ---------------------- ربط أحداث المحرّر ---------------------- */
 function getPath(obj, path){
   const parts = path.split('.'); let cur = obj;
@@ -16800,6 +16869,8 @@ function defaultRowFor(list){
     case 'impacts': return { indicator:'', baseline:'', target:'', actual:'' };
     case 'strengths': return '';
     case 'improvements': return '';
+    case 'developments': return '';
+    case 'criteria': return { item:'', rating:'', notes:'' };
     case 'followups': return { date:'', note:'', score:'' };
     default: return {};
   }
@@ -17260,6 +17331,7 @@ async function screenView(id){
     case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
     case 'behavioralPlan': body = renderBehavioralPlan(s.payload, true); break;
     case 'teacherInitiative': body = renderTeacherInitiative(s.payload, true); break;
+    case 'demoLessonEval': body = renderDemoLessonEval(s.payload, true, []); break;
   }
   const stamp = s.status==='approved' ? (
     '<div class="stamp"><div><div class="txt">معتمد</div><div class="sm">'+ (s.approved_at? hijriDateFmt(new Date(s.approved_at)): '') +'</div></div></div>'
@@ -17367,6 +17439,7 @@ async function screenReview(id){
     case 'peerObservation': body = renderPeerObservation(s.payload, true); break;
     case 'behavioralPlan': body = renderBehavioralPlan(s.payload, true); break;
     case 'teacherInitiative': body = renderTeacherInitiative(s.payload, true); break;
+    case 'demoLessonEval': body = renderDemoLessonEval(s.payload, true, []); break;
   }
   return (
     '<div class="sheet-bar no-print"><div style="display:flex;gap:8px;align-items:center;"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button><span class="badge '+s.status+'">'+STATUS_LABEL[s.status]+'</span></div>' +
