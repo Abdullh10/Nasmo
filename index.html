@@ -3674,7 +3674,7 @@ async function render(){
         const [freshNotif, freshComm, freshPending] = await Promise.all([
           DB.listNotifications(State.user.role==='super_admin' ? {} : { school: State.user.school }),
           State.user.role==='super_admin' ? DB.listCommunities({})
-            : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)) ? DB.listCommunities({ school: State.user.school })
+            : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)||State.user.role==='teacher') ? DB.listCommunities({ school: State.user.school })
             : Promise.resolve([]),
           isPrincipal(State.user) ? loadPrincipalPendingApprovals() : Promise.resolve([])
         ]);
@@ -3688,7 +3688,7 @@ async function render(){
       Promise.all([
         needNotif   ? DB.listNotifications(State.user.role==='super_admin' ? {} : { school: State.user.school }) : Promise.resolve(_notifCache),
         needComm    ? (State.user.role==='super_admin' ? DB.listCommunities({})
-                      : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)) ? DB.listCommunities({ school: State.user.school })
+                      : (State.user.role==='admin'||State.user.role==='coordinator'||isPrincipal(State.user)||State.user.role==='teacher') ? DB.listCommunities({ school: State.user.school })
                       : Promise.resolve([])) : Promise.resolve(_commCache),
         needPending ? (isPrincipal(State.user) ? loadPrincipalPendingApprovals() : Promise.resolve([])) : Promise.resolve(_pendingCache)
       ]).then(function(results){
@@ -16021,8 +16021,8 @@ async function screenEditor(){
   if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
     EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){
       if (u.role !== 'teacher' && u.role !== 'coordinator') return false;
-      if (State.user.role === 'coordinator' && State.user.community_id){
-        return u.community_id === State.user.community_id || u.id === State.user.id;
+      if ((State.user.role === 'coordinator' || State.user.role === 'teacher') && State.user.community_id){
+        return u.community_id === State.user.community_id;
       }
       return true;
     });
@@ -16792,7 +16792,10 @@ function renderDemoLessonEval(d, ro, teachers){
   const dayField = ro
     ? inputField('اليوم','day',d.day,{readonly:true})
     : '<div class="field"><label>اليوم</label><select class="input" data-field="day"><option value="">— اختر اليوم —</option>'+dayOptions.map(function(dy){ return '<option value="'+dy+'" '+(d.day===dy?'selected':'')+'>'+dy+'</option>'; }).join('')+'</select></div>';
-  const schoolCommunities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const allSchoolCommunities = (State.communitiesCache||[]).filter(function(c){ return c.school===State.user.school; });
+  const schoolCommunities = (State.user.role==='teacher' && State.user.community_id)
+    ? allSchoolCommunities.filter(function(c){ return c.id===State.user.community_id; })
+    : allSchoolCommunities;
   const communityField = ro
     ? inputField('مجتمع التعلم المهني','plc',d.plc,{readonly:true})
     : '<div class="field"><label>مجتمع التعلم المهني</label><select class="input" data-field="plc"><option value="">— اختر المجتمع —</option>'+schoolCommunities.map(function(c){ return '<option value="'+esc(c.name)+'" '+(d.plc===c.name?'selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select></div>';
