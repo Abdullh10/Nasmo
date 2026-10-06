@@ -3934,7 +3934,7 @@ function bindTopNav(){
   });
 
   const composeBtn = document.querySelector('[data-action="composeNotif"]');
-  if (composeBtn) composeBtn.addEventListener('click', function(){ NotifUI.compose=true; NotifUI.open=false; render(); });
+  if (composeBtn) composeBtn.addEventListener('click', function(e){ e.stopPropagation(); NotifUI.compose=true; NotifUI.open=false; render(); });
   const closeComposeBtn = document.querySelector('[data-action="closeNotifCompose"]');
   if (closeComposeBtn) closeComposeBtn.addEventListener('click', function(){ NotifUI.compose=false; render(); });
   const closeComposeBg = document.querySelector('[data-action="closeNotifComposeBg"]');
