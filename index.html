@@ -6931,13 +6931,63 @@ async function screenPrincipalTreatmentPlans(){
   const reportModal = PrincipalTreatmentUI.reportModalId ? (function(){
     const plan = plans.find(function(p){ return p.id===PrincipalTreatmentUI.reportModalId; });
     if (!plan) return '';
+    const isGroup = plan.form_type==='groupPlan';
+    const targetLabel = isGroup
+      ? esc(plan.payload && plan.payload.grade ? 'صف '+plan.payload.grade+(plan.payload.section?' — '+plan.payload.section:'') : '—')
+      : esc(plan.payload && plan.payload.studentName || '—');
+    const subjectLabel = esc(plan.payload && plan.payload.subject || plan.payload && plan.payload.sessions && plan.payload.sessions[0] && plan.payload.sessions[0].subject || '—');
+    const rpt = plan.counselor_report || '';
+    /* تحليل التقرير المنسَّق */
+    var actMatch = rpt.match(/الإجراءات المتبعة:\n([\s\S]*?)(?:\n\nنتيجة|\n\nملاحظات|$)/);
+    var actionsHtml = '';
+    if (actMatch){
+      actionsHtml = actMatch[1].split('\n').filter(Boolean).map(function(line){
+        return '<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;font-size:13px;">'+
+          '<span style="color:#16a34a;font-size:15px;line-height:1.3;">✓</span>'+
+          '<span>'+esc(line.replace(/^[✓•]\s*/,''))+'</span></div>';
+      }).join('');
+    } else {
+      actionsHtml = '<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;">'+esc(rpt)+'</div>';
+    }
+    var outMatch = rpt.match(/نتيجة المتابعة:\n(.+)/);
+    var outcomeHtml = outMatch ? '<div style="font-size:13.5px;font-weight:600;color:#1d4ed8;">'+esc(outMatch[1].trim())+'</div>' : '';
+    var notMatch = rpt.match(/ملاحظات وتوصيات:\n([\s\S]*)$/);
+    var notesHtml = notMatch ? '<div style="white-space:pre-wrap;font-size:13px;line-height:1.7;color:var(--text);">'+esc(notMatch[1].trim())+'</div>' : '';
     return (
       '<div class="modal-overlay" data-action="closeTreatmentReportModal">' +
-        '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">' +
-          '<div class="modal-header"><h3>تقرير الموجه الطلابي</h3><button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal">✕</button></div>' +
-          '<div style="padding:16px;">' +
-            '<div style="margin-bottom:8px;font-size:13px;color:var(--muted);">الموجه: <b>'+esc(plan.counselor_name||'—')+'</b> — بتاريخ: <b>'+(plan.counselor_report_at?fmtDate(plan.counselor_report_at):'—')+'</b></div>' +
-            '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;white-space:pre-wrap;font-size:13.5px;line-height:1.7;">'+esc(plan.counselor_report||'')+'</div>' +
+        '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:620px;max-height:90vh;overflow-y:auto;">' +
+          /* رأس النموذج */
+          '<div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:18px 20px;border-radius:10px 10px 0 0;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+              '<div>' +
+                '<div style="font-size:11px;opacity:.75;margin-bottom:3px;">وزارة التعليم — نظام دعم التحصيل الدراسي</div>' +
+                '<h3 style="margin:0;font-size:16px;font-weight:700;">تقرير الموجه الطلابي</h3>' +
+                '<div style="font-size:12px;opacity:.75;margin-top:2px;">'+esc(State.user.school)+'</div>' +
+              '</div>' +
+              '<button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal" style="color:#fff;opacity:.8;">✕</button>' +
+            '</div>' +
+          '</div>' +
+          '<div style="padding:18px;">' +
+            /* بيانات الخطة */
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">' +
+              '<div><span style="color:var(--muted);">الموجه: </span><b>'+esc(plan.counselor_name||'—')+'</b></div>' +
+              '<div><span style="color:var(--muted);">تاريخ التقرير: </span><b>'+(plan.counselor_report_at?fmtDate(plan.counselor_report_at):'—')+'</b></div>' +
+              '<div><span style="color:var(--muted);">النوع: </span><b>'+(isGroup?'خطة جماعية':'خطة فردية')+'</b></div>' +
+              '<div><span style="color:var(--muted);">الطالب / الصف: </span><b>'+targetLabel+'</b></div>' +
+              '<div><span style="color:var(--muted);">المادة: </span><b>'+subjectLabel+'</b></div>' +
+              '<div><span style="color:var(--muted);">المعلم: </span><b>'+esc(plan.created_by_name||'—')+'</b></div>' +
+            '</div>' +
+            /* الإجراءات */
+            (actionsHtml ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:13px;margin-bottom:8px;padding-bottom:5px;border-bottom:2px solid #1d4ed8;color:var(--text);">الإجراءات الإرشادية المتبعة</div>'+actionsHtml+'</div>' : '') +
+            /* النتيجة */
+            (outcomeHtml ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:13px;margin-bottom:6px;padding-bottom:5px;border-bottom:2px solid #1d4ed8;color:var(--text);">نتيجة المتابعة</div>'+outcomeHtml+'</div>' : '') +
+            /* الملاحظات */
+            (notesHtml ? '<div style="margin-bottom:14px;"><div style="font-weight:700;font-size:13px;margin-bottom:6px;padding-bottom:5px;border-bottom:2px solid #1d4ed8;color:var(--text);">ملاحظات وتوصيات</div>'+notesHtml+'</div>' : '') +
+            /* أزرار */
+            '<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--border);">' +
+              '<button class="btn btn-ghost btn-sm" onclick="window.print()" style="font-size:12.5px;">🖨 طباعة</button>' +
+              '<button class="btn btn-ghost" data-action="closeTreatmentReportModal">إغلاق</button>' +
+            '</div>' +
           '</div>' +
         '</div>' +
       '</div>'
@@ -9730,21 +9780,130 @@ async function screenCounselorCases(){
         '</tr>'
       );
     }).join('');
-    /* مودال كتابة التقرير */
+    /* مودال كتابة التقرير — نموذج إرشادي احترافي */
+    const COUNSELING_ACTIONS = [
+      { group: 'الجلسات الإرشادية', items: [
+        'المقابلة الإرشادية الفردية مع الطالب',
+        'جلسة إرشاد جماعي للمجموعة',
+        'جلسة إرشادية مع ولي الأمر'
+      ]},
+      { group: 'التواصل والتنسيق', items: [
+        'التواصل مع ولي أمر الطالب هاتفياً',
+        'اجتماع مع المعلم / المعلمة المختص',
+        'التنسيق مع إدارة المدرسة',
+        'الاستعانة بالأخصائي الاجتماعي',
+        'تحويل للمرشد النفسي'
+      ]},
+      { group: 'الأساليب والتقنيات الإرشادية', items: [
+        'أسلوب التعزيز الإيجابي',
+        'عقد السلوك مع الطالب',
+        'أسلوب النمذجة والقدوة',
+        'تدريب على مهارات التنظيم الذاتي',
+        'تدريب على مهارات الدراسة والمذاكرة',
+        'إعداد خطة تعديل سلوك وتطبيقها'
+      ]},
+      { group: 'المتابعة الميدانية', items: [
+        'متابعة انتظام الطالب وحضوره',
+        'زيارة ميدانية لمتابعة الطالب صفياً',
+        'متابعة تحصيل الطالب الدراسي',
+        'التواصل الدوري مع معلم الفصل'
+      ]}
+    ];
     const writeReportModal = CounselorUI._writingReportId ? (function(){
       const plan = counselorPlans.find(function(p){ return p.id===CounselorUI._writingReportId; });
       if (!plan) return '';
       const existing = plan.counselor_report || '';
+      /* استخراج القيم المحفوظة من النص */
+      var savedActions = [];
+      var savedOther = '';
+      var savedOutcome = '';
+      var savedNotes = '';
+      if (existing){
+        var actMatch = existing.match(/الإجراءات المتبعة:\n([\s\S]*?)(?:\n\nنتيجة|\n\nملاحظات|$)/);
+        if (actMatch){
+          actMatch[1].split('\n').forEach(function(line){
+            var m = line.match(/^[✓•]\s(.+)/);
+            if (m){
+              if (m[1].startsWith('أخرى: ')) savedOther = m[1].replace('أخرى: ','');
+              else savedActions.push(m[1]);
+            }
+          });
+        }
+        var outMatch = existing.match(/نتيجة المتابعة:\n(.+)/);
+        if (outMatch) savedOutcome = outMatch[1].trim();
+        var notMatch = existing.match(/ملاحظات وتوصيات:\n([\s\S]*)$/);
+        if (notMatch) savedNotes = notMatch[1].trim();
+      }
+      const isGroup = plan.form_type==='groupPlan';
+      const targetLabel = isGroup
+        ? esc(plan.payload && plan.payload.grade ? 'صف '+plan.payload.grade+(plan.payload.section?' — '+plan.payload.section:'') : '—')
+        : esc(plan.payload && plan.payload.studentName || '—');
+      const subjectLabel = esc(plan.payload && plan.payload.subject || plan.payload && plan.payload.sessions && plan.payload.sessions[0] && plan.payload.sessions[0].subject || '—');
+      const OUTCOMES = ['تحسن ملحوظ في السلوك أو التحصيل','تحسن جزئي مع استمرار المتابعة','لم يطرأ تغيير يُذكر حتى الآن','تراجع يستدعي تدخلاً إضافياً','تم تحقيق الهدف وإغلاق الحالة'];
       return (
         '<div class="modal-overlay" data-action="closeCounselorReportModal">' +
-          '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:520px;">' +
-            '<div class="modal-header"><h3>تقرير الإجراء الإرشادي</h3><button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal">✕</button></div>' +
-            '<div style="padding:16px;">' +
-              '<p style="margin-bottom:10px;font-size:13px;color:var(--muted);">اذكر الإجراءات والأساليب التي اتبعتها بناءً على اختصاصك، ونتائج متابعتك للطالب/المجموعة.</p>' +
-              '<textarea id="counselorReportText" class="input" style="width:100%;min-height:160px;resize:vertical;font-size:13.5px;" placeholder="الإجراءات المتبعة، نتائج المتابعة، التوصيات...">'+esc(existing)+'</textarea>' +
-              '<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">' +
+          '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:680px;max-height:90vh;overflow-y:auto;">' +
+            /* رأس النموذج */
+            '<div style="background:linear-gradient(135deg,#1e40af,#1d4ed8);color:#fff;padding:18px 20px;border-radius:10px 10px 0 0;">' +
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+                '<div>' +
+                  '<div style="font-size:11px;opacity:.8;margin-bottom:4px;">وزارة التعليم — نظام دعم التحصيل الدراسي</div>' +
+                  '<h3 style="margin:0;font-size:17px;font-weight:700;">تقرير الإجراء الإرشادي</h3>' +
+                  '<div style="font-size:12px;opacity:.8;margin-top:3px;">'+esc(State.user.school)+'</div>' +
+                '</div>' +
+                '<button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal" style="color:#fff;opacity:.8;">✕</button>' +
+              '</div>' +
+            '</div>' +
+            '<div style="padding:18px;">' +
+              /* معلومات الخطة */
+              '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;">' +
+                '<div><span style="color:var(--muted);">النوع: </span><b>'+(isGroup?'جماعية':'فردية')+'</b></div>' +
+                '<div><span style="color:var(--muted);">الطالب / الصف: </span><b>'+targetLabel+'</b></div>' +
+                '<div><span style="color:var(--muted);">المادة: </span><b>'+subjectLabel+'</b></div>' +
+              '</div>' +
+              /* الإجراءات */
+              '<div style="margin-bottom:14px;">' +
+                '<div style="font-weight:700;font-size:13.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--primary,#1d4ed8);">أولاً: الإجراءات الإرشادية المتبعة <span style="font-weight:400;font-size:11.5px;color:var(--muted);">(يمكن اختيار أكثر من إجراء)</span></div>' +
+                COUNSELING_ACTIONS.map(function(grp){
+                  return '<div style="margin-bottom:12px;">' +
+                    '<div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px;letter-spacing:.5px;">'+esc(grp.group)+'</div>' +
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">' +
+                    grp.items.map(function(item){
+                      var checked = savedActions.indexOf(item) !== -1 ? 'checked' : '';
+                      return '<label style="display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;background:var(--surface);border:1px solid var(--border);transition:background .15s;" class="counselor-action-lbl">'+
+                        '<input type="checkbox" class="counselor-action-cb" value="'+esc(item)+'" '+checked+' style="width:15px;height:15px;accent-color:#1d4ed8;flex-shrink:0;">'+
+                        '<span>'+esc(item)+'</span></label>';
+                    }).join('') +
+                    '</div></div>';
+                }).join('') +
+                '<div style="margin-top:8px;">' +
+                  '<label style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;margin-bottom:5px;">' +
+                    '<input type="checkbox" id="cbOtherCheck" '+(savedOther?'checked':'')+' style="width:15px;height:15px;accent-color:#1d4ed8;"> أخرى (يرجى التوضيح)' +
+                  '</label>' +
+                  '<textarea id="counselorOtherText" class="input" style="width:100%;min-height:60px;resize:vertical;font-size:13px;'+(savedOther?'':'display:none;')+'" placeholder="اذكر الإجراء الإضافي...">'+esc(savedOther)+'</textarea>' +
+                '</div>' +
+              '</div>' +
+              /* النتيجة */
+              '<div style="margin-bottom:14px;">' +
+                '<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--primary,#1d4ed8);">ثانياً: نتيجة المتابعة</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
+                OUTCOMES.map(function(o){
+                  var checked = savedOutcome===o ? 'checked' : '';
+                  return '<label style="display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;background:var(--surface);border:1px solid var(--border);" class="counselor-outcome-lbl">'+
+                    '<input type="radio" name="counselorOutcome" class="counselor-outcome-rb" value="'+esc(o)+'" '+checked+' style="width:15px;height:15px;accent-color:#1d4ed8;">'+
+                    '<span>'+esc(o)+'</span></label>';
+                }).join('') +
+                '</div>' +
+              '</div>' +
+              /* الملاحظات */
+              '<div style="margin-bottom:16px;">' +
+                '<div style="font-weight:700;font-size:13.5px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--primary,#1d4ed8);">ثالثاً: ملاحظات وتوصيات</div>' +
+                '<textarea id="counselorNotesText" class="input" style="width:100%;min-height:80px;resize:vertical;font-size:13px;" placeholder="أي توصيات إضافية أو ملاحظات للمدير...">'+esc(savedNotes)+'</textarea>' +
+              '</div>' +
+              /* الأزرار */
+              '<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--border);">' +
                 '<button class="btn btn-ghost" data-action="closeCounselorReportModal">إلغاء</button>' +
-                '<button class="btn btn-primary" data-action="submitCounselorReport" data-id="'+plan.id+'">إرسال التقرير</button>' +
+                '<button class="btn btn-primary" data-action="submitCounselorReport" data-id="'+plan.id+'">💾 حفظ وإرسال للمدير</button>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -10450,12 +10609,40 @@ function bindCounselorCases(){
   document.querySelectorAll('[data-action="closeCounselorReportModal"]').forEach(function(el){
     el.addEventListener('click', function(){ CounselorUI._writingReportId = null; render(); });
   });
+  /* toggle textarea for "أخرى" checkbox */
+  (function(){
+    var cbOther = document.getElementById('cbOtherCheck');
+    var taOther = document.getElementById('counselorOtherText');
+    if (cbOther && taOther){
+      cbOther.addEventListener('change', function(){ taOther.style.display = this.checked ? '' : 'none'; if (!this.checked) taOther.value=''; });
+    }
+    /* hover highlight for action labels */
+    document.querySelectorAll('.counselor-action-lbl').forEach(function(lbl){
+      lbl.addEventListener('mouseenter', function(){ this.style.background='var(--surface-hover,#f1f5f9)'; });
+      lbl.addEventListener('mouseleave', function(){ this.style.background='var(--surface)'; });
+    });
+  })();
   document.querySelectorAll('[data-action="submitCounselorReport"]').forEach(function(el){
     el.addEventListener('click', async function(){
-      var txt = (document.getElementById('counselorReportText')||{}).value||'';
-      if (!txt.trim()){ toast('يرجى كتابة التقرير أولاً'); return; }
+      /* جمع الإجراءات المحددة */
+      var actions = [];
+      document.querySelectorAll('.counselor-action-cb:checked').forEach(function(cb){ actions.push(cb.value); });
+      var cbOther = document.getElementById('cbOtherCheck');
+      var taOther = document.getElementById('counselorOtherText');
+      var otherText = (cbOther && cbOther.checked && taOther) ? taOther.value.trim() : '';
+      if (otherText) actions.push('أخرى: '+otherText);
+      /* نتيجة المتابعة */
+      var outRb = document.querySelector('.counselor-outcome-rb:checked');
+      var outcome = outRb ? outRb.value : '';
+      /* الملاحظات */
+      var notes = (document.getElementById('counselorNotesText')||{}).value||'';
+      if (!actions.length && !outcome){ toast('يرجى تحديد إجراء واحد على الأقل ونتيجة المتابعة'); return; }
+      /* بناء النص المنسَّق */
+      var txt = 'الإجراءات المتبعة:\n' + actions.map(function(a){ return '✓ '+a; }).join('\n');
+      if (outcome) txt += '\n\nنتيجة المتابعة:\n' + outcome;
+      if (notes.trim()) txt += '\n\nملاحظات وتوصيات:\n' + notes.trim();
       try{
-        await DB.submitCounselorReport(el.getAttribute('data-id'), txt.trim());
+        await DB.submitCounselorReport(el.getAttribute('data-id'), txt);
         toast('تم إرسال التقرير بنجاح ✓');
         CounselorUI._writingReportId = null; _counselorPlansCache = null;
         await render();
@@ -17718,7 +17905,8 @@ let ReviewCache = {};
 async function screenReview(id){
   const s = await DB.getSubmission(id); ReviewCache = s;
   if (!s){ toast('النموذج غير موجود أو انتهت صلاحية الجلسة.'); go('dashboard'); return ''; }
-  if (!isPrincipal(State.user) && State.user.role !== 'super_admin'){ go('dashboard'); return ''; }
+  const isCounselorViewing = State.user.role === 'counselor' && s.counselor_id === State.user.id;
+  if (!isPrincipal(State.user) && State.user.role !== 'super_admin' && !isCounselorViewing){ go('dashboard'); return ''; }
   if (isPrincipal(State.user) && s.created_by === State.user.id){ toast('لا يمكن للمدير مراجعة نماذجه الخاصة.'); go('dashboard'); return ''; }
   if (State.user.role !== 'super_admin' && s.school !== State.user.school){ go('dashboard'); return ''; }
   const def = formDef(s.form_type);
