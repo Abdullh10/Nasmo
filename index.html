@@ -6956,16 +6956,13 @@ async function screenPrincipalTreatmentPlans(){
     return (
       '<div class="modal-overlay" data-action="closeTreatmentReportModal">' +
         '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:620px;max-height:90vh;overflow-y:auto;">' +
-          /* رأس النموذج */
-          '<div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:18px 20px;border-radius:10px 10px 0 0;">' +
-            '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
-              '<div>' +
-                '<div style="font-size:11px;opacity:.75;margin-bottom:3px;">وزارة التعليم — نظام دعم التحصيل الدراسي</div>' +
-                '<h3 style="margin:0;font-size:16px;font-weight:700;">تقرير الموجه الطلابي</h3>' +
-                '<div style="font-size:12px;opacity:.75;margin-top:2px;">'+esc(State.user.school)+'</div>' +
-              '</div>' +
-              '<button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal" style="color:#fff;opacity:.8;">✕</button>' +
+          /* ترويسة رسمية */
+          '<div style="position:relative;border-bottom:2px solid var(--border);">' +
+            formLogoHeaderHtml() +
+            '<div class="sheet-header" style="padding:4px 20px 12px;margin-top:0;">' +
+              '<div class="titles"><h2 style="font-size:15px;margin:0;font-weight:700;">تقرير الموجه الطلابي</h2><div class="sub">'+esc(State.user.school)+'</div></div>' +
             '</div>' +
+            '<button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal" style="position:absolute;top:8px;left:12px;font-size:16px;line-height:1;">✕</button>' +
           '</div>' +
           '<div style="padding:18px;">' +
             /* بيانات الخطة */
@@ -9776,7 +9773,7 @@ async function screenCounselorCases(){
           '<td>'+esc(p.created_by_name||'—')+'</td>' +
           '<td>'+assignedDate+'</td>' +
           '<td>'+statusCell+'</td>' +
-          '<td class="row-actions">'+reportBtn+' <button class="btn btn-ghost btn-sm" data-action="viewSub" data-id="'+p.id+'" style="font-size:11.5px;">عرض</button></td>' +
+          '<td class="row-actions">'+reportBtn+' <button class="btn btn-ghost btn-sm" data-action="viewSubReadonly" data-id="'+p.id+'" style="font-size:11.5px;">عرض</button></td>' +
         '</tr>'
       );
     }).join('');
@@ -9843,16 +9840,13 @@ async function screenCounselorCases(){
       return (
         '<div class="modal-overlay" data-action="closeCounselorReportModal">' +
           '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:680px;max-height:90vh;overflow-y:auto;">' +
-            /* رأس النموذج */
-            '<div style="background:linear-gradient(135deg,#1e40af,#1d4ed8);color:#fff;padding:18px 20px;border-radius:10px 10px 0 0;">' +
-              '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
-                '<div>' +
-                  '<div style="font-size:11px;opacity:.8;margin-bottom:4px;">وزارة التعليم — نظام دعم التحصيل الدراسي</div>' +
-                  '<h3 style="margin:0;font-size:17px;font-weight:700;">تقرير الإجراء الإرشادي</h3>' +
-                  '<div style="font-size:12px;opacity:.8;margin-top:3px;">'+esc(State.user.school)+'</div>' +
-                '</div>' +
-                '<button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal" style="color:#fff;opacity:.8;">✕</button>' +
+            /* ترويسة رسمية */
+            '<div style="position:relative;border-bottom:2px solid var(--border);">' +
+              formLogoHeaderHtml() +
+              '<div class="sheet-header" style="padding:4px 20px 12px;margin-top:0;">' +
+                '<div class="titles"><h2 style="font-size:15px;margin:0;font-weight:700;">تقرير الإجراء الإرشادي</h2><div class="sub">'+esc(State.user.school)+' — الموجه: '+esc(State.user.full_name||State.user.name||'')+'</div></div>' +
               '</div>' +
+              '<button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal" style="position:absolute;top:8px;left:12px;font-size:16px;line-height:1;">✕</button>' +
             '</div>' +
             '<div style="padding:18px;">' +
               /* معلومات الخطة */
@@ -10651,6 +10645,9 @@ function bindCounselorCases(){
   });
   document.querySelectorAll('[data-action="viewSub"]').forEach(function(el){
     el.addEventListener('click', function(){ go('review', { id: el.getAttribute('data-id') }); });
+  });
+  document.querySelectorAll('[data-action="viewSubReadonly"]').forEach(function(el){
+    el.addEventListener('click', function(){ go('view', { id: el.getAttribute('data-id') }); });
   });
   document.querySelectorAll('[data-action="counselorPriorityFilter"]').forEach(function(el){
     el.addEventListener('click', function(){
@@ -17800,6 +17797,7 @@ async function screenView(id){
   const s = await DB.getSubmission(id); ViewCache = s;
   if (!s || (State.user.role !== 'super_admin' && s.school !== State.user.school)){ go('dashboard'); return ''; }
   if (State.user.role === 'teacher' && s.created_by !== State.user.id){ go('dashboard'); return ''; }
+  if (State.user.role === 'counselor' && s.counselor_id !== State.user.id){ go('dashboard'); return ''; }
   const def = formDef(s.form_type);
   if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
   let body = '';
