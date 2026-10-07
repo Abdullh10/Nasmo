@@ -517,7 +517,7 @@ html[data-theme="dark"] .sig-box canvas{ background:#f0f4f8; }
 .settings-bar input{ border:1px solid var(--border); border-radius:7px; padding:6px 10px; font-size:13px; font-family:inherit; }
 
 .stamp{
-  position:absolute; left:34px; top:90px; width:118px; height:118px; border-radius:50%;
+  position:absolute; right:34px; top:90px; width:118px; height:118px; border-radius:50%;
   border:3px solid var(--gold); display:flex; align-items:center; justify-content:center; text-align:center;
   transform:rotate(-14deg); color:var(--gold); opacity:.92; pointer-events:none;
   background:repeating-radial-gradient(circle, transparent 0 96%, rgba(184,134,11,.07) 97%);
@@ -2439,6 +2439,8 @@ const DB = {
       let path = 'students?order=full_name.asc';
       if (filter.school) path += '&school=eq.' + encodeURIComponent(filter.school);
       if (filter.createdBy) path += '&created_by=eq.' + encodeURIComponent(filter.createdBy);
+      if (State.user && State.user.role === 'teacher')
+        path += '&assigned_teacher_ids=cs.' + encodeURIComponent(JSON.stringify([State.user.id]));
       try{
         const rows = await remoteFetch(path);
         return rows || [];
@@ -3733,7 +3735,7 @@ async function render(){
       case 'superAdminSchool': html = await screenSuperAdminSchool(); if (token !== _renderToken) return; renderShell(app, html); bindSuperSchool(); break;
       default: renderShell(app, '<p>صفحة غير معروفة.</p>');
     }
-  }catch(e){ if (token === _renderToken) renderShell(app, '<p class="error-text">'+esc(e.message)+'</p>'); }
+  }catch(e){ if (token === _renderToken) renderShell(app, '<div style="text-align:center;padding:60px 20px;"><p style="color:var(--danger);font-size:15px;margin-bottom:18px;">⚠️ '+esc(e.message||'فشل تحميل الصفحة')+'</p><button class="btn btn-primary" onclick="render()">إعادة المحاولة</button></div>'); }
   const vfab = document.getElementById('view-fab');
   if (vfab) vfab.style.display = (State.screen === 'login' ? '' : 'none');
 }
@@ -3795,8 +3797,8 @@ function topNav(){
           return (
             '<div class="notif-item '+(unread?'unread':'')+'" style="position:relative;" data-action="readNotif" data-id="'+n.id+'">' +
               (State.user.role==='admin'
-                ? '<button class="btn btn-ghost btn-sm" data-action="deleteNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;" title="حذف للجميع">✕</button>'
-                : '<button class="btn btn-ghost btn-sm" data-action="dismissNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;" title="إخفاء">✕</button>') +
+                ? '<button class="btn btn-ghost btn-sm" data-action="deleteNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;direction:ltr;" title="حذف للجميع">✕</button>'
+                : '<button class="btn btn-ghost btn-sm" data-action="dismissNotif" data-id="'+n.id+'" style="position:absolute;top:6px;left:6px;padding:2px 6px;font-size:11px;color:var(--muted);z-index:1;direction:ltr;" title="إخفاء">✕</button>') +
               '<span class="notif-type-tag notif-type-'+(n.type||'general')+'">'+(NOTIF_TYPE_LABEL[n.type]||'عام')+'</span>' +
               '<div class="ntitle">'+esc(n.title)+'</div>' +
               (n.body ? '<div class="nbody">'+esc(n.body)+'</div>' : '') +
@@ -4499,7 +4501,8 @@ function bindPrincipalCommunities(){
 
 /* ----- تقرير موحَّد لزيارة الإشراف التربوي لمجتمع مهني محدَّد ----- */
 async function screenCommunityReport(communityId){
-  if (!['admin','super_admin','coordinator','principal','vice_principal'].includes(State.user.role)) { go('dashboard'); return ''; }
+  if (!State.user || !['admin','super_admin','coordinator','principal','vice_principal'].includes(State.user.role)) { go('dashboard'); return ''; }
+  if (State.user.role === 'coordinator' && State.user.community_id && State.user.community_id !== communityId) { go('dashboard'); return ''; }
   const c = (State.communitiesCache||[]).find(function(x){ return x.id===communityId; });
   if (!c){
     return '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div><p>لم يتم العثور على المجتمع المهني.</p>';
@@ -7149,7 +7152,7 @@ async function screenPrincipalTreatmentPlans(){
             '<div class="sheet-header" style="padding:4px 20px 12px;margin-top:0;">' +
               '<div class="titles"><h2 style="font-size:15px;margin:0;font-weight:700;">تقرير الموجه الطلابي</h2><div class="sub">'+esc(State.user.school)+'</div></div>' +
             '</div>' +
-            '<button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal" style="position:absolute;top:8px;left:12px;font-size:16px;line-height:1;">✕</button>' +
+            '<button class="btn btn-ghost btn-sm" data-action="closeTreatmentReportModal" style="position:absolute;top:8px;right:12px;font-size:16px;line-height:1;">✕</button>' +
           '</div>' +
           '<div style="padding:18px;">' +
             /* بيانات الخطة */
@@ -10018,7 +10021,7 @@ async function screenCounselorCases(){
               '<div class="sheet-header" style="padding:4px 20px 12px;margin-top:0;">' +
                 '<div class="titles"><h2 style="font-size:15px;margin:0;font-weight:700;">تقرير الإجراء الإرشادي</h2><div class="sub">'+esc(State.user.school)+' — الموجه: '+esc(State.user.full_name||State.user.name||'')+'</div></div>' +
               '</div>' +
-              '<button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal" style="position:absolute;top:8px;left:12px;font-size:16px;line-height:1;">✕</button>' +
+              '<button class="btn btn-ghost btn-sm" data-action="closeCounselorReportModal" style="position:absolute;top:8px;right:12px;font-size:16px;line-height:1;">✕</button>' +
             '</div>' +
             '<div style="padding:18px;">' +
               /* معلومات الخطة */
@@ -14565,6 +14568,9 @@ function bindTaskDetail(){
   if (completeBtn) completeBtn.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     if (!TaskDetailCache.evidence_files.length){ toast('يرجى رفع شاهد واحد على الأقل قبل إتمام المهمة.'); this.disabled = false; return; }
+    if (TaskDetailCache.principal_status === 'approved'){
+      if (!confirm('هذه المهمة معتمدة من المدير. إعادة إتمامها ستُلغي الاعتماد وتعيدها للمراجعة. هل أنت متأكد؟')){ this.disabled = false; return; }
+    }
     try{
       const updated = await DB.updateTask(TaskDetailCache.id, { teacher_notes: TaskDetailCache.teacher_notes, evidence_files: TaskDetailCache.evidence_files, status:'done', completed_at: nowIso(), principal_status: null, principal_note: null, principal_reviewed_at: null, coordinator_status: null, coordinator_note: null, coordinator_reviewed_at: null });
       invalidateAllScreenCaches();
