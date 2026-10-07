@@ -4820,15 +4820,17 @@ async function screenCoordinatorTasks(){
     return ((a.status==='done'?1:0) - (b.status==='done'?1:0)) || (new Date(b.created_at) - new Date(a.created_at));
   });
 
+  const now = new Date();
   const rows = sorted.map(function(t){
     const done = t.status==='done';
     const wasReturned = !done && t.coordinator_status==='returned';
-    const statusCls = done ? 'approved' : (wasReturned ? 'returned' : 'pending');
-    const statusLbl = done ? 'مكتملة' : (wasReturned ? 'أُعيدت للمعلم وبانتظار التعديل' : 'بانتظار التنفيذ');
+    const isOverdue = !done && !wasReturned && t.due_date && new Date(t.due_date) < now;
+    const statusCls = done ? 'approved' : (wasReturned ? 'returned' : (isOverdue ? 'returned' : 'pending'));
+    const statusLbl = done ? 'مكتملة' : (wasReturned ? 'أُعيدت للمعلم وبانتظار التعديل' : (isOverdue ? 'متأخرة' : 'بانتظار التنفيذ'));
     var desc = fmtTaskDesc(t);
     return (
-      '<tr>' +
-        '<td><b>'+esc(t.title)+'</b>'+(desc?('<div style="color:var(--muted);font-size:12px;">'+desc+'</div>'):'')+'</td>' +
+      '<tr'+(isOverdue?' style="background:rgba(220,38,38,.04);"':'')+'>'+
+        '<td><b>'+esc(t.title)+(isOverdue?' <span style="color:var(--danger,#dc2626);font-size:11px;font-weight:400;">• تجاوزت الموعد</span>':'')+' </b>'+(desc?('<div style="color:var(--muted);font-size:12px;">'+desc+'</div>'):'')+'</td>' +
         '<td>'+esc(t.assigned_to_name||'')+'</td>' +
         '<td>'+(t.due_date?fmtDate(t.due_date):'—')+'</td>' +
         '<td><span class="badge '+statusCls+'">'+statusLbl+'</span></td>' +
