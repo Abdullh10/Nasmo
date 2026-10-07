@@ -582,6 +582,7 @@ html[data-theme="dark"] .sig-box canvas{ background:#f0f4f8; }
 @media print{
   body{ background:#fff; }
   .no-print, .toast{ display:none !important; }
+  .print-only{ display:block !important; }
   .shell{ padding:0; max-width:none; }
   .form-sheet{ box-shadow:none; border:none; padding:0; }
   .sheet-wrap{ max-width:none; }
@@ -593,7 +594,11 @@ html[data-theme="dark"] .sig-box canvas{ background:#f0f4f8; }
   #arc-table td:last-child{ display:none; } /* أخفِ عمود الأزرار */
   #arc-table th:last-child{ display:none; }
   #arc-count{ display:block !important; }
+  /* طباعة تقرير عضو الفريق */
+  #teacherReportOverlay{ position:static !important; background:none !important; padding:0 !important; display:block !important; overflow:visible !important; }
+  #teacherReportModal{ box-shadow:none !important; border-radius:0 !important; }
 }
+.print-only{ display:none; }
 .footer-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-top:30px; }
 .creds-print-page{ background:#fff; padding:8px; }
 .creds-print-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
@@ -4620,10 +4625,12 @@ async function _coordTeamStatsContent(){
   const actLabel = function(days){ return days < 7 ? 'نشط' : days < 30 ? 'متوسط' : 'غير نشط'; };
   const actColor = function(days){ return days < 7 ? 'var(--success)' : days < 30 ? 'var(--pending)' : 'var(--danger)'; };
 
+  _teacherReportDataMap = {};
   const cards = myTeachers.map(function(t){
     const tSubs  = subs.filter(function(s){ return s.created_by===t.id; });
     const tTasks = tasks.filter(function(tk){ return tk.assigned_to===t.id; });
     const tGoals = goals.filter(function(g){ return (g.assigned_member_ids||[]).indexOf(t.id)>-1; });
+    _teacherReportDataMap[t.id] = { teacher:t, tSubs:tSubs, tTasks:tTasks, tGoals:tGoals, myCommunity:myCommunity, allUsers:allUsers };
 
     const approved  = tSubs.filter(function(s){ return s.status==='approved'; }).length;
     const pending   = tSubs.filter(function(s){ return s.status==='pending';  }).length;
@@ -4687,6 +4694,9 @@ async function _coordTeamStatsContent(){
           (lastActive ? 'آخر نشاط: '+fmtDate(lastActive) : 'لا يوجد نشاط مسجَّل') +
           (returned ? ' · <span style="color:var(--danger);font-weight:700;">'+returned+(tSubs.length?' ('+Math.round(returned/tSubs.length*100)+'%)':'')+' مُعادة للتعديل</span>' : '') +
           (draft    ? ' · <span style="color:var(--muted);">'+draft+' مسودة</span>' : '') +
+        '</div>' +
+        '<div style="margin-top:12px;text-align:left;">' +
+          '<button class="btn btn-primary btn-sm" data-action="showTeacherReport" data-id="'+esc(t.id)+'">📋 تقرير مفصَّل</button>' +
         '</div>' +
       '</div>'
     );
@@ -4787,19 +4797,211 @@ async function screenCoordinatorTeamStats(){
 
 function bindCoordinatorTeamStats(){
   var tsSearch = document.getElementById('ts-search');
-  if (!tsSearch) return;
-  tsSearch.addEventListener('input', function(){
-    var q = this.value.trim().toLowerCase();
-    var grid = document.getElementById('ts-cards-grid');
-    if (!grid) return;
-    grid.querySelectorAll('.task-card').forEach(function(card){
-      card.hidden = q ? !card.textContent.toLowerCase().includes(q) : false;
+  if (tsSearch){
+    tsSearch.addEventListener('input', function(){
+      var q = this.value.trim().toLowerCase();
+      var grid = document.getElementById('ts-cards-grid');
+      if (!grid) return;
+      grid.querySelectorAll('.task-card').forEach(function(card){
+        card.hidden = q ? !card.textContent.toLowerCase().includes(q) : false;
+      });
     });
+  }
+  document.querySelectorAll('[data-action="showTeacherReport"]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      showTeacherReportModal(this.getAttribute('data-id'));
+    });
+  });
+}
+
+function showTeacherReportModal(teacherId){
+  var d = _teacherReportDataMap[teacherId];
+  if (!d){ toast('تعذَّر تحميل البيانات، يرجى المحاولة مجدداً.'); return; }
+  var t = d.teacher;
+  var tSubs = d.tSubs;
+  var tTasks = d.tTasks;
+  var tGoals = d.tGoals;
+  var myCommunity = d.myCommunity;
+  var allUsers = d.allUsers;
+
+  var approved = tSubs.filter(function(s){ return s.status==='approved'; }).length;
+  var pending  = tSubs.filter(function(s){ return s.status==='pending';  }).length;
+  var returned = tSubs.filter(function(s){ return s.status==='returned'; }).length;
+  var draft    = tSubs.filter(function(s){ return s.status==='draft';    }).length;
+  var tasksDone = tTasks.filter(function(tk){ return tk.status==='done'; }).length;
+  var goalsAchieved = tGoals.filter(function(g){ return g.status==='achieved'; }).length;
+  var now2 = new Date();
+  var actDates = tSubs.map(function(s){ return s.updated_at; })
+    .concat(tTasks.filter(function(tk){ return tk.completed_at; }).map(function(tk){ return tk.completed_at; }))
+    .filter(Boolean).sort().reverse();
+  var lastActive = actDates[0] || null;
+  var days = lastActive ? (now2 - new Date(lastActive)) / 86400000 : Infinity;
+  var actLabel = days < 7 ? 'نشط' : days < 30 ? 'متوسط' : 'غير نشط';
+  var actColorVal = days < 7 ? '#16a34a' : days < 30 ? '#d97706' : '#dc2626';
+
+  var recentSubs = tSubs.slice().sort(function(a,b){ return new Date(b.updated_at)-new Date(a.updated_at); }).slice(0,20);
+  var STATUS_AR = { approved:'معتمد', pending:'بانتظار الاعتماد', returned:'مُعاد للتعديل', draft:'مسودة' };
+  var STATUS_CLR = { approved:'#16a34a', pending:'#d97706', returned:'#dc2626', draft:'#64748b' };
+  var TASK_AR = { done:'مكتملة', pending:'بانتظار التنفيذ', returned:'مُعادة للتعديل' };
+  var TASK_CLR = { done:'#16a34a', pending:'#d97706', returned:'#dc2626' };
+  var GOAL_AR = { achieved:'محقَّق', missed:'لم يتحقق', pending:'جارٍ', approved:'معتمد', returned:'مُعاد' };
+  var GOAL_CLR = { achieved:'#16a34a', missed:'#dc2626', pending:'#d97706', approved:'#16a34a', returned:'#dc2626' };
+
+  function mkStatBox(val, lbl, color){
+    return '<div style="background:#f8fafc;border-radius:8px;padding:10px 4px;text-align:center;">' +
+      '<div style="font-size:20px;font-weight:800;color:'+color+';font-variant-numeric:tabular-nums;">'+val+'</div>' +
+      '<div style="font-size:11px;color:#64748b;">'+lbl+'</div>' +
+    '</div>';
+  }
+
+  var subsRows = recentSubs.map(function(s){
+    var def2 = formDef(s.form_type); var tl = def2 ? esc(def2.title) : esc(s.form_type);
+    return '<tr><td style="padding:5px 8px;border:1px solid #e2e8f0;">'+tl+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid #e2e8f0;color:'+(STATUS_CLR[s.status]||'inherit')+';">'+esc(STATUS_AR[s.status]||s.status)+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid #e2e8f0;">'+fmtDate(s.updated_at)+'</td></tr>';
+  }).join('');
+
+  var tasksRows = tTasks.map(function(tk){
+    return '<tr><td style="padding:5px 8px;border:1px solid #e2e8f0;">'+esc(tk.title)+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid #e2e8f0;color:'+(TASK_CLR[tk.status]||'inherit')+';">'+esc(TASK_AR[tk.status]||tk.status)+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid #e2e8f0;">'+(tk.due_date?fmtDate(tk.due_date):'—')+'</td></tr>';
+  }).join('');
+
+  var goalsRows = tGoals.map(function(g){
+    return '<tr><td style="padding:5px 8px;border:1px solid #e2e8f0;">'+esc(g.title)+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid #e2e8f0;color:'+(GOAL_CLR[g.status]||'inherit')+';">'+esc(GOAL_AR[g.status]||g.status)+'</td></tr>';
+  }).join('');
+
+  var html =
+    '<div id="teacherReportOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px 0;">' +
+      '<div id="teacherReportModal" style="background:#fff;border-radius:12px;width:100%;max-width:800px;box-shadow:0 8px 40px rgba(0,0,0,.25);margin:auto;">' +
+        '<div class="no-print" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;background:#f8fafc;border-radius:12px 12px 0 0;">' +
+          '<span style="font-weight:700;font-size:14px;flex:1;">📋 تقرير: '+esc(t.full_name)+'</span>' +
+          '<button class="btn btn-primary btn-sm" data-action="printTeacherReport">🖨 طباعة التقرير</button>' +
+          '<button class="btn btn-sm" style="background:#0d9488;color:#fff;border:none;" data-action="sendReportToTeacher">📨 إرسال إشعار للمعلم</button>' +
+          '<button class="btn btn-sm" style="background:#1e3a5f;color:#fff;border:none;" data-action="sendReportToPrincipal">📤 إرسال للمدير</button>' +
+          '<button class="btn btn-ghost btn-sm" data-action="closeTeacherReport" style="font-size:18px;line-height:1;">✕</button>' +
+        '</div>' +
+        '<div class="form-sheet" style="padding:24px 28px;">' +
+          formLogoHeaderHtml() +
+          '<div class="sheet-header" style="margin-top:0;padding:8px 0 14px;">' +
+            '<div class="titles">' +
+              '<h1 style="font-size:17px;margin:0 0 3px;">تقرير الأداء التفصيلي للعضو</h1>' +
+              '<div class="sub">'+esc(myCommunity.name)+' — '+esc(State.user.school)+'</div>' +
+            '</div>' +
+            '<div class="form-no">'+fmtDate(nowIso())+'</div>' +
+          '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">' +
+            '<tr style="background:#f8fafc;">' +
+              '<th style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;white-space:nowrap;">الاسم</th>' +
+              '<td style="padding:6px 10px;border:1px solid #e2e8f0;">'+esc(t.full_name)+'</td>' +
+              '<th style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;white-space:nowrap;">التخصص</th>' +
+              '<td style="padding:6px 10px;border:1px solid #e2e8f0;">'+esc(t.specialty||'—')+'</td>' +
+            '</tr>' +
+            '<tr>' +
+              '<th style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;white-space:nowrap;">المجتمع المهني</th>' +
+              '<td style="padding:6px 10px;border:1px solid #e2e8f0;">'+esc(myCommunity.name)+'</td>' +
+              '<th style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;white-space:nowrap;">حالة النشاط</th>' +
+              '<td style="padding:6px 10px;border:1px solid #e2e8f0;color:'+actColorVal+';font-weight:700;">'+actLabel+'</td>' +
+            '</tr>' +
+            (lastActive ? '<tr><th style="text-align:right;padding:6px 10px;border:1px solid #e2e8f0;">آخر نشاط</th><td colspan="3" style="padding:6px 10px;border:1px solid #e2e8f0;">'+fmtDate(lastActive)+'</td></tr>' : '') +
+          '</table>' +
+          '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;">' +
+            mkStatBox(String(approved), 'معتمدة', '#16a34a') +
+            mkStatBox(String(pending),  'معلقة', '#d97706') +
+            mkStatBox(String(returned), 'مُعادة', '#dc2626') +
+            mkStatBox(String(draft),    'مسودات', '#64748b') +
+            mkStatBox(tasksDone+'/'+tTasks.length, 'مهام', '#0d9488') +
+            mkStatBox(goalsAchieved+'/'+tGoals.length, 'أهداف', '#1e3a5f') +
+          '</div>' +
+          (recentSubs.length ? (
+            '<h3 style="font-size:13.5px;font-weight:700;margin:0 0 6px;border-bottom:2px solid #e2e8f0;padding-bottom:4px;">النماذج المقدَّمة (آخر '+recentSubs.length+')</h3>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px;">' +
+              '<thead><tr style="background:#f8fafc;"><th style="text-align:right;padding:5px 8px;border:1px solid #e2e8f0;">النموذج</th><th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center;">الحالة</th><th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center;">التاريخ</th></tr></thead>' +
+              '<tbody>'+subsRows+'</tbody>' +
+            '</table>'
+          ) : '<p style="color:#64748b;font-size:12.5px;margin-bottom:14px;">لا توجد نماذج مقدَّمة.</p>') +
+          (tTasks.length ? (
+            '<h3 style="font-size:13.5px;font-weight:700;margin:0 0 6px;border-bottom:2px solid #e2e8f0;padding-bottom:4px;">المهام المُسندة</h3>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px;">' +
+              '<thead><tr style="background:#f8fafc;"><th style="text-align:right;padding:5px 8px;border:1px solid #e2e8f0;">المهمة</th><th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center;">الحالة</th><th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center;">الموعد</th></tr></thead>' +
+              '<tbody>'+tasksRows+'</tbody>' +
+            '</table>'
+          ) : '') +
+          (tGoals.length ? (
+            '<h3 style="font-size:13.5px;font-weight:700;margin:0 0 6px;border-bottom:2px solid #e2e8f0;padding-bottom:4px;">الأهداف</h3>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:16px;">' +
+              '<thead><tr style="background:#f8fafc;"><th style="text-align:right;padding:5px 8px;border:1px solid #e2e8f0;">الهدف</th><th style="padding:5px 8px;border:1px solid #e2e8f0;text-align:center;">الحالة</th></tr></thead>' +
+              '<tbody>'+goalsRows+'</tbody>' +
+            '</table>'
+          ) : '') +
+          '<div style="margin-top:4px;">' +
+            '<h3 style="font-size:13.5px;font-weight:700;margin:0 0 6px;border-bottom:2px solid #e2e8f0;padding-bottom:4px;">ملاحظات المنسق</h3>' +
+            '<textarea id="reportObsText" class="input no-print" rows="3" style="width:100%;resize:vertical;font-size:13px;" placeholder="أضف ملاحظاتك وتوصياتك للمعلم أو المدير..."></textarea>' +
+            '<div id="reportObsPrint" class="print-only" style="min-height:54px;border:1px solid #e2e8f0;border-radius:4px;padding:6px 10px;font-size:12.5px;white-space:pre-wrap;"></div>' +
+          '</div>' +
+          '<div class="print-only" style="margin-top:32px;display:flex;justify-content:space-around;font-size:13px;">' +
+            '<div style="text-align:center;"><div style="border-top:1px solid #000;min-width:140px;padding-top:4px;">توقيع المنسق<br><small>'+esc(State.user.full_name)+'</small></div></div>' +
+            '<div style="text-align:center;"><div style="border-top:1px solid #000;min-width:140px;padding-top:4px;">توقيع المدير</div></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  var existing = document.getElementById('teacherReportOverlay');
+  if (existing) existing.remove();
+  var wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  var overlay = wrapper.firstElementChild;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('[data-action="closeTeacherReport"]').addEventListener('click', function(){ overlay.remove(); });
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('[data-action="printTeacherReport"]').addEventListener('click', function(){
+    var obs = document.getElementById('reportObsText');
+    var obsPrint = document.getElementById('reportObsPrint');
+    if (obs && obsPrint) obsPrint.textContent = obs.value.trim();
+    window.print();
+  });
+
+  overlay.querySelector('[data-action="sendReportToTeacher"]').addEventListener('click', async function(){
+    var btn = this; if (btn.disabled) return; btn.disabled = true;
+    var note = (document.getElementById('reportObsText')||{value:''}).value.trim();
+    var body = 'ملاحظات من منسق المجتمع المهني:\n'+(note||'لا توجد ملاحظات إضافية.');
+    try{
+      await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:t.id, type:'general', title:'تقرير أداء من منسق المجتمع المهني', body:body });
+      toast('تم إرسال الإشعار للمعلم ✓');
+    }catch(e){ toast(arabicError(e)); }
+    btn.disabled = false;
+  });
+
+  overlay.querySelector('[data-action="sendReportToPrincipal"]').addEventListener('click', async function(){
+    var btn = this; if (btn.disabled) return; btn.disabled = true;
+    var note = (document.getElementById('reportObsText')||{value:''}).value.trim();
+    var principals = allUsers.filter(function(u){ return isPrincipal(u); });
+    if (!principals.length){ toast('لم يُعيَّن مدير مدرسة في هذه المدرسة'); btn.disabled = false; return; }
+    var body = 'تقرير أداء العضو: '+t.full_name+
+      '\nالتخصص: '+(t.specialty||'—')+
+      '\nالمجتمع المهني: '+myCommunity.name+
+      '\nحالة النشاط: '+actLabel+
+      '\n\nالإحصائيات:\n  نماذج معتمدة: '+approved+'\n  نماذج معلقة: '+pending+'\n  نماذج مُعادة: '+returned+
+      '\n  مهام منجزة: '+tasksDone+'/'+tTasks.length+
+      '\n  أهداف محققة: '+goalsAchieved+'/'+tGoals.length+
+      '\n\nملاحظات المنسق:\n'+(note||'—');
+    try{
+      await Promise.all(principals.map(function(p){
+        return DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:p.id, type:'general', title:'تقرير أداء عضو: '+t.full_name, body:body });
+      }));
+      toast('تم إرسال التقرير للمدير ✓');
+    }catch(e){ toast(arabicError(e)); }
+    btn.disabled = false;
   });
 }
 
 /* ----- لوحة منسق المجتمع المهني: إسناد مهام للمعلمين ----- */
 let TaskUI = { modalOpen:false };
+var _teacherReportDataMap = {};
 async function screenCoordinatorTasks(){
   const communities = State.communitiesCache || [];
   const myCommunity = communities.find(function(c){ return c.id===State.user.community_id; }) || null;
