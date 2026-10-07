@@ -14287,6 +14287,17 @@ async function screenTaskDetail(taskId, readonly){
   ) : (t.principal_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>تقييم مدير المدرسة</h3><p style="margin:0 0 6px;">'+principalReviewBadgeHtml(t)+'</p>'+(t.principal_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.principal_note)+'</p>'):'')+'</div>') : '');
   const isCoordinatorOwner = State.user.role==='coordinator' && t.created_by===State.user.id;
   const canCoordinatorReturn = isCoordinatorOwner && t.status==='done' && !t.principal_status;
+  /* لوحة توجيه المنسق على المهام المعلقة */
+  const canCoordGuide = isCoordinatorOwner && t.status !== 'done';
+  const coordGuidePanel = canCoordGuide ? (
+    '<div class="review-panel no-print" style="margin-top:16px;">' +
+      '<h3>ملاحظة توجيهية للمعلم <span style="font-weight:400;font-size:12px;color:var(--muted);">(اختيارية — تظهر للمعلم عند فتح المهمة)</span></h3>' +
+      '<div class="review-grid">' +
+        '<div class="field"><textarea class="input" id="taskCoordGuide" rows="3" placeholder="أضف توجيهات أو توضيحات للمعلم...">'+esc(t.coordinator_note||'')+'</textarea></div>' +
+        '<button class="btn btn-primary btn-block" data-action="saveCoordGuide">💾 حفظ الملاحظة</button>' +
+      '</div>' +
+    '</div>'
+  ) : '';
   const coordinatorPanel = canCoordinatorReturn ? (
     '<div class="review-panel no-print" style="margin-top:16px;">' +
       '<h3>إرجاع المهمة للمعلم</h3>' +
@@ -14297,14 +14308,22 @@ async function screenTaskDetail(taskId, readonly){
       '</div>' +
     '</div>'
   ) : (!isUserPrincipal && t.coordinator_status ? ('<div class="review-panel no-print" style="margin-top:16px;"><h3>ملاحظة المنسق</h3><p style="margin:0 0 6px;">'+coordinatorReturnBadgeHtml(t)+'</p>'+(t.coordinator_note?('<p style="color:var(--muted);font-size:13px;">'+esc(t.coordinator_note)+'</p>'):'')+'</div>') : '');
+  const teacherNotesBlock = ro
+    ? (TaskDetailCache.teacher_notes
+        ? inputField('ملاحظات التنفيذ','teacher_notes', TaskDetailCache.teacher_notes, { type:'textarea', readonly: true })
+        : '<div class="field"><label>ملاحظات التنفيذ</label><div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;">لم يُدوِّن المعلم ملاحظات بعد.</div></div>')
+    : inputField('ملاحظات التنفيذ','teacher_notes', TaskDetailCache.teacher_notes, { type:'textarea', readonly: false });
   return (
     '<div class="sheet-wrap">' +
-      '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>' +
+      '<div class="sheet-bar no-print">' +
+        '<button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع للمهام</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="back" style="margin-right:auto;">✕ إغلاق</button>' +
+      '</div>' +
       '<div class="form-sheet">' +
         formLogoHeaderHtml()+'<div class="sheet-header"><div class="titles"><h1>'+esc(t.title)+'</h1>' +
           '<div class="sub">المُكلِّف: '+esc(t.created_by_name||'')+' — المعلم: '+esc(t.assigned_to_name||'')+(t.due_date?(' · الموعد: '+fmtDate(t.due_date)):'')+'</div></div></div>' +
         (t.description ? ('<p style="color:var(--muted);font-size:13.5px;margin:-4px 0 14px;">'+fmtTaskDesc(t)+'</p>') : '') +
-        inputField('ملاحظات التنفيذ','teacher_notes', TaskDetailCache.teacher_notes, { type:'textarea', readonly: ro }) +
+        teacherNotesBlock +
         '<div class="block-title"><span class="dot"></span> الشواهد المرفوعة</div>' +
         '<div class="evidence-grid">' + files +
           (ro ? '' : '<label class="evidence-add" title="رفع صورة أو PDF">+<input type="file" id="taskEvidenceInput" accept="image/*,application/pdf" multiple style="display:none;"></label>') +
@@ -14322,13 +14341,18 @@ async function screenTaskDetail(taskId, readonly){
         '</div>'
       ) +
       reviewPanel +
+      coordGuidePanel +
       coordinatorPanel +
     '</div>'
   );
 }
 function bindTaskDetail(){
-  var _backBtn = document.querySelector('[data-action="back"]');
-  if (_backBtn) _backBtn.addEventListener('click', function(){ go('dashboard'); });
+  document.querySelectorAll('[data-action="back"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      State.dashTab = State.dashTab || 'tasks';
+      go('dashboard');
+    });
+  });
   const notesField = document.querySelector('[data-field="teacher_notes"]');
   if (notesField) notesField.addEventListener('input', function(){ TaskDetailCache.teacher_notes = notesField.value; });
   const evInput = document.getElementById('taskEvidenceInput');
@@ -14427,6 +14451,19 @@ function bindTaskDetail(){
       toast('تم إرجاع المهمة إلى المعلم مع الملاحظة.');
       go('dashboard');
     }catch(e){ toast(arabicError(e)); }
+  });
+  /* حفظ الملاحظة التوجيهية للمعلم على المهام المعلقة */
+  const saveGuideBtn = document.querySelector('[data-action="saveCoordGuide"]');
+  if (saveGuideBtn) saveGuideBtn.addEventListener('click', async function(){
+    if (this.disabled) return; this.disabled = true;
+    const ta = document.getElementById('taskCoordGuide');
+    const note = ta ? ta.value.trim() : '';
+    try{
+      await DB.updateTask(TaskDetailCache.id, { coordinator_note: note || null });
+      invalidateAllScreenCaches();
+      toast('تم حفظ الملاحظة التوجيهية ✓');
+      this.disabled = false;
+    }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
 }
 
