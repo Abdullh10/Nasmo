@@ -4962,7 +4962,16 @@ function showTeacherReportModal(teacherId){
   overlay.querySelector('[data-action="sendReportToTeacher"]').addEventListener('click', async function(){
     var btn = this; if (btn.disabled) return; btn.disabled = true;
     var note = (document.getElementById('reportObsText')||{value:''}).value.trim();
-    var body = 'ملاحظات من منسق المجتمع المهني:\n'+(note||'لا توجد ملاحظات إضافية.');
+    var body = JSON.stringify({
+      _v:1, memberName:t.full_name, specialty:t.specialty||'—', communityName:myCommunity.name,
+      actLabel:actLabel, actColorVal:actColorVal, lastActive:lastActive||null,
+      approved:approved, pending:pending, returned:returned, draft:draft,
+      tasksDone:tasksDone, totalTasks:tTasks.length, goalsAchieved:goalsAchieved, totalGoals:tGoals.length,
+      recentSubs:recentSubs.map(function(s){ var def2=formDef(s.form_type); return { title:(def2?def2.title:s.form_type), status:s.status, statusAr:STATUS_AR[s.status]||s.status, statusColor:STATUS_CLR[s.status]||'inherit', date:s.updated_at }; }),
+      tasks:tTasks.map(function(tk){ return { title:tk.title, status:tk.status, statusAr:TASK_AR[tk.status]||tk.status, statusColor:TASK_CLR[tk.status]||'inherit', dueDate:tk.due_date||null }; }),
+      goals:tGoals.map(function(g){ return { title:g.title, status:g.status, statusAr:GOAL_AR[g.status]||g.status, statusColor:GOAL_CLR[g.status]||'inherit' }; }),
+      note:note
+    });
     try{
       await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:t.id, type:'general', title:'تقرير أداء من منسق المجتمع المهني', body:body });
       toast('تم إرسال الإشعار للمعلم ✓');
@@ -4975,14 +4984,16 @@ function showTeacherReportModal(teacherId){
     var note = (document.getElementById('reportObsText')||{value:''}).value.trim();
     var principals = allUsers.filter(function(u){ return isPrincipal(u); });
     if (!principals.length){ toast('لم يُعيَّن مدير مدرسة في هذه المدرسة'); btn.disabled = false; return; }
-    var body = 'تقرير أداء العضو: '+t.full_name+
-      '\nالتخصص: '+(t.specialty||'—')+
-      '\nالمجتمع المهني: '+myCommunity.name+
-      '\nحالة النشاط: '+actLabel+
-      '\n\nالإحصائيات:\n  نماذج معتمدة: '+approved+'\n  نماذج معلقة: '+pending+'\n  نماذج مُعادة: '+returned+
-      '\n  مهام منجزة: '+tasksDone+'/'+tTasks.length+
-      '\n  أهداف محققة: '+goalsAchieved+'/'+tGoals.length+
-      '\n\nملاحظات المنسق:\n'+(note||'—');
+    var body = JSON.stringify({
+      _v:1, memberName:t.full_name, specialty:t.specialty||'—', communityName:myCommunity.name,
+      actLabel:actLabel, actColorVal:actColorVal, lastActive:lastActive||null,
+      approved:approved, pending:pending, returned:returned, draft:draft,
+      tasksDone:tasksDone, totalTasks:tTasks.length, goalsAchieved:goalsAchieved, totalGoals:tGoals.length,
+      recentSubs:recentSubs.map(function(s){ var def2=formDef(s.form_type); return { title:(def2?def2.title:s.form_type), status:s.status, statusAr:STATUS_AR[s.status]||s.status, statusColor:STATUS_CLR[s.status]||'inherit', date:s.updated_at }; }),
+      tasks:tTasks.map(function(tk){ return { title:tk.title, status:tk.status, statusAr:TASK_AR[tk.status]||tk.status, statusColor:TASK_CLR[tk.status]||'inherit', dueDate:tk.due_date||null }; }),
+      goals:tGoals.map(function(g){ return { title:g.title, status:g.status, statusAr:GOAL_AR[g.status]||g.status, statusColor:GOAL_CLR[g.status]||'inherit' }; }),
+      note:note
+    });
     try{
       await Promise.all(principals.map(function(p){
         return DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:p.id, type:'general', title:'تقرير أداء عضو: '+t.full_name, body:body });
@@ -4991,6 +5002,77 @@ function showTeacherReportModal(teacherId){
     }catch(e){ toast(arabicError(e)); }
     btn.disabled = false;
   });
+}
+
+function _renderMemberReportCard(n, borderColor){
+  var unread = isNotifUnread(n, State.user.id);
+  var border = unread ? borderColor : 'var(--border,#e5e7eb)';
+  var d = null;
+  try{ var _p = JSON.parse(n.body||''); if (_p && _p._v===1) d = _p; }catch(e){}
+  if (!d){
+    return '<div style="background:var(--card,#fff);border:1px solid '+border+';border-radius:12px;padding:16px 18px;margin-bottom:12px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:8px;">' +
+        '<div style="font-weight:700;font-size:14px;color:var(--text);">'+esc(n.title)+'</div>' +
+        '<div style="font-size:11.5px;color:var(--muted);white-space:nowrap;">'+fmtDate(n.created_at)+'</div>' +
+      '</div>' +
+      '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">من: '+esc(n.sender_name||'—')+'</div>' +
+      '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.7;background:var(--bg);border-radius:8px;padding:10px 12px;">'+esc(n.body||'')+'</div>' +
+    '</div>';
+  }
+  function _mkStat(val, lbl, color){
+    return '<div style="background:var(--bg,#f8fafc);border-radius:8px;padding:10px 4px;text-align:center;">' +
+      '<div style="font-size:18px;font-weight:800;color:'+color+';font-variant-numeric:tabular-nums;">'+esc(String(val))+'</div>' +
+      '<div style="font-size:11px;color:var(--muted,#64748b);">'+lbl+'</div>' +
+    '</div>';
+  }
+  var subsRows = (d.recentSubs||[]).map(function(s){
+    return '<tr><td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);">'+esc(s.title||'')+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);color:'+esc(s.statusColor||'inherit')+';">'+esc(s.statusAr||'')+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);">'+fmtDate(s.date)+'</td></tr>';
+  }).join('');
+  var tasksRows = (d.tasks||[]).map(function(tk){
+    return '<tr><td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);">'+esc(tk.title||'')+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);color:'+esc(tk.statusColor||'inherit')+';">'+esc(tk.statusAr||'')+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);">'+(tk.dueDate?fmtDate(tk.dueDate):'—')+'</td></tr>';
+  }).join('');
+  var goalsRows = (d.goals||[]).map(function(g){
+    return '<tr><td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);">'+esc(g.title||'')+'</td>' +
+      '<td style="padding:5px 8px;border:1px solid var(--border,#e2e8f0);color:'+esc(g.statusColor||'inherit')+';">'+esc(g.statusAr||'')+'</td></tr>';
+  }).join('');
+  return '<div style="background:var(--card,#fff);border:1px solid '+border+';border-radius:12px;margin-bottom:16px;overflow:hidden;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--bg,#f8fafc);border-bottom:1px solid var(--border,#e2e8f0);flex-wrap:wrap;gap:8px;">' +
+      '<div style="font-weight:700;font-size:14px;color:var(--text);">📋 '+esc(n.title)+'</div>' +
+      '<div style="font-size:11.5px;color:var(--muted);">'+esc(n.sender_name||'—')+' · '+fmtDate(n.created_at)+'</div>' +
+    '</div>' +
+    '<div style="padding:16px 18px;">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;">' +
+      '<tr style="background:var(--bg,#f8fafc);">' +
+        '<th style="text-align:right;padding:6px 10px;border:1px solid var(--border,#e2e8f0);white-space:nowrap;">الاسم</th>' +
+        '<td style="padding:6px 10px;border:1px solid var(--border,#e2e8f0);">'+esc(d.memberName||'—')+'</td>' +
+        '<th style="text-align:right;padding:6px 10px;border:1px solid var(--border,#e2e8f0);white-space:nowrap;">التخصص</th>' +
+        '<td style="padding:6px 10px;border:1px solid var(--border,#e2e8f0);">'+esc(d.specialty||'—')+'</td>' +
+      '</tr>' +
+      '<tr>' +
+        '<th style="text-align:right;padding:6px 10px;border:1px solid var(--border,#e2e8f0);white-space:nowrap;">المجتمع المهني</th>' +
+        '<td style="padding:6px 10px;border:1px solid var(--border,#e2e8f0);">'+esc(d.communityName||'—')+'</td>' +
+        '<th style="text-align:right;padding:6px 10px;border:1px solid var(--border,#e2e8f0);white-space:nowrap;">حالة النشاط</th>' +
+        '<td style="padding:6px 10px;border:1px solid var(--border,#e2e8f0);color:'+esc(d.actColorVal||'inherit')+';font-weight:700;">'+esc(d.actLabel||'—')+'</td>' +
+      '</tr>' +
+      (d.lastActive ? '<tr><th style="text-align:right;padding:6px 10px;border:1px solid var(--border,#e2e8f0);">آخر نشاط</th><td colspan="3" style="padding:6px 10px;border:1px solid var(--border,#e2e8f0);">'+fmtDate(d.lastActive)+'</td></tr>' : '') +
+    '</table>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-bottom:14px;">' +
+      _mkStat(d.approved||0,'معتمدة','#16a34a') + _mkStat(d.pending||0,'معلقة','#d97706') +
+      _mkStat(d.returned||0,'مُعادة','#dc2626') + _mkStat(d.draft||0,'مسودات','#64748b') +
+      _mkStat((d.tasksDone||0)+'/'+(d.totalTasks||0),'مهام','#2563eb') +
+      _mkStat((d.goalsAchieved||0)+'/'+(d.totalGoals||0),'أهداف','#7c3aed') +
+    '</div>' +
+    (subsRows ? '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">النماذج المقدَّمة (آخر '+(d.recentSubs||[]).length+')</div><div style="overflow-x:auto;margin-bottom:14px;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:var(--bg,#f8fafc);"><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">النموذج</th><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">الحالة</th><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">التاريخ</th></tr>'+subsRows+'</table></div>' : '') +
+    (tasksRows ? '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">المهام ('+(d.tasks||[]).length+')</div><div style="overflow-x:auto;margin-bottom:14px;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:var(--bg,#f8fafc);"><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">المهمة</th><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">الحالة</th><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">الموعد</th></tr>'+tasksRows+'</table></div>' : '') +
+    (goalsRows ? '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">الأهداف ('+(d.goals||[]).length+')</div><div style="overflow-x:auto;margin-bottom:14px;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><tr style="background:var(--bg,#f8fafc);"><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">الهدف</th><th style="text-align:right;padding:5px 8px;border:1px solid var(--border,#e2e8f0);">الحالة</th></tr>'+goalsRows+'</table></div>' : '') +
+    '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px;">ملاحظات المنسق</div>' +
+    '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.7;background:var(--bg,#f8fafc);border-radius:8px;padding:10px 12px;">'+esc(d.note||'—')+'</div>' +
+    '</div>' +
+  '</div>';
 }
 
 /* ----- لوحة منسق المجتمع المهني: إسناد مهام للمعلمين ----- */
@@ -11433,17 +11515,7 @@ async function screenDashboard(){
     _prn.sort(function(a,b){ return new Date(b.created_at||0)-new Date(a.created_at||0); });
     var _prnCards = _prn.length === 0
       ? '<div style="text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;">لم تصلك تقارير أداء أعضاء بعد.</div>'
-      : _prn.map(function(n){
-          var unread = isNotifUnread(n, State.user.id);
-          return '<div style="background:var(--card,#fff);border:1px solid '+(unread?'#1e3a5f':'var(--border,#e5e7eb)')+';border-radius:12px;padding:16px 18px;margin-bottom:12px;">' +
-            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:8px;">' +
-              '<div style="font-weight:700;font-size:14px;color:var(--text);">'+esc(n.title)+'</div>' +
-              '<div style="font-size:11.5px;color:var(--muted);white-space:nowrap;">'+fmtDate(n.created_at)+'</div>' +
-            '</div>' +
-            '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">من المنسق: '+esc(n.sender_name||'—')+'</div>' +
-            '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.7;background:var(--bg);border-radius:8px;padding:10px 12px;">'+esc(n.body||'')+'</div>' +
-          '</div>';
-        }).join('');
+      : _prn.map(function(n){ return _renderMemberReportCard(n, '#1e3a5f'); }).join('');
     return (
       '<h2 style="font-size:20px;margin-bottom:4px;">'+esc(ROLE_LABEL[State.user.role]||'مدير المدرسة')+'</h2>' +
       '<div style="color:var(--muted);font-size:13.5px;margin-bottom:20px;">'+esc(State.user.school)+'</div>' +
@@ -13591,17 +13663,7 @@ async function screenTeacherTasks(){
       crn.sort(function(a,b){ return new Date(b.created_at||0)-new Date(a.created_at||0); });
       var cards = crn.length === 0
         ? '<div style="text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;">لم يصلك أي تقرير من المنسق بعد.</div>'
-        : crn.map(function(n){
-            var unread = isNotifUnread(n, State.user.id);
-            return '<div style="background:var(--card,#fff);border:1px solid '+(unread?'#0d9488':'var(--border,#e5e7eb)')+';border-radius:12px;padding:16px 18px;margin-bottom:12px;">' +
-              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:8px;">' +
-                '<div style="font-weight:700;font-size:14px;color:var(--text);">'+esc(n.title)+'</div>' +
-                '<div style="font-size:11.5px;color:var(--muted);white-space:nowrap;">'+fmtDate(n.created_at)+'</div>' +
-              '</div>' +
-              '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">من: '+esc(n.sender_name||'—')+'</div>' +
-              '<div style="font-size:13px;color:var(--text);white-space:pre-wrap;line-height:1.7;background:var(--bg);border-radius:8px;padding:10px 12px;">'+esc(n.body||'')+'</div>' +
-            '</div>';
-          }).join('');
+        : crn.map(function(n){ return _renderMemberReportCard(n, '#0d9488'); }).join('');
       return '<div style="margin-top:4px;">' +
         '<div style="font-weight:700;font-size:15px;margin-bottom:14px;">📊 تقارير الأداء من منسق المجتمع المهني ('+crn.length+')</div>' +
         cards +
