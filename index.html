@@ -1473,6 +1473,7 @@ function demoLessonCountdownHtml(demoLessonTasks){
   );
 }
 let _demoCountdownInterval = null;
+let _connectivityInterval = null;
 function startDemoCountdown(demoLessonTasks){
   if (_demoCountdownInterval) { clearInterval(_demoCountdownInterval); _demoCountdownInterval = null; }
   const now0 = new Date();
@@ -3148,6 +3149,7 @@ function loadUserSession(){ try{ return JSON.parse(localStorage.getItem('dtd_ses
 function logout(){
   try{ const _tok = AUTH.accessToken; if (_tok){ fetch(CONFIG.SUPABASE_URL+'/auth/v1/logout', { method:'POST', headers:{ apikey:CONFIG.SUPABASE_ANON_KEY, Authorization:'Bearer '+_tok } }).catch(function(){}); } }catch(e){}
   try{ localStorage.removeItem('dtd_session'); }catch(e){} clearAuth(); State.user=null; NotifUI.open=false; NotifUI.compose=false;
+  if (_connectivityInterval){ clearInterval(_connectivityInterval); _connectivityInterval = null; }
   _notifCache = null; _commCache = null; _pendingCache = null;
   _teacherScreenData = null; _coordScreenData = null; _counselorCasesData = null; _counselorPlansCache = null; _studentRosterData = null;
   PrincipalUI.cachedSubs = null; PrincipalUI.cachedTasks = null; PrincipalUI.cachedGoals = null;
@@ -7332,6 +7334,7 @@ function attachmentsGridHtml(attachments, removable, rmvAction){
   return (attachments||[]).map(function(f, i){ return attachmentThumbHtml(f, i, removable, rmvAction); }).join('');
 }
 async function screenPracticeBank(){
+  if (!State.user || !['teacher','coordinator','principal','vice_principal','admin','super_admin'].includes(State.user.role)){ go('dashboard'); return ''; }
   const shares = await DB.listPracticeShares({ school: State.user.school });
   const canShare = State.user.role==='coordinator' || State.user.role==='teacher';
   const isUserPrincipal = isPrincipal(State.user);
@@ -14679,11 +14682,18 @@ let _adminSubmCache = null, _adminSubmCacheAt = 0;
 const ADMIN_TAB_TTL_MS = 60000;
 function invalidateAdminCache(){ _adminUsersCache = null; _adminCommCache = null; _adminStudentsCache = null; _adminSubmCache = null; }
 let CredsPrint = loadLastCredsBatch();
+const CREDS_TTL_MS = 24 * 60 * 60 * 1000; // 24 ساعة — تنتهي صلاحية بطاقات الدخول تلقائياً
 function loadLastCredsBatch(){
-  try{ const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH)); if (saved && saved.items && saved.items.length) return saved; }catch(e){}
+  try{
+    const saved = JSON.parse(localStorage.getItem(LS_LAST_CREDS_BATCH));
+    if (saved && saved.items && saved.items.length){
+      if (!saved.savedAt || (Date.now() - saved.savedAt) < CREDS_TTL_MS) return saved;
+      localStorage.removeItem(LS_LAST_CREDS_BATCH);
+    }
+  }catch(e){}
   return { school:'', items:[] };
 }
-function saveLastCredsBatch(){ localStorage.setItem(LS_LAST_CREDS_BATCH, JSON.stringify(CredsPrint)); }
+function saveLastCredsBatch(){ localStorage.setItem(LS_LAST_CREDS_BATCH, JSON.stringify(Object.assign({}, CredsPrint, { savedAt: Date.now() }))); }
 function csvEscape(v){
   v = String(v==null?'':v);
   return /[",\n]/.test(v) ? ('"' + v.replace(/"/g,'""') + '"') : v;
@@ -16652,6 +16662,7 @@ function bindIndicators(){
 
 /* ----- شاشة اختيار نموذج ----- */
 function screenPicker(){
+  if (!State.user || !['teacher','coordinator','counselor','principal','vice_principal','admin','super_admin'].includes(State.user.role)){ go('dashboard'); return ''; }
   const defs = State.user.role==='teacher' ? FORM_DEFS.filter(function(f){ return f.teacherAccess; }) : FORM_DEFS;
   const cards = defs.map(function(f){
     return (
@@ -16698,8 +16709,10 @@ function statusStrip(status){
 
 /* ----- محرّر النموذج ----- */
 async function screenEditor(){
+  if (!State.user || !EditorState){ go('dashboard'); return ''; }
   const def = formDef(EditorState.formType);
-  const readonly = false;
+  const isPrivileged = State.user.role === 'admin' || State.user.role === 'super_admin';
+  const readonly = !isPrivileged && (EditorState.status === 'pending' || EditorState.status === 'approved');
   const teacherForms = ['individualAgreement','modelLesson','plcMeetingMinutes','indicatorReport','peerObservation','demoLessonEval'];
   if (teacherForms.includes(EditorState.formType) && !EditorState.teachers.length){
     EditorState.teachers = (await DB.listUsers({ school: EditorState.school })).filter(function(u){
@@ -18223,10 +18236,12 @@ function bindGlobalAction(el){
   else if (action==='openMyProfile'){ el.addEventListener('click', showProfileModal); }
   else if (action==='deleteDraft'){ el.addEventListener('click', async function(){
     if (!confirm('هل أنت متأكد من حذف هذه المسودة؟ لن تستطيع استرجاعها.')) return;
-    await DB.deleteSubmission(el.getAttribute('data-id'));
-    invalidateAllScreenCaches();
-    toast('تم حذف المسودة.');
-    render();
+    try{
+      await DB.deleteSubmission(el.getAttribute('data-id'));
+      invalidateAllScreenCaches();
+      toast('تم حذف المسودة.');
+      render();
+    }catch(e){ toast('فشل حذف المسودة: ' + (e.message||'')); }
   }); }
   else if (action==='deleteSelectedForms'){ el.addEventListener('click', async function(){
     var ids = TeacherFormsUI.selectedFormIds.slice();
@@ -18306,7 +18321,7 @@ function bindGlobalAction(el){
       }).catch(function(){});
     }
   } else { go('login'); }
-  setInterval(function(){ if (State.user && State.user.role==='admin') checkConnectivity(); }, 20000);
+  _connectivityInterval = setInterval(function(){ if (State.user && State.user.role==='admin') checkConnectivity(); }, 20000);
 })();
 
 /* ====== PWA — إشعارات الدفع ====== */
