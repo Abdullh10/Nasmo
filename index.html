@@ -640,6 +640,52 @@ const CONFIG = {
 };
 function getSvcKey(){ return localStorage.getItem('nasmo_svc_key') || ''; }
 
+/* adminAction — يستخدم Edge Function إذا لم يوجد svcKey، وإلا يتصل بـ Admin API مباشرةً
+   للانتقال الآمن: نشر Edge Function ثم حذف nasmo_svc_key من localStorage */
+async function adminAction(action, payload){
+  payload = payload || {};
+  if (getSvcKey()) return _adminApiDirect(action, payload);
+  if (!AUTH.accessToken) throw new Error('غير مصادق — يرجى إعادة تسجيل الدخول.');
+  const res = await fetch(CONFIG.SUPABASE_URL + '/functions/v1/admin-action', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+AUTH.accessToken, 'apikey':CONFIG.SUPABASE_ANON_KEY },
+    body: JSON.stringify({ action: action, payload: payload })
+  });
+  let body; try{ body = await res.json(); }catch(e){ body = {}; }
+  if (!res.ok) throw new Error(body.error || 'فشلت العملية ('+res.status+')');
+  return body;
+}
+async function _adminApiDirect(action, payload){
+  const key = getSvcKey();
+  const h = { 'apikey':key, 'Authorization':'Bearer '+key, 'Content-Type':'application/json' };
+  if (action === 'createOrGetUser'){
+    const r = await fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users', { method:'POST', headers:h, body:JSON.stringify({ email:payload.email, password:payload.password, email_confirm:true }) });
+    if (r.ok){ const d = await r.json(); return { id: d.id }; }
+    const raw = await r.text().catch(function(){ return ''; });
+    if (r.status===422 && raw.toLowerCase().includes('already')){
+      const lr = await fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users?filter='+encodeURIComponent(payload.email)+'&page=1&per_page=50', { headers:h });
+      if (lr.ok){ const ld = await lr.json(); const found = (ld.users||[]).find(function(u){ return u.email===payload.email; }); if (found){ await fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+found.id, { method:'PUT', headers:h, body:JSON.stringify({ password:payload.password }) }).catch(function(){}); return { id: found.id }; } }
+    }
+    let msg = null; try{ const e = JSON.parse(raw); msg = e.msg||e.message||e.error; }catch(ex){}
+    throw new Error('فشل إنشاء حساب المصادقة ('+r.status+'): '+(msg||raw||'تأكد أن اسم المستخدم غير مستخدم مسبقًا.'));
+  }
+  if (action === 'updateUserPassword'){
+    const r = await fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+encodeURIComponent(payload.userId), { method:'PUT', headers:h, body:JSON.stringify({ password:payload.password }) });
+    if (!r.ok){ const t = await r.text().catch(function(){ return ''; }); throw new Error('فشل تغيير كلمة المرور ('+r.status+'): '+t); }
+    return { ok: true };
+  }
+  if (action === 'deleteUser'){
+    await fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+encodeURIComponent(payload.userId), { method:'DELETE', headers:h }).catch(function(){});
+    return { ok: true };
+  }
+  if (action === 'listAllAuthUsers'){
+    let all = []; let page = 1;
+    while(true){ const r = await fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users?page='+page+'&per_page=1000', { headers:h }); if (!r.ok) throw new Error('فشل جلب قائمة المستخدمين من Auth.'); const d = await r.json(); const users = d.users||[]; all = all.concat(users); if (!d.nextPage||users.length<1000) break; page++; }
+    return { users: all };
+  }
+  throw new Error('adminAction: action غير معروف: '+action);
+}
+
 /* SQL_SCHEMA — للإعداد الكامل راجع ملف setup.sql في جذر المشروع.
    المصادقة حقيقية عبر Supabase Auth (auth.users)؛ profiles.id يطابق auth.users.id،
    ويُستخدم بريد وهمي ثابت بصيغة <username>@nasmo.local تلقائيًا من الكود.
@@ -1820,54 +1866,10 @@ const DB = {
       const email = authEmailFor(obj.username);
       const password = obj.password;
       let newId;
-      if (getSvcKey()){
-        /* Admin API — لا قيود على العدد ولا على المعدل */
-        const adminRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users", {
-          method: "POST",
-          headers: {
-            "apikey": getSvcKey(),
-            "Authorization": "Bearer " + getSvcKey(),
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ email: email, password: password, email_confirm: true })
-        });
-        if (!adminRes.ok){
-          const rawText = await adminRes.text().catch(function(){ return ''; });
-          let msg = null;
-          try{ const errData = JSON.parse(rawText); msg = errData.msg || errData.message || errData.error; }catch(e){}
-          /* إذا كان الحساب موجوداً مسبقاً في Auth، نسترجع معرّفه ونعيد استخدامه */
-          if (adminRes.status === 422 && rawText.toLowerCase().includes('already')){
-            try{
-              const listRes = await fetch(
-                CONFIG.SUPABASE_URL + "/auth/v1/admin/users?filter=" + encodeURIComponent(email) + "&page=1&per_page=50",
-                { headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() } }
-              );
-              if (listRes.ok){
-                const listData = await listRes.json();
-                const existingUsers = listData.users || [];
-                const found = existingUsers.find(function(u){ return u.email === email; });
-                if (found){
-                  newId = found.id;
-                  /* حدّث كلمة المرور لتطابق البطاقة الجديدة */
-                  await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + found.id, {
-                    method: "PUT",
-                    headers: {
-                      "apikey": getSvcKey(),
-                      "Authorization": "Bearer " + getSvcKey(),
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ password: password })
-                  }).catch(function(){});
-                }
-              }
-            }catch(e2){}
-          }
-          if (!newId) throw new Error('فشل إنشاء حساب المصادقة (' + adminRes.status + '): ' + (msg || rawText || 'تأكد أن اسم المستخدم غير مستخدم مسبقًا.'));
-        }
-        if (!newId){
-          const adminData = await adminRes.json();
-          newId = adminData.id;
-        }
+      if (getSvcKey() || AUTH.accessToken){
+        /* Admin API عبر adminAction (Edge Function أو مباشرة حسب الإعداد) */
+        const result = await adminAction('createOrGetUser', { email: email, password: password });
+        newId = result.id;
       } else {
         /* Fallback: Public signup — قد يكون محدود المعدل */
         const signupRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/signup", {
@@ -1892,11 +1894,8 @@ const DB = {
         rows = await remoteFetch('profiles', { method:'POST', body:obj, prefer:'resolution=merge-duplicates,return=representation' });
       }catch(profileErr){
         /* تراجع: احذف حساب Auth إذا فشل إنشاء ملف المستخدم */
-        if (getSvcKey()){
-          await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + newId, {
-            method: "DELETE",
-            headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() }
-          }).catch(function(){});
+        if (getSvcKey() || AUTH.accessToken){
+          adminAction('deleteUser', { userId: newId }).catch(function(){});
         }
         throw profileErr;
       }
@@ -1914,20 +1913,8 @@ const DB = {
       const newPassword = patch.password;
       patch = Object.assign({}, patch);
       delete patch.password;
-      if (newPassword && getSvcKey()){
-        const pwRes = await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
-          method: "PUT",
-          headers: {
-            "apikey": getSvcKey(),
-            "Authorization": "Bearer " + getSvcKey(),
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ password: newPassword })
-        });
-        if (!pwRes.ok){
-          const errText = await pwRes.text().catch(function(){ return ''; });
-          throw new Error('فشل تغيير كلمة المرور (' + pwRes.status + '): ' + errText);
-        }
+      if (newPassword && (getSvcKey() || AUTH.accessToken)){
+        await adminAction('updateUserPassword', { userId: id, password: newPassword });
       }
       const rows = await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'PATCH', body:patch, prefer:'return=representation' });
       return rows && rows[0];
@@ -1974,14 +1961,8 @@ const DB = {
         ]);
       }
       await remoteFetch('profiles?id=eq.' + encodeURIComponent(id), { method:'DELETE' });
-      if (getSvcKey()){
-        await fetch(CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(id), {
-          method: "DELETE",
-          headers: {
-            "apikey": getSvcKey(),
-            "Authorization": "Bearer " + getSvcKey()
-          }
-        }).catch(function(){});
+      if (getSvcKey() || AUTH.accessToken){
+        adminAction('deleteUser', { userId: id }).catch(function(){});
       }
       /* أزل المعلم من بطاقات بيانات الدخول المحفوظة */
       if (CredsPrint.items && CredsPrint.items.length){
@@ -9361,20 +9342,8 @@ async function purgeOrphanedAuthAccounts(){
   const profileIds = new Set(profiles.map(function(p){ return p.id; }));
 
   /* جلب جميع حسابات Auth مع دعم الترقيم */
-  let page = 1; const perPage = 1000;
-  let allAuthUsers = [];
-  while(true){
-    const res = await fetch(
-      CONFIG.SUPABASE_URL + "/auth/v1/admin/users?page=" + page + "&per_page=" + perPage,
-      { headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() } }
-    );
-    if (!res.ok) throw new Error('فشل جلب قائمة المستخدمين من Auth.');
-    const data = await res.json();
-    const users = data.users || [];
-    allAuthUsers = allAuthUsers.concat(users);
-    if (!data.nextPage || users.length < perPage) break;
-    page++;
-  }
+  const authListResult = await adminAction('listAllAuthUsers', {});
+  let allAuthUsers = authListResult.users || [];
 
   /* الحسابات المعطوبة: في Auth ولها بريد @nasmo.app لكن لا يقابلها profile */
   const orphaned = allAuthUsers.filter(function(u){
@@ -9385,14 +9354,10 @@ async function purgeOrphanedAuthAccounts(){
 
   if (!confirm('سيتم حذف ' + orphaned.length + ' حساباً معطوباً من Supabase Auth. هل أنت متأكد؟')) return;
 
-  let deleted = 0;
-  for (let i = 0; i < orphaned.length; i++){
-    const res = await fetch(
-      CONFIG.SUPABASE_URL + "/auth/v1/admin/users/" + encodeURIComponent(orphaned[i].id),
-      { method: "DELETE", headers: { "apikey": getSvcKey(), "Authorization": "Bearer " + getSvcKey() } }
-    );
-    if (res.ok || res.status === 404) deleted++;
-  }
+  const results = await Promise.allSettled(
+    orphaned.map(function(u){ return adminAction('deleteUser', { userId: u.id }); })
+  );
+  const deleted = results.filter(function(r){ return r.status === 'fulfilled'; }).length;
   toast('تم حذف ' + deleted + ' حساباً معطوباً بنجاح.');
 }
 
@@ -15891,12 +15856,9 @@ function bindAdminUsers(){
         /* 2) حذف كل profiles بطلب واحد */
         await remoteFetch('profiles?id=in.('+ids.map(encodeURIComponent).join(',')+')', { method:'DELETE' });
         /* 3) حذف auth users بالتوازي */
-        if (getSvcKey()){
-          await Promise.all(ids.map(function(id){
-            return fetch(CONFIG.SUPABASE_URL+'/auth/v1/admin/users/'+encodeURIComponent(id),{
-              method:'DELETE',
-              headers:{ 'apikey':getSvcKey(), 'Authorization':'Bearer '+getSvcKey() }
-            }).catch(function(){});
+        if (getSvcKey() || AUTH.accessToken){
+          await Promise.allSettled(ids.map(function(id){
+            return adminAction('deleteUser', { userId: id });
           }));
         }
         /* 4) تنظيف بطاقات الدخول */
