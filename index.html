@@ -15,9 +15,9 @@
 <meta name="apple-mobile-web-app-title" content="دعم التحصيل">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js" integrity="sha512-gWfIvFPOGSEkpFHV+XsZdhKZgTTbEkH0w5f3C04hdGlLQK38nc4sVrvWUAuqY3Smk17035PTsZ/voVEghCHcLA==" crossorigin="anonymous"></script>
 <style>
 :root{
   --navy:#1B3F72; --navy-2:#2563A8; --navy-3:#3578C4;
@@ -7737,21 +7737,21 @@ function openCounselorReferralModal(students){
         ].join('\n');
       }
       try{
-        for(var i=0;i<students.length;i++){
-          await DB.createCounselingCase({
+        await Promise.all(students.map(function(s){
+          return DB.createCounselingCase({
             school: State.user.school,
-            student_name: students[i].name,
-            student_grade: students[i].grade||'',
-            student_section: students[i].section||'',
+            student_name: s.name,
+            student_grade: s.grade||'',
+            student_section: s.section||'',
             referred_by_id: State.user.id,
             referred_by_name: State.user.full_name,
-            referral_reason: buildReferralText(students[i]),
+            referral_reason: buildReferralText(s),
             pre_referral_actions: preActions,
             counselor_id: counselorId,
             counselor_name: counselor ? counselor.full_name : '',
             status: 'open', sessions: [], counselor_notes: '', parent_phone: '', close_summary: ''
           });
-        }
+        }));
         if (counselorId){
           const notifBody = 'أحال إليك '+State.user.full_name+' ('+students.length+') طالب للمتابعة الإرشادية.\nسبب الإحالة: '+(selectedReason==='أخرى'?otherText.trim():selectedReason);
           try{ await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:counselorId, type:'general', title:'إحالة طلاب جدد إليك', body:notifBody }); }catch(e){}
@@ -10899,7 +10899,10 @@ function bindCounselorCases(){
     var area = document.getElementById('obsPrintArea');
     if (!area) return;
     var win = window.open('', '_blank', 'width=800,height=600');
-    win.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>الملاحظات الصفية</title><style>body{font-family:Arial,sans-serif;padding:20px;direction:rtl;} .no-print{display:none!important;} .obs-print-card{border:1px solid #ccc;border-radius:8px;padding:12px;margin-bottom:10px;page-break-inside:avoid;}</style></head><body>'+area.innerHTML+'</body></html>');
+    var clone = area.cloneNode(true);
+    clone.querySelectorAll('script,iframe,object,embed').forEach(function(el){ el.remove(); });
+    clone.querySelectorAll('[onclick],[onerror],[onload]').forEach(function(el){ ['onclick','onerror','onload','onmouseover'].forEach(function(a){ el.removeAttribute(a); }); });
+    win.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>الملاحظات الصفية</title><style>body{font-family:Arial,sans-serif;padding:20px;direction:rtl;} .no-print{display:none!important;} .obs-print-card{border:1px solid #ccc;border-radius:8px;padding:12px;margin-bottom:10px;page-break-inside:avoid;}</style></head><body>'+clone.innerHTML+'</body></html>');
     win.document.close();
     win.focus();
     win.print();
@@ -13922,9 +13925,9 @@ function bindTeacherTasks(){
     try{
       const principals = await remoteFetch('profiles?school=eq.'+encodeURIComponent(State.user.school)+'&role=eq.principal');
       if (!principals || !principals.length){ toast('لم يتم العثور على حساب مدير المدرسة.'); return; }
-      for (var i=0;i<principals.length;i++){
-        await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.email, target_type:'user', target_id:principals[i].id, type:'general', title:'رسالة من معلم', body:msg.trim() });
-      }
+      await Promise.all(principals.map(function(p){
+        return DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name||State.user.email, target_type:'user', target_id:p.id, type:'general', title:'رسالة من معلم', body:msg.trim() });
+      }));
       invalidateNotifCache();
       toast('تم إرسال رسالتك إلى المدير.');
     }catch(e){ toast(arabicError(e)); }
@@ -14114,9 +14117,9 @@ function bindTeacherTasks(){
         const coords = await remoteFetch('profiles?community_id=eq.'+encodeURIComponent(State.user.community_id)+'&role=eq.coordinator&school=eq.'+encodeURIComponent(State.user.school)) || [];
         coords.forEach(function(c){ targets.push(c); });
       }
-      for (var i = 0; i < targets.length; i++){
-        await DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:targets[i].id, type:'general', title:notifTitle, body:notifBody });
-      }
+      await Promise.all(targets.map(function(t){
+        return DB.createNotification({ school:State.user.school, sender_id:State.user.id, sender_name:State.user.full_name, target_type:'user', target_id:t.id, type:'general', title:notifTitle, body:notifBody });
+      }));
       invalidateNotifCache();
       GiftedUI.modalOpen = false;
       toast('تم توثيق بلاغ الموهبة وإرسال الإشعارات بنجاح.');
@@ -15191,9 +15194,9 @@ function bindSuperAdmin(){
       const schools = target==='all'
         ? Array.from(new Set(allUsers.filter(function(u){ return u.school; }).map(function(u){ return u.school; })))
         : [target];
-      for (var i=0;i<schools.length;i++){
-        await DB.createNotification({
-          school: schools[i],
+      await Promise.all(schools.map(function(sc){
+        return DB.createNotification({
+          school: sc,
           sender_id: State.user.id,
           sender_name: State.user.full_name || 'السوبر أدمن',
           target_type: 'school',
@@ -15202,7 +15205,7 @@ function bindSuperAdmin(){
           title: title.trim(),
           body: body.trim()
         });
-      }
+      }));
       toast('تم إرسال الإشعار لـ '+schools.length+' مدرسة.');
       SuperAdminUI.broadcastOpen=false; invalidateNotifCache(); render(); bindDashboard();
     }catch(e){ toast('فشل الإرسال: '+e.message); confirmBcBtn.disabled=false; confirmBcBtn.textContent='إرسال الإشعار'; }
@@ -15864,7 +15867,7 @@ function bindAdminUsers(){
     const communityId = document.getElementById('bulkCommunitySelect').value || null;
     const ids = AdminUI.selectedIds.slice();
     try{
-      for (let i=0;i<ids.length;i++){ await DB.updateUser(ids[i], { community_id: communityId }); }
+      await Promise.all(ids.map(function(id){ return DB.updateUser(id, { community_id: communityId }); }));
       toast('تم إسناد '+ids.length+' مستخدمًا إلى المجتمع المحدد.');
       AdminUI.selectedIds = []; invalidateAdminCache(); render(); bindAdminUsers();
     }catch(e){ toast(arabicError(e)); }
