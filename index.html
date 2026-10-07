@@ -4067,12 +4067,19 @@ function showProfileModal(){
     saveBtn.disabled=true; saveBtn.textContent='جاري الحفظ…';
     try{
       if (pass && isRemote()){
+        if (AUTH.refreshToken) await refreshAuthToken().catch(function(){});
         const pwRes = await fetch(CONFIG.SUPABASE_URL + '/auth/v1/user', {
           method:'PUT',
           headers:{ 'apikey':CONFIG.SUPABASE_ANON_KEY, 'Authorization':'Bearer '+AUTH.accessToken, 'Content-Type':'application/json' },
           body:JSON.stringify({ password:pass })
         });
-        if (!pwRes.ok){ const t=await pwRes.text().catch(function(){return '';}); throw new Error('فشل تغيير كلمة المرور: '+t); }
+        if (!pwRes.ok){
+          const t=await pwRes.text().catch(function(){return '';});
+          let msg=t; try{ const j=JSON.parse(t); msg=j.error_description||j.msg||j.message||t; }catch(e2){}
+          throw new Error('فشل تغيير كلمة المرور: '+msg);
+        }
+        const pwData=await pwRes.json().catch(function(){return null;});
+        if (pwData && pwData.access_token){ AUTH.accessToken=pwData.access_token; AUTH.refreshToken=pwData.refresh_token||AUTH.refreshToken; persistAuth(); }
       }
       const patch = { full_name:fullName, specialty:specialty||null, phone:phone||null, email:email||null };
       if (pass && !isRemote()) patch.password = pass;
@@ -15093,12 +15100,19 @@ function bindSuperAdmin(){
     saveSettingsBtn.disabled=true; saveSettingsBtn.textContent='جاري الحفظ…';
     try{
       if (pass && isRemote()){
+        if (AUTH.refreshToken) await refreshAuthToken().catch(function(){});
         const pwRes = await fetch(CONFIG.SUPABASE_URL + '/auth/v1/user', {
           method:'PUT',
           headers:{ 'apikey':CONFIG.SUPABASE_ANON_KEY, 'Authorization':'Bearer '+AUTH.accessToken, 'Content-Type':'application/json' },
           body:JSON.stringify({ password:pass })
         });
-        if (!pwRes.ok){ const t=await pwRes.text().catch(function(){return '';}); throw new Error('فشل تغيير كلمة المرور: '+t); }
+        if (!pwRes.ok){
+          const t=await pwRes.text().catch(function(){return '';});
+          let msg=t; try{ const j=JSON.parse(t); msg=j.error_description||j.msg||j.message||t; }catch(e2){}
+          throw new Error('فشل تغيير كلمة المرور: '+msg);
+        }
+        const pwData=await pwRes.json().catch(function(){return null;});
+        if (pwData && pwData.access_token){ AUTH.accessToken=pwData.access_token; AUTH.refreshToken=pwData.refresh_token||AUTH.refreshToken; persistAuth(); }
       }
       await DB.updateUser(State.user.id, { full_name: fullName.trim() });
       State.user = Object.assign({}, State.user, { full_name: fullName.trim() });
