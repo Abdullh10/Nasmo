@@ -8448,7 +8448,10 @@ function examSavedHtml(){
     '</div>';
   }).join('');
   return '<div style="margin-top:24px;">'+
-    '<div style="font-weight:600;font-size:13px;color:var(--muted);margin-bottom:8px;border-top:1px solid var(--border);padding-top:16px;">التحليلات المحفوظة</div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;border-top:1px solid var(--border);padding-top:16px;">'+
+      '<div style="font-weight:600;font-size:13px;color:var(--muted);">التحليلات المحفوظة ('+list.length+')</div>'+
+      (list.length>=2 ? '<button class="btn btn-sm" style="background:#0d9488;color:#fff;border:none;" data-action="openExamCompare">📊 مقارنة بين الاختبارات</button>' : '')+
+    '</div>'+
     items+'</div>';
 }
 async function runExamIndividualSort(){
@@ -9129,6 +9132,161 @@ function bindExamAnalysis(){
     saveExamDraft();
     render(); bindExamAnalysis();
   });
+  var compareBtn = document.querySelector('[data-action="openExamCompare"]');
+  if (compareBtn) compareBtn.addEventListener('click', showExamCompareModal);
+}
+
+function showExamCompareModal(){
+  var list = loadExamSaved();
+  if (list.length < 2){ toast('تحتاج إلى تحليلين محفوظين على الأقل للمقارنة.'); return; }
+
+  function examLabel(e){
+    return esc(e.subject||'—')+' — '+esc(e.term||'—')+
+      ' ('+new Date(e.savedAt).toLocaleDateString('ar-SA',{month:'short',day:'numeric'})+' | من '+e.maxScore+')';
+  }
+  function mkStat(val, lbl, color){
+    return '<div style="background:var(--bg,#f8fafc);border-radius:8px;padding:12px 6px;text-align:center;">' +
+      '<div style="font-size:22px;font-weight:800;color:'+color+';font-variant-numeric:tabular-nums;">'+val+'</div>' +
+      '<div style="font-size:11px;color:var(--muted,#64748b);margin-top:2px;">'+lbl+'</div>' +
+    '</div>';
+  }
+
+  var aOpts = list.map(function(e,i){ return '<option value="'+i+'"'+(i===list.length-1?' selected':'')+'>'+examLabel(e)+'</option>'; }).join('');
+  var bOpts = list.map(function(e,i){ return '<option value="'+i+'"'+(i===0?' selected':'')+'>'+examLabel(e)+'</option>'; }).join('');
+
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9100;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px 0;';
+  overlay.innerHTML =
+    '<div style="background:var(--card,#fff);border-radius:14px;width:100%;max-width:880px;margin:auto;box-shadow:0 8px 40px rgba(0,0,0,.25);">' +
+      '<div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border,#e2e8f0);background:var(--bg,#f8fafc);border-radius:14px 14px 0 0;">' +
+        '<span style="font-weight:800;font-size:15px;flex:1;">📊 مقارنة بين الاختبارات — قياس أثر الخطة العلاجية</span>' +
+        '<button data-cmpclose style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;">✕</button>' +
+      '</div>' +
+      '<div style="padding:16px 18px;border-bottom:1px solid var(--border,#e2e8f0);display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">' +
+        '<div style="flex:1;min-width:180px;">' +
+          '<div style="font-size:12px;font-weight:700;color:#d97706;margin-bottom:4px;">قبل الخطة العلاجية</div>' +
+          '<select id="cmpSelA" class="input" style="width:100%;">'+aOpts+'</select>' +
+        '</div>' +
+        '<div style="font-size:20px;color:var(--muted);padding-bottom:4px;">←</div>' +
+        '<div style="flex:1;min-width:180px;">' +
+          '<div style="font-size:12px;font-weight:700;color:#16a34a;margin-bottom:4px;">بعد الخطة العلاجية</div>' +
+          '<select id="cmpSelB" class="input" style="width:100%;">'+bOpts+'</select>' +
+        '</div>' +
+        '<button id="cmpRunBtn" class="btn btn-primary" style="white-space:nowrap;">🔍 مقارنة</button>' +
+      '</div>' +
+      '<div id="cmpResults" style="padding:18px;min-height:80px;"></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('[data-cmpclose]').addEventListener('click', function(){ overlay.remove(); });
+  overlay.addEventListener('click', function(e){ if (e.target===overlay) overlay.remove(); });
+
+  function runCompare(){
+    var idxA = parseInt((document.getElementById('cmpSelA')||{value:'0'}).value);
+    var idxB = parseInt((document.getElementById('cmpSelB')||{value:'0'}).value);
+    var resultsEl = document.getElementById('cmpResults');
+    if (idxA === idxB){ resultsEl.innerHTML = '<div style="color:#dc2626;text-align:center;padding:30px;font-size:14px;">اختر تحليلين مختلفين للمقارنة.</div>'; return; }
+    var a1 = list[idxA]; // before
+    var a2 = list[idxB]; // after
+    var passA = Math.round(a1.maxScore / 2);
+    var passB = Math.round(a2.maxScore / 2);
+
+    var a2Map = {};
+    (a2.rows||[]).forEach(function(r){ a2Map[(r.name||'').trim()] = r; });
+    var a1Keys = {};
+    (a1.rows||[]).forEach(function(r){ a1Keys[(r.name||'').trim()] = true; });
+
+    var cmpRows = (a1.rows||[]).map(function(r){
+      var nm = (r.name||'').trim();
+      var r2 = a2Map[nm]||null;
+      var s1 = r.score!=null ? Number(r.score) : null;
+      var s2 = r2&&r2.score!=null ? Number(r2.score) : null;
+      return { name:nm, grade:r.grade||'—', section:r.section||'—', s1:s1, s2:s2,
+               diff:(s1!=null&&s2!=null ? s2-s1 : null),
+               wasFlunk:(s1!=null&&s1<passA), nowPass:(s2!=null&&s2>=passB) };
+    });
+    (a2.rows||[]).forEach(function(r){
+      if (!a1Keys[(r.name||'').trim()]){
+        var s2 = r.score!=null ? Number(r.score) : null;
+        cmpRows.push({ name:(r.name||'').trim(), grade:r.grade||'—', section:r.section||'—',
+                       s1:null, s2:s2, diff:null, wasFlunk:false, nowPass:(s2!=null&&s2>=passB) });
+      }
+    });
+
+    var matched   = cmpRows.filter(function(r){ return r.s1!=null&&r.s2!=null; });
+    var improved  = matched.filter(function(r){ return r.diff>0; });
+    var declined  = matched.filter(function(r){ return r.diff<0; });
+    var stable    = matched.filter(function(r){ return r.diff===0; });
+    var flunked   = matched.filter(function(r){ return r.wasFlunk; });
+    var recovered = flunked.filter(function(r){ return r.nowPass; });
+
+    var validA = (a1.rows||[]).filter(function(r){ return r.score!=null; });
+    var validB = (a2.rows||[]).filter(function(r){ return r.score!=null; });
+    var prA = validA.length ? Math.round(validA.filter(function(r){ return Number(r.score)>=passA; }).length/validA.length*100) : 0;
+    var prB = validB.length ? Math.round(validB.filter(function(r){ return Number(r.score)>=passB; }).length/validB.length*100) : 0;
+    var avgA = validA.length ? (validA.reduce(function(s,r){ return s+Number(r.score); },0)/validA.length).toFixed(1) : '—';
+    var avgB = validB.length ? (validB.reduce(function(s,r){ return s+Number(r.score); },0)/validB.length).toFixed(1) : '—';
+    var prChg = prB - prA;
+    var prChgStr = (prChg>=0?'+':'')+prChg+'%';
+    var prChgColor = prChg>0?'#16a34a':prChg<0?'#dc2626':'#64748b';
+    function dclr(d){ return d>0?'#16a34a':d<0?'#dc2626':'#64748b'; }
+    function darr(d){ return d>0?'↑':d<0?'↓':'→'; }
+
+    var summaryHtml =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:16px;">' +
+        mkStat(improved.length,'تحسّن ↑','#16a34a') +
+        mkStat(declined.length,'تراجع ↓','#dc2626') +
+        mkStat(stable.length,'ثابت →','#64748b') +
+        mkStat(recovered.length+'/'+flunked.length,'نجح من الراسبين ✓','#0d9488') +
+      '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;background:var(--bg,#f8fafc);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;">' +
+        '<div><span style="color:var(--muted);">نسبة النجاح: </span><b>'+prA+'%</b> → <b style="color:'+prChgColor+';">'+prB+'%</b>' +
+          ' <span style="color:'+prChgColor+';font-weight:700;">('+prChgStr+' '+darr(prChg)+')</span></div>' +
+        '<div><span style="color:var(--muted);">متوسط الدرجات: </span><b>'+avgA+'</b> → '+
+          '<b style="color:'+(parseFloat(avgB)>=parseFloat(avgA)?'#16a34a':'#dc2626')+';">'+avgB+'</b></div>' +
+        '<div><span style="color:var(--muted);">طلاب مشتركون: </span><b>'+matched.length+'</b></div>' +
+        (flunked.length ? '<div style="color:#0d9488;font-weight:700;">✅ '+recovered.length+' من '+flunked.length+' طالب راسب تعافى وأصبح ناجحاً</div>' : '') +
+      '</div>';
+
+    var tableRows = cmpRows.map(function(r){
+      var s1Str = r.s1!=null ? r.s1+'/'+a1.maxScore : '—';
+      var s2Str = r.s2!=null ? r.s2+'/'+a2.maxScore : '—';
+      var diffStr = r.diff!=null ? (r.diff>0?'+':'')+r.diff : '—';
+      var badge = '';
+      if (r.wasFlunk&&r.nowPass) badge='<span style="background:#dcfce7;color:#16a34a;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;">تعافى ✓</span>';
+      else if (r.wasFlunk&&r.s2!=null&&!r.nowPass) badge='<span style="background:#fef2f2;color:#dc2626;border-radius:6px;padding:2px 8px;font-size:11px;">لا يزال راسباً</span>';
+      else if (r.diff>0) badge='<span style="color:#16a34a;font-size:12px;">↑ تحسّن</span>';
+      else if (r.diff<0) badge='<span style="color:#dc2626;font-size:12px;">↓ تراجع</span>';
+      else if (r.diff===0) badge='<span style="color:#64748b;font-size:12px;">→ ثابت</span>';
+      return '<tr>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border,#e2e8f0);">'+esc(r.name)+'</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border,#e2e8f0);color:var(--muted);font-size:12px;">'+esc(r.grade)+(r.section&&r.section!=='—'?' / '+esc(r.section):'')+'</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border,#e2e8f0);'+(r.s1!=null&&r.s1<passA?'color:#dc2626;font-weight:700;':'')+'">'+s1Str+'</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border,#e2e8f0);'+(r.s2!=null&&r.s2<passB?'color:#dc2626;font-weight:700;':r.s2!=null&&r.s2>=passB?'color:#16a34a;font-weight:700;':'')+'">'+s2Str+'</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border,#e2e8f0);font-weight:700;color:'+(r.diff!=null?dclr(r.diff):'var(--muted)')+';">'+diffStr+'</td>' +
+        '<td style="padding:6px 10px;border-bottom:1px solid var(--border,#e2e8f0);">'+badge+'</td>' +
+      '</tr>';
+    }).join('');
+
+    resultsEl.innerHTML = summaryHtml +
+      '<div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:8px;">تفاصيل الطلاب ('+cmpRows.length+')</div>' +
+      '<div style="overflow-x:auto;">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="background:var(--bg,#f8fafc);">' +
+            '<th style="text-align:right;padding:7px 10px;border-bottom:2px solid var(--border,#e2e8f0);">الاسم</th>' +
+            '<th style="text-align:right;padding:7px 10px;border-bottom:2px solid var(--border,#e2e8f0);">الصف</th>' +
+            '<th style="text-align:right;padding:7px 10px;border-bottom:2px solid var(--border,#e2e8f0);color:#d97706;">قبل العلاج</th>' +
+            '<th style="text-align:right;padding:7px 10px;border-bottom:2px solid var(--border,#e2e8f0);color:#16a34a;">بعد العلاج</th>' +
+            '<th style="text-align:right;padding:7px 10px;border-bottom:2px solid var(--border,#e2e8f0);">الفرق</th>' +
+            '<th style="text-align:right;padding:7px 10px;border-bottom:2px solid var(--border,#e2e8f0);">الحالة</th>' +
+          '</tr></thead>' +
+          '<tbody>'+tableRows+'</tbody>' +
+        '</table>' +
+      '</div>';
+  }
+
+  document.getElementById('cmpRunBtn').addEventListener('click', runCompare);
+  if (list.length >= 2) runCompare();
 }
 
 function adminTabsHtml(){
