@@ -9126,6 +9126,12 @@ function bindExamAnalysis(){
     const text = area ? area.value : '';
     const parsed = parseExamPasteText(text);
     if (!parsed.length){ toast('لا توجد بيانات صالحة في النص الملصق.'); return; }
+    // count lines that had a score but no name
+    const lines = text.split(/\r?\n/).filter(function(l){ return l.trim(); });
+    const start = (lines.length && isExamImportHeaderRow(lines[0].split(/\t|,/)[0].trim())) ? 1 : 0;
+    const totalLines = lines.length - start;
+    const skipped = totalLines - parsed.length;
+    if (skipped > 0) toast('تم استيراد '+parsed.length+' طالب — تم تخطي '+skipped+' سطر بدون اسم.');
     ExamAnalysisUI.rows = parsed;
     ExamAnalysisUI.resultModal = null;
     ExamAnalysisUI.pasteModalOpen = false;
