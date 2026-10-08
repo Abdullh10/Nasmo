@@ -18510,24 +18510,31 @@ async function screenReview(id){
         body +
         '<div class="sig-footer"><div><div class="who">توقيع المُعد</div>'+buildSignaturePad('rv_prep', s.preparer_signature, true)+'</div></div>' +
       '</div>' +
-      '<div class="review-panel no-print">' +
-        '<h3>'+(State.user.role==='vice_principal' ? 'اعتماد بالنيابة عن مدير المدرسة' : 'اعتماد مدير المدرسة')+'</h3>' +
-        '<div class="review-grid">' +
-          '<div class="field">' +
-            '<label style="margin-bottom:8px;display:block;">قائمة المراجعة الإشرافية</label>' +
-            '<div style="display:flex;flex-direction:column;gap:7px;font-size:13px;">' +
-              ['الهدف قابل للقياس وواضح','الاستراتيجيات مناسبة لمستوى الطالب','الشواهد التعليمية مرفقة وموثَّقة','المتابعة الأسبوعية منتظمة وكاملة','توقيع ولي الأمر / المعلم موجود','الخطة تتوافق مع معايير البرنامج'].map(function(lbl,idx){
-                return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="rv_chk_'+idx+'" style="width:16px;height:16px;"> '+lbl+'</label>';
-              }).join('') +
+      (isCoordReviewing
+        ? '<div class="review-panel no-print" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px 20px;text-align:center;">' +
+            '<span style="font-size:32px;">⏳</span>' +
+            '<div style="font-weight:700;font-size:15px;">بانتظار اعتماد مدير المدرسة</div>' +
+            '<div style="color:var(--muted);font-size:13px;">هذا النموذج قيد المراجعة. صلاحية الاعتماد للمدير فقط.</div>' +
+            '<span class="badge pending">'+STATUS_LABEL[s.status]+'</span>' +
+          '</div>'
+        : '<div class="review-panel no-print">' +
+            '<h3>'+(State.user.role==='vice_principal' ? 'اعتماد بالنيابة عن مدير المدرسة' : 'اعتماد مدير المدرسة')+'</h3>' +
+            '<div class="review-grid">' +
+              '<div class="field">' +
+                '<label style="margin-bottom:8px;display:block;">قائمة المراجعة الإشرافية</label>' +
+                '<div style="display:flex;flex-direction:column;gap:7px;font-size:13px;">' +
+                  ['الهدف قابل للقياس وواضح','الاستراتيجيات مناسبة لمستوى الطالب','الشواهد التعليمية مرفقة وموثَّقة','المتابعة الأسبوعية منتظمة وكاملة','توقيع ولي الأمر / المعلم موجود','الخطة تتوافق مع معايير البرنامج'].map(function(lbl,idx){
+                    return '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="rv_chk_'+idx+'" style="width:16px;height:16px;"> '+lbl+'</label>';
+                  }).join('') +
+                '</div>' +
+              '</div>' +
+              '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
+              '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
+              '<div class="field"><label>'+(State.user.role==='vice_principal' ? 'التوقيع الإلكتروني (بالنيابة عن مدير المدرسة)' : 'التوقيع الإلكتروني لمدير المدرسة')+'</label>' + buildSignaturePad('approve', null, false) + '</div>' +
+              '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
+              '<button class="btn btn-danger btn-block" data-action="returnSub">إرجاع للتعديل</button>' +
             '</div>' +
-          '</div>' +
-          '<div class="field"><label>ملاحظات الإرجاع (مطلوبة عند الإرجاع)</label><textarea class="input" id="reviewComment" placeholder="اكتب سبب الإرجاع..."></textarea></div>' +
-          '<div class="field"><label>تغذية راجعة (تظهر للمُعد بعد الاعتماد)</label><textarea class="input" id="reviewNote" placeholder="ملاحظاتك التربوية على النموذج...">'+esc(s.principal_note||'')+'</textarea></div>' +
-          '<div class="field"><label>'+(State.user.role==='vice_principal' ? 'التوقيع الإلكتروني (بالنيابة عن مدير المدرسة)' : 'التوقيع الإلكتروني لمدير المدرسة')+'</label>' + buildSignaturePad('approve', null, false) + '</div>' +
-          '<button class="btn btn-gold btn-block" data-action="approveSub">✓ اعتماد وختم النموذج</button>' +
-          '<button class="btn btn-danger btn-block" data-action="returnSub">إرجاع للتعديل</button>' +
-        '</div>' +
-      '</div>' +
+          '</div>') +
     '</div>'
   );
 }
@@ -18541,7 +18548,8 @@ function bindReview(){
   document.querySelectorAll('[data-action="clearUploadSig"]').forEach(function(el){
     el.addEventListener('click', function(){ var p=Pads[el.getAttribute('data-pad')]; if(p) p.clearUpload(); });
   });
-  document.querySelector('[data-action="approveSub"]').addEventListener('click', async function(){
+  var _approveSubEl = document.querySelector('[data-action="approveSub"]');
+  if (_approveSubEl) _approveSubEl.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     const pad = Pads['pad_approve'];
     if (!pad || pad.isEmpty()){ toast('يرجى التوقيع لاعتماد النموذج.'); this.disabled = false; return; }
@@ -18562,7 +18570,8 @@ function bindReview(){
       go('view', { id: ReviewCache.id });
     }catch(e){ toast(arabicError(e)); this.disabled = false; }
   });
-  document.querySelector('[data-action="returnSub"]').addEventListener('click', async function(){
+  var _returnSubEl = document.querySelector('[data-action="returnSub"]');
+  if (_returnSubEl) _returnSubEl.addEventListener('click', async function(){
     if (this.disabled) return; this.disabled = true;
     const comment = document.getElementById('reviewComment').value.trim();
     if (!comment){ toast('يرجى كتابة ملاحظة توضح سبب الإرجاع.'); this.disabled = false; return; }
