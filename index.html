@@ -11865,16 +11865,21 @@ async function screenDashboard(){
     const def = formDef(s.form_type);
     if (!def) return '';
     const canOpen = isPrincipal(State.user) ? ((s.status==='pending' || s.status==='approved' || s.status==='returned') && s.created_by !== State.user.id) : true;
+    const isOwnForm = s.created_by === State.user.id;
     const action = isCoord
-      ? (s.status==='approved'
-          ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
-          : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>'
-            + (s.status==='draft' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteDraft" data-id="'+s.id+'" style="color:var(--danger);">حذف</button>' : ''))
+      ? (isOwnForm
+          ? (s.status==='approved'
+              ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
+              : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>'
+                + (s.status==='draft' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteDraft" data-id="'+s.id+'" style="color:var(--danger);">حذف</button>' : ''))
+          : (s.status==='pending'
+              ? '<button class="btn btn-gold btn-sm" data-action="openReview" data-id="'+s.id+'">مراجعة واعتماد</button>'
+              : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'))
       : !canOpen ? ''
       : (s.status==='pending'
           ? '<button class="btn btn-gold btn-sm" data-action="openReview" data-id="'+s.id+'">مراجعة واعتماد</button>'
           : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>');
-    const isSelectable = isCoord && s.status==='draft';
+    const isSelectable = isCoord && isOwnForm && s.status==='draft';
     const isSelected = CoordFormsUI.selectedFormIds.indexOf(s.id) >= 0;
     return (
       '<tr>' +
