@@ -3164,6 +3164,7 @@ function logout(){
   StudentRosterUI = { modalOpen:false, editingId:null, pasteOpen:false, gradeFilter:'', sectionFilter:'' };
   CounselorUI = { statusFilter:'', gradeFilter:'', modalOpen:false, editingId:null, tab:'cases', sessionText:'', _writingReportId:null };
   TeacherFormsUI = { tab:'active', dashTab:'main', studentGradeFilter:'', studentSectionFilter:'', studentsCollapsed:true, selectedStudentIds:[], selectedFormIds:[] };
+  CoordFormsUI = { selectedFormIds:[] };
   try{ CredsPrint = { items:[] }; localStorage.removeItem('dtd_last_creds_batch_v1'); }catch(e){}
   try{ const uid = State.user && State.user.id; if (uid){ Object.keys(localStorage).filter(function(k){ return k.startsWith('exam_analyses_'+uid) || k.startsWith('teacher_notes_'+uid+'_'); }).forEach(function(k){ localStorage.removeItem(k); }); } }catch(e){}
   State.adminTab = 'overview'; State.dashTab = 'forms'; CoordActivitiesUI.subTab = 'activities';
@@ -4206,6 +4207,29 @@ async function screenCommunityMembers(){
     dashTabsHtml() +
     (await _coordCommunityContent())
   );
+}
+function bindCoordForms(){
+  var selectAllEl = document.getElementById('selectAllCoordForms');
+  if (selectAllEl) selectAllEl.addEventListener('change', async function(){
+    var allCbs = document.querySelectorAll('.coord-form-cb');
+    if (this.checked) {
+      CoordFormsUI.selectedFormIds = Array.from(allCbs).map(function(cb){ return cb.getAttribute('data-id'); });
+    } else {
+      CoordFormsUI.selectedFormIds = [];
+    }
+    await render();
+  });
+  document.querySelectorAll('.coord-form-cb').forEach(function(cb){
+    cb.addEventListener('change', async function(){
+      var id = cb.getAttribute('data-id');
+      if (cb.checked) {
+        if (CoordFormsUI.selectedFormIds.indexOf(id) < 0) CoordFormsUI.selectedFormIds.push(id);
+      } else {
+        CoordFormsUI.selectedFormIds = CoordFormsUI.selectedFormIds.filter(function(x){ return x !== id; });
+      }
+      await render();
+    });
+  });
 }
 function bindCommunityMembers(){
   document.querySelectorAll('[data-action="linkTeacher"]').forEach(function(el){
@@ -11836,11 +11860,12 @@ async function screenDashboard(){
     return (order[a.status]-order[b.status]) || (new Date(b.updated_at)-new Date(a.updated_at));
   });
 
+  const isCoord = State.user.role === 'coordinator';
   const rows = sorted.map(function(s){
     const def = formDef(s.form_type);
     if (!def) return '';
     const canOpen = isPrincipal(State.user) ? ((s.status==='pending' || s.status==='approved' || s.status==='returned') && s.created_by !== State.user.id) : true;
-    const action = State.user.role==='coordinator'
+    const action = isCoord
       ? (s.status==='approved'
           ? '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>'
           : '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">'+(s.status==='draft'?'استكمال':'تعديل وإعادة الإرسال')+'</button>'
@@ -11849,8 +11874,11 @@ async function screenDashboard(){
       : (s.status==='pending'
           ? '<button class="btn btn-gold btn-sm" data-action="openReview" data-id="'+s.id+'">مراجعة واعتماد</button>'
           : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>');
+    const isSelectable = isCoord && s.status==='draft';
+    const isSelected = CoordFormsUI.selectedFormIds.indexOf(s.id) >= 0;
     return (
       '<tr>' +
+        (isCoord ? '<td style="width:32px;padding:6px 10px;text-align:center;">'+(isSelectable?'<input type="checkbox" class="coord-form-cb" data-id="'+s.id+'" '+(isSelected?'checked':'')+' style="cursor:pointer;width:15px;height:15px;">':'')+'</td>' : '') +
         '<td><b>'+esc(def.title)+'</b><div style="color:var(--muted);font-size:12px;">نموذج رقم ('+def.no+')</div></td>' +
         '<td>'+esc(s.created_by_name||'')+'</td>' +
         '<td>'+fmtDateTime(s.updated_at)+'</td>' +
@@ -11860,10 +11888,22 @@ async function screenDashboard(){
     );
   }).join('');
 
+  const coordBulkBar = isCoord && CoordFormsUI.selectedFormIds.length > 0
+    ? '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--danger,#dc2626) 8%,transparent);border:1.5px solid color-mix(in srgb,var(--danger,#dc2626) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:10px;">' +
+        '<span style="font-size:13.5px;font-weight:700;color:var(--danger,#dc2626);">'+CoordFormsUI.selectedFormIds.length+' نموذج محدد</span>' +
+        '<button class="btn btn-sm" data-action="deleteSelectedCoordForms" style="background:var(--danger,#dc2626);color:#fff;border:none;margin-inline-start:auto;">🗑 حذف المحدد</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="clearCoordFormSel">إلغاء التحديد</button>' +
+      '</div>'
+    : '';
+  const colSpan = isCoord ? '6' : '5';
   const tableBlock = (
+    coordBulkBar +
     '<div class="table-wrap"><div class="table-scroll"><table class="list">' +
-      '<thead><tr><th>النموذج</th><th>المُعد</th><th>آخر تحديث</th><th>الحالة</th><th></th></tr></thead>' +
-      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="5">لا توجد نماذج بعد.</td></tr>') + '</tbody>' +
+      '<thead><tr>' +
+        (isCoord ? '<th style="width:32px;padding:6px 10px;text-align:center;"><input type="checkbox" id="selectAllCoordForms" style="cursor:pointer;width:15px;height:15px;" title="تحديد جميع المسودات"></th>' : '') +
+        '<th>النموذج</th><th>المُعد</th><th>آخر تحديث</th><th>الحالة</th><th></th>' +
+      '</tr></thead>' +
+      '<tbody>' + (rows || '<tr class="empty-row"><td colspan="'+colSpan+'">لا توجد نماذج بعد.</td></tr>') + '</tbody>' +
     '</table></div></div>'
   );
 
@@ -11900,6 +11940,7 @@ function bindDashboard(){
   if (State.user.role==='super_admin') { bindSuperAdmin(); return; }
   if (State.user.role==='teacher') bindTeacherTasks();
   else if (State.user.role==='admin'){ if (State.adminTab==='communities') bindAdminCommunities(); else if (State.adminTab==='settings') bindAdminSettings(); else if (State.adminTab==='students') bindAdminStudents(); else if (State.adminTab==='overview') { /* handled by bindGlobalAction */ } else bindAdminUsers(); }
+  else if (State.dashTab==='forms' && State.user.role==='coordinator') bindCoordForms();
   else if (State.dashTab==='myTeam' && State.user.role==='coordinator') { bindCommunityMembers(); bindCoordinatorTeamStats(); }
   else if (State.dashTab==='tasks' && State.user.role==='coordinator') bindCoordinatorTasks();
   else if (State.dashTab==='overview' && isPrincipal(State.user)) { /* كل الأزرار مرتبطة عبر bindGlobalAction */ }
@@ -12724,6 +12765,7 @@ function bindCoordinatorTeacherActivities(){
 
 /* ----- لوحة المعلم: المهام والمتابعات المكلَّف بها ----- */
 let TeacherFormsUI = { tab: 'active', dashTab: 'main', studentGradeFilter: '', studentSectionFilter: '', studentsCollapsed: true, selectedStudentIds: [], selectedFormIds: [] }; /* dashTab: 'main'|'agenda'|'profile'|'myInitiatives' */
+let CoordFormsUI = { selectedFormIds: [] };
 let GiftedUI = { modalOpen: false, counselors: [], selectedCounselorId: '' };
 let TeacherInitiativeUI = { modalOpen: false, editId: null };
 let GiftedReviewUI = { modalOpen: false, report: null };
@@ -18565,6 +18607,23 @@ function bindGlobalAction(el){
       toast('تم حذف '+ids.length+' مسودة.');
     }catch(e){ toast('حدث خطأ أثناء الحذف.'); el.disabled=false; return; }
     render();
+  }); }
+  else if (action==='deleteSelectedCoordForms'){ el.addEventListener('click', async function(){
+    var ids = CoordFormsUI.selectedFormIds.slice();
+    if (!ids.length) return;
+    if (!confirm('هل أنت متأكد من حذف '+ids.length+' مسودة؟ لن تستطيع استرجاعها.')) return;
+    el.disabled = true;
+    try{
+      await Promise.all(ids.map(function(id){ return DB.deleteSubmission(id); }));
+      CoordFormsUI.selectedFormIds = [];
+      invalidateAllScreenCaches();
+      toast('تم حذف '+ids.length+' مسودة.');
+    }catch(e){ toast('حدث خطأ أثناء الحذف.'); el.disabled=false; return; }
+    render();
+  }); }
+  else if (action==='clearCoordFormSel'){ el.addEventListener('click', async function(){
+    CoordFormsUI.selectedFormIds = [];
+    await render();
   }); }
   else if (action==='openLoginLogModal'){ el.addEventListener('click', async function(){
     if (!AdminLoginLogUI.logs.length){
