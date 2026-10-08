@@ -18480,8 +18480,10 @@ async function screenReview(id){
   const s = await DB.getSubmission(id); ReviewCache = s;
   if (!s){ toast('النموذج غير موجود أو انتهت صلاحية الجلسة.'); go('dashboard'); return ''; }
   const isCounselorViewing = State.user.role === 'counselor' && s.counselor_id === State.user.id;
-  if (!isPrincipal(State.user) && State.user.role !== 'super_admin' && !isCounselorViewing){ go('dashboard'); return ''; }
+  const isCoordReviewing = State.user.role === 'coordinator' && s.created_by !== State.user.id;
+  if (!isPrincipal(State.user) && State.user.role !== 'super_admin' && !isCounselorViewing && !isCoordReviewing){ go('dashboard'); return ''; }
   if (isPrincipal(State.user) && s.created_by === State.user.id){ toast('لا يمكن للمدير مراجعة نماذجه الخاصة.'); go('dashboard'); return ''; }
+  if (isCoordReviewing && s.school !== State.user.school){ go('dashboard'); return ''; }
   if (State.user.role !== 'super_admin' && s.school !== State.user.school){ go('dashboard'); return ''; }
   const def = formDef(s.form_type);
   if (!def) return '<p class="error-text" style="padding:32px;">نوع النموذج غير معروف: ' + esc(s.form_type) + '</p>';
