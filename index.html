@@ -8419,12 +8419,6 @@ async function refreshExamSaved(){
     _examSavedCache = raw.map(function(r){ return { id:r.id, savedAt:r.saved_at, subject:r.subject||'', term:r.term||'', maxScore:r.max_score||40, rows:r.rows||[] }; });
   }catch(e){ _examSavedCache = _examSavedCache || []; }
 }
-async function _autoSaveExamAnalysis(){
-  if (!ExamAnalysisUI.rows || !ExamAnalysisUI.rows.length || !State.user) return;
-  try{
-    await remoteFetch('exam_analyses', { method:'POST', prefer:'return=minimal', body: JSON.stringify({ user_id:State.user.id, school:State.user.school, subject:ExamAnalysisUI.subject||'', term:ExamAnalysisUI.term||'', max_score:ExamAnalysisUI.maxScore||40, rows:ExamAnalysisUI.rows, saved_at:new Date().toISOString() }) });
-  }catch(e){}
-}
 function _examDraftKey(){ return 'exam_draft_'+(State.user?State.user.id:'anon'); }
 function saveExamDraft(){
   if (!ExamAnalysisUI.rows||!ExamAnalysisUI.rows.length) return;
@@ -8997,7 +8991,6 @@ async function runExamAutoSort(){
   if (!plans.length){ render(); bindExamAnalysis(); return; }
   if (plans.length === 1){
     const s = await DB.getSubmission(plans[0].id);
-    await _autoSaveExamAnalysis();
     ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
     openEditor(s.form_type, s);
   } else {
@@ -9007,7 +9000,10 @@ async function runExamAutoSort(){
 }
 function bindExamAnalysis(){
   document.querySelector('[data-action="back"]').addEventListener('click', async function(){
-    await _autoSaveExamAnalysis();
+    if (ExamAnalysisUI.rows && ExamAnalysisUI.rows.length){
+      var choice = confirm('هل تريد حفظ التحليل الحالي قبل الخروج؟\nاضغط "موافق" للحفظ، أو "إلغاء" للخروج بدون حفظ.');
+      if (choice) await saveExamAnalysis().catch(function(){});
+    }
     ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
     go('dashboard');
   });
@@ -9128,7 +9124,6 @@ function bindExamAnalysis(){
   document.querySelectorAll('[data-action="openExamSortedPlan"]').forEach(function(el){
     el.addEventListener('click', async function(){
       const s = await DB.getSubmission(el.getAttribute('data-id'));
-      await _autoSaveExamAnalysis();
       ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
       openEditor(s.form_type, s);
     });
