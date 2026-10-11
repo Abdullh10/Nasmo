@@ -13480,8 +13480,8 @@ async function screenTeacherTasks(){
         '<td class="row-actions">' +
           (s.status==='draft'||s.status==='returned'
             ? '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">إكمال التعبئة</button>'
-              + (s.status==='draft' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteDraft" data-id="'+s.id+'" style="color:var(--danger);">حذف</button>' : '')
             : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>') +
+          (s.status!=='approved' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteMyForm" data-id="'+s.id+'" data-status="'+s.status+'" style="color:var(--danger);" title="حذف النموذج نهائياً">🗑</button>' : '') +
         '</td>' +
       '</tr>'
     );
@@ -18610,6 +18610,20 @@ function bindGlobalAction(el){
       toast('تم حذف المسودة.');
       render();
     }catch(e){ toast('فشل حذف المسودة: ' + (e.message||'')); }
+  }); }
+  else if (action==='deleteMyForm'){ el.addEventListener('click', async function(){
+    const status = el.getAttribute('data-status');
+    const msg = status==='draft'
+      ? 'هل أنت متأكد من حذف هذه المسودة؟ لن تستطيع استرجاعها.'
+      : 'هل أنت متأكد من حذف هذا النموذج نهائياً؟\nسيُحذف من قائمة المنسق والمدير أيضاً ولن تستطيع استرجاعه.';
+    if (!confirm(msg)) return;
+    this.disabled = true;
+    try{
+      await DB.deleteSubmission(el.getAttribute('data-id'));
+      invalidateAllScreenCaches();
+      toast('تم حذف النموذج.');
+      render();
+    }catch(e){ toast('فشل الحذف: ' + (e.message||'')); this.disabled = false; }
   }); }
   else if (action==='deleteSelectedForms'){ el.addEventListener('click', async function(){
     var ids = TeacherFormsUI.selectedFormIds.slice();
