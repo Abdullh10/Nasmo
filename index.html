@@ -13481,7 +13481,7 @@ async function screenTeacherTasks(){
           (s.status==='draft'||s.status==='returned'
             ? '<button class="btn btn-ghost btn-sm" data-action="openEdit" data-id="'+s.id+'">إكمال التعبئة</button>'
             : '<button class="btn btn-ghost btn-sm" data-action="openView" data-id="'+s.id+'">عرض</button>') +
-          ' <button class="btn btn-ghost btn-sm" data-action="deleteMyForm" data-id="'+s.id+'" data-status="'+s.status+'" style="color:var(--danger);" title="حذف النموذج نهائياً">🗑</button>' +
+          (s.status!=='approved' ? ' <button class="btn btn-ghost btn-sm" data-action="deleteMyForm" data-id="'+s.id+'" data-status="'+s.status+'" style="color:var(--danger);" title="حذف النموذج نهائياً">🗑</button>' : '') +
         '</td>' +
       '</tr>'
     );
@@ -18615,9 +18615,7 @@ function bindGlobalAction(el){
     const status = el.getAttribute('data-status');
     const msg = status==='draft'
       ? 'هل أنت متأكد من حذف هذه المسودة؟ لن تستطيع استرجاعها.'
-      : status==='approved'
-        ? 'هل أنت متأكد من حذف هذا النموذج المعتمد نهائياً؟\nسيُحذف من سجلات المنسق والمدير أيضاً ولن تستطيع استرجاعه.'
-        : 'هل أنت متأكد من حذف هذا النموذج نهائياً؟\nسيُحذف من قائمة المنسق والمدير أيضاً ولن تستطيع استرجاعه.';
+      : 'هل أنت متأكد من حذف هذا النموذج نهائياً؟\nسيُحذف من قائمة المنسق والمدير أيضاً ولن تستطيع استرجاعه.';
     if (!confirm(msg)) return;
     this.disabled = true;
     try{
