@@ -25,7 +25,10 @@ self.addEventListener('notificationclick', function(event) {
     clients.matchAll({ type:'window', includeUncontrolled:true }).then(function(list) {
       for (let i = 0; i < list.length; i++) {
         const c = list[i];
-        if ('focus' in c) { c.focus(); return; }
+        if ('focus' in c) {
+          if (url && 'navigate' in c) return c.navigate(url).then(function(cl){ return (cl || c).focus(); }).catch(function(){ return c.focus(); });
+          return c.focus();
+        }
       }
       if (clients.openWindow) return clients.openWindow(url);
     })
