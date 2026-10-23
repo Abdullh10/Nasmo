@@ -422,7 +422,7 @@ table.list tr:hover td{ background:var(--surface-2); }
 .sheet-logo-header .logo-center-wrap .org-tag{ font-size:10px; color:var(--muted); font-weight:600; letter-spacing:.05em; display:block; margin-bottom:4px; }
 .sheet-logo-header .logo-center-wrap .prog-name{ font-size:14px; font-weight:800; color:var(--navy-2); display:block; }
 .sheet-logo-header .logo-rafid-wrap{ flex-shrink:0; display:flex; align-items:flex-end; padding-bottom:2px; }
-.sheet-logo-header .logo-rafid-wrap img{ height:58px; width:auto; object-fit:contain; display:block; }
+.sheet-logo-header .logo-rafid-wrap img{ height:80px; width:auto; object-fit:contain; display:block; }
 .sheet-logo-header + .sheet-header{ border-bottom:1px solid var(--border); margin-top:12px; margin-bottom:18px; }
 @media (max-width:600px){ .sheet-logo-header{ flex-wrap:wrap; justify-content:center; } }
 
@@ -3816,7 +3816,7 @@ function topNav(){
   return (
     '<div class="topnav no-print">' +
       '<div class="topnav-brand">' +
-        '<img class="brand-mark" style="width:46px;height:46px;" src="'+LOGO_RAFID_B64+'" alt="شعار رافد للتحصيل الدراسي">' +
+        '<img class="brand-mark" style="width:60px;height:60px;" src="'+LOGO_RAFID_B64+'" alt="شعار رافد للتحصيل الدراسي">' +
         '<div class="topnav-title">'+esc(SiteSettings.program_title)+'<small>'+esc(State.user.school)+(SiteSettings.academic_year?' · العام الدراسي '+esc(SiteSettings.academic_year):'')+'</small></div>' +
       '</div>' +
       '<div class="topnav-right">' +
