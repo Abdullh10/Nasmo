@@ -425,10 +425,10 @@ table.list tr:hover td{ background:var(--surface-2); }
 .sheet-logo-header{ display:flex; align-items:center; justify-content:space-between; gap:14px; padding-bottom:14px; border-bottom:3px solid var(--navy); margin-bottom:0; }
 .sheet-logo-header .logo-rc-wrap{ flex-shrink:0; }
 .sheet-logo-header .logo-rc-wrap img{ height:62px; max-width:190px; width:auto; object-fit:contain; display:block; }
-.sheet-logo-header .logo-center-wrap{ flex:1; min-width:0; text-align:center; padding:4px 8px 0; }
+.sheet-logo-header .logo-center-wrap{ flex:1; min-width:0; text-align:center; padding:0 8px; }
 .sheet-logo-header .logo-center-wrap .org-tag{ font-size:10px; color:var(--muted); font-weight:600; letter-spacing:.05em; display:block; margin-bottom:4px; }
 .sheet-logo-header .logo-center-wrap .prog-name{ font-size:13px; font-weight:700; color:var(--navy-2); display:block; }
-.sheet-logo-header .logo-center-wrap .doc-title{ display:block; margin-top:8px; font-size:20px; font-weight:800; line-height:1.35; color:var(--navy); }
+.sheet-logo-header .logo-center-wrap .doc-title{ display:block; font-size:22px; font-weight:800; line-height:1.35; color:var(--navy); }
 .sheet-logo-header .logo-rafid-wrap{ flex-shrink:0; display:flex; align-items:center; }
 .sheet-logo-header .logo-rafid-wrap img{ height:78px; max-width:170px; width:auto; object-fit:contain; display:block; }
 .sheet-logo-header + .sheet-header{ border-bottom:1px solid var(--border); margin-top:12px; margin-bottom:18px; }
@@ -2976,7 +2976,7 @@ const LOGO_RAFID_B64=new URL('logo-rafid.jpg', location.href).href;
 function formLogoHeaderHtml(title){
   return '<div class="sheet-logo-header">'+
     '<div class="logo-rafid-wrap"><img src="'+LOGO_RAFID_B64+'" alt="رافد"></div>'+
-    '<div class="logo-center-wrap"><span class="org-tag">المملكة العربية السعودية</span><span class="prog-name">رافد للتحصيل الدراسي والتطوير المهني</span>'+(title?'<span class="doc-title">'+title+'</span>':'')+'</div>'+
+    '<div class="logo-center-wrap">'+(title?'<span class="doc-title">'+title+'</span>':'')+'</div>'+
     '<div class="logo-rc-wrap"><img src="'+LOGO_RC_B64+'" alt="الهيئة الملكية للجبيل وينبع"></div>'+
   '</div>';
 }
@@ -8974,7 +8974,6 @@ async function screenExamAnalysis(){
   const printHeader = rows.length?(
     '<div class="exam-print-header" style="display:none;">'+
       '<div style="text-align:center;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:18px;">'+
-        '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">تقرير تحليل درجات اختبار نهاية الفصل</div>'+
         '<div style="font-size:13px;">المعلم: '+esc(State.user.full_name||'')+'</div>'+
         '<div style="font-size:13px;margin-top:3px;">'+
           (ExamAnalysisUI.subject?'المادة: '+esc(ExamAnalysisUI.subject)+' &nbsp;|&nbsp; ':'')+
@@ -8988,7 +8987,7 @@ async function screenExamAnalysis(){
   return (
     '<div class="sheet-bar no-print"><button class="btn btn-ghost btn-sm" data-action="back">‹ رجوع</button></div>'+
     '<div class="form-sheet">'+
-    formLogoHeaderHtml()+
+    formLogoHeaderHtml('تقرير تحليل درجات اختبار نهاية الفصل')+
     printHeader+
     '<div class="section-head"><h2>تحليل درجات اختبار نهاية الفصل</h2>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="no-print">'+
@@ -11267,7 +11266,7 @@ function bindCounselorCases(){
     var clone = area.cloneNode(true);
     clone.querySelectorAll('script,iframe,object,embed').forEach(function(el){ el.remove(); });
     clone.querySelectorAll('[onclick],[onerror],[onload]').forEach(function(el){ ['onclick','onerror','onload','onmouseover'].forEach(function(a){ el.removeAttribute(a); }); });
-    win.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>الملاحظات الصفية</title><style>body{font-family:Arial,sans-serif;padding:20px;direction:rtl;} .no-print{display:none!important;} .obs-print-card{border:1px solid #ccc;border-radius:8px;padding:12px;margin-bottom:10px;page-break-inside:avoid;}</style></head><body>'+clone.innerHTML+'</body></html>');
+    win.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>الملاحظات الصفية</title><style>body{font-family:Arial,sans-serif;padding:20px;direction:rtl;} .no-print{display:none!important;} .obs-print-card{border:1px solid #ccc;border-radius:8px;padding:12px;margin-bottom:10px;page-break-inside:avoid;}</style></head><body><h1 style="text-align:center;font-size:20px;margin:0 0 16px;">الملاحظات الصفية</h1>'+clone.innerHTML+'</body></html>');
     win.document.close();
     win.focus();
     win.print();
@@ -11470,7 +11469,7 @@ function bindCounselorCases(){
     const win = window.open('','_blank','width=800,height=900');
     if (!win){ toast('يرجى السماح بالنوافذ المنبثقة في المتصفح لطباعة التقرير.'); return; }
     win.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>تقرير إرشادي</title>' +
-      '<style>body{font-family:Arial,sans-serif;padding:32px;direction:rtl;}h1{font-size:20px;margin-bottom:4px;}' +
+      '<style>body{font-family:Arial,sans-serif;padding:32px;direction:rtl;}h1{font-size:20px;margin-bottom:4px;text-align:center;}' +
       'table{width:100%;border-collapse:collapse;margin:16px 0;}td,th{border:1px solid #ccc;padding:8px;font-size:13px;}' +
       'th{background:#f4f4f4;}.section{margin-top:20px;}.section-title{font-weight:bold;font-size:14px;margin-bottom:8px;border-bottom:2px solid #333;padding-bottom:4px;}' +
       '</style></head><body>' +
@@ -14700,7 +14699,7 @@ function bindTeacherTasks(){
     if (!win){ toast('يرجى السماح بالنوافذ المنبثقة.'); return; }
     win.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>التقرير الدوري للمعلم</title>' +
       '<style>body{font-family:Arial,sans-serif;padding:32px;direction:rtl;font-size:13px;}' +
-      'h1{font-size:18px;}h2{font-size:14px;border-bottom:2px solid #333;padding-bottom:4px;margin-top:24px;}' +
+      'h1{font-size:18px;text-align:center;}h2{font-size:14px;border-bottom:2px solid #333;padding-bottom:4px;margin-top:24px;}' +
       'table{width:100%;border-collapse:collapse;margin:10px 0;}td,th{border:1px solid #ccc;padding:7px;font-size:12px;}' +
       'th{background:#f4f4f4;}.kpi{display:flex;gap:20px;flex-wrap:wrap;margin:12px 0;}' +
       '.kpi-item{border:1px solid #ccc;border-radius:8px;padding:10px 16px;text-align:center;min-width:100px;}' +
