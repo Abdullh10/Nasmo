@@ -2980,6 +2980,16 @@ function formLogoHeaderHtml(title){
     '<div class="logo-rc-wrap"><img src="'+LOGO_RC_B64+'" alt="الهيئة الملكية للجبيل وينبع"></div>'+
   '</div>';
 }
+/* عنوان النموذج مع الصف والشعبة للخطط العلاجية، مثل: الخطة العلاجية (الجماعية) - الأول ثانوي - شعبة 1 */
+function formFullTitle(def, d){
+  if (!def) return '';
+  d = d || {};
+  if (def.id !== 'groupPlan' && def.id !== 'individualAgreement') return def.title;
+  const grade = String(d.grade||'').trim(), section = String(d.section||'').trim();
+  if (!grade && !section) return def.title;
+  const sec = section ? 'شعبة '+section : (def.id==='groupPlan' ? 'جميع الشعب' : '');
+  return def.title + (grade ? ' - '+grade : '') + (sec ? ' - '+sec : '');
+}
 function isPrincipal(u){ return u && (u.role==='principal' || u.role==='vice_principal'); }
 
 /* ---------------------- اعتماد وتقييم مدير المدرسة للمهام وخطط التحسين وتبادل الخبرات ---------------------- */
@@ -8545,19 +8555,41 @@ async function refreshExamSaved(){
 function _examDraftKey(){ return 'exam_draft_'+(State.user?State.user.id:'anon'); }
 function saveExamDraft(){
   if (!ExamAnalysisUI.rows||!ExamAnalysisUI.rows.length) return;
-  try{ localStorage.setItem(_examDraftKey(), JSON.stringify({ rows:ExamAnalysisUI.rows, maxScore:ExamAnalysisUI.maxScore, customPassScore:ExamAnalysisUI.customPassScore, subject:ExamAnalysisUI.subject, term:ExamAnalysisUI.term })); }catch(e){}
+  try{ localStorage.setItem(_examDraftKey(), JSON.stringify({ rows:ExamAnalysisUI.rows, maxScore:ExamAnalysisUI.maxScore, customPassScore:ExamAnalysisUI.customPassScore, subject:ExamAnalysisUI.subject, term:ExamAnalysisUI.term, savedId:ExamAnalysisUI.savedId||null })); }catch(e){}
+  scheduleExamSync();
 }
 function restoreExamDraft(){
   try{
     var d=JSON.parse(localStorage.getItem(_examDraftKey())||'null');
-    if (d&&d.rows&&d.rows.length){ ExamAnalysisUI.rows=d.rows; ExamAnalysisUI.maxScore=d.maxScore||40; ExamAnalysisUI.customPassScore=d.customPassScore||null; ExamAnalysisUI.subject=d.subject||''; ExamAnalysisUI.term=d.term||''; }
+    if (d&&d.rows&&d.rows.length){ ExamAnalysisUI.rows=d.rows; ExamAnalysisUI.maxScore=d.maxScore||40; ExamAnalysisUI.customPassScore=d.customPassScore||null; ExamAnalysisUI.subject=d.subject||''; ExamAnalysisUI.term=d.term||''; ExamAnalysisUI.savedId=d.savedId||null; }
   }catch(e){}
 }
 function clearExamDraft(){ try{ localStorage.removeItem(_examDraftKey()); }catch(e){} }
+function _examPayload(){
+  return { user_id:State.user.id, school:State.user.school, subject:ExamAnalysisUI.subject||'', term:ExamAnalysisUI.term||'', max_score:ExamAnalysisUI.maxScore||40, rows:ExamAnalysisUI.rows, saved_at:new Date().toISOString() };
+}
+/* يحفظ التحليل في قاعدة البيانات: يحدّث السجل نفسه إن كان محفوظاً من قبل، وإلا ينشئ سجلاً جديداً */
+async function persistExamAnalysis(){
+  if (!State.user || !ExamAnalysisUI.rows || !ExamAnalysisUI.rows.length) return;
+  if (ExamAnalysisUI.savedId){
+    const upd = await remoteFetch('exam_analyses?id=eq.'+encodeURIComponent(ExamAnalysisUI.savedId), { method:'PATCH', prefer:'return=representation', body:_examPayload() });
+    if (Array.isArray(upd) && upd.length) return;
+  }
+  const created = await remoteFetch('exam_analyses', { method:'POST', prefer:'return=representation', body:_examPayload() });
+  const row = Array.isArray(created) ? created[0] : created;
+  if (row && row.id){ ExamAnalysisUI.savedId = row.id; saveExamDraft(); }
+}
+let _examSyncTimer = null;
+function scheduleExamSync(){
+  if (!ExamAnalysisUI.savedId) return;
+  clearTimeout(_examSyncTimer);
+  _examSyncTimer = setTimeout(function(){ persistExamAnalysis().then(refreshExamSaved).catch(function(){}); }, 2000);
+}
 async function saveExamAnalysis(){
   if (!ExamAnalysisUI.rows||!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات لحفظها.'); return; }
   try{
-    await remoteFetch('exam_analyses', { method:'POST', prefer:'return=minimal', body: JSON.stringify({ user_id:State.user.id, school:State.user.school, subject:ExamAnalysisUI.subject||'', term:ExamAnalysisUI.term||'', max_score:ExamAnalysisUI.maxScore||40, rows:ExamAnalysisUI.rows, saved_at:new Date().toISOString() }) });
+    clearTimeout(_examSyncTimer);
+    await persistExamAnalysis();
     await refreshExamSaved();
     toast('تم حفظ التحليل ✓');
     render(); bindExamAnalysis();
@@ -8574,7 +8606,7 @@ function examSavedHtml(){
         '<span style="font-weight:600;font-size:13.5px;">'+esc(e.subject||'—')+' — '+esc(e.term||'—')+'</span>'+
         '<span style="color:var(--muted);font-size:12px;margin-right:10px;">'+dateStr+' · '+e.rows.length+' طالب · من '+e.maxScore+'</span>'+
       '</div>'+
-      '<button class="btn btn-ghost btn-sm" data-action="restoreExamAnalysis" data-id="'+e.id+'">استعادة</button>'+
+      (ExamAnalysisUI.savedId===e.id ? '<span style="font-size:11.5px;font-weight:700;color:var(--success);">'+ic('circle-check')+' مفتوح الآن ويُحفظ تلقائياً</span>' : '<button class="btn btn-ghost btn-sm" data-action="restoreExamAnalysis" data-id="'+e.id+'">فتح</button>')+
       '<button class="btn btn-ghost btn-sm" style="color:#dc2626;" data-action="deleteExamAnalysis" data-id="'+e.id+'">حذف</button>'+
     '</div>';
   }).join('');
@@ -8918,6 +8950,10 @@ async function screenExamAnalysis(){
   if (!State.user || !['admin','super_admin','coordinator','principal','teacher'].includes(State.user.role)){ go('dashboard'); return ''; }
   if (!ExamAnalysisUI.rows) restoreExamDraft();
   if (!_examSavedCache) await refreshExamSaved();
+  if (!ExamAnalysisUI.rows && !ExamAnalysisUI.dismissedSaved){
+    const latest = loadExamSaved()[0];
+    if (latest && latest.rows && latest.rows.length){ ExamAnalysisUI.rows=latest.rows; ExamAnalysisUI.maxScore=latest.maxScore||40; ExamAnalysisUI.subject=latest.subject||''; ExamAnalysisUI.term=latest.term||''; ExamAnalysisUI.savedId=latest.id; }
+  }
   const rows = ExamAnalysisUI.rows || [];
   const maxScore = ExamAnalysisUI.maxScore;
   const passScore = examPassScore();
@@ -9047,7 +9083,7 @@ function examAnalysisResultModal(){
   const plansHtml = r.plans.map(function(p){
     return (
       '<div class="task-card" style="margin-bottom:8px;">'+
-        '<div class="meta"><b>'+esc(p.grade||'—')+'</b>'+
+        '<div class="meta"><b>'+esc(p.grade||'—')+' — '+(p.section?'شعبة '+esc(p.section):'جميع الشعب')+'</b>'+
           '<span style="color:var(--muted);font-size:12.5px;">'+p.count+' طالب دون المستوى '+(p.created?'(خطة جديدة)':'(تمت إضافتهم)')+'</span></div>'+
         '<button class="btn btn-ghost btn-sm" data-action="openExamSortedPlan" data-id="'+p.id+'">متابعة الخطة العلاجية والمتابعة الأسبوعية</button>'+
       '</div>'
@@ -9071,9 +9107,12 @@ async function runExamAutoSort(){
   const groups = {};
   rows.forEach(function(r){
     const key = (r.grade||'') || '__all__';
-    if (!groups[key]) groups[key] = { grade:r.grade||'', students:[] };
+    if (!groups[key]) groups[key] = { grade:r.grade||'', students:[], sections:{} };
     groups[key].students.push(r);
   });
+  /* الشعبة حسب التحليل: إن كان التحليل لشعبة واحدة تُكتب، وإلا فالخطة لجميع الشعب */
+  (ExamAnalysisUI.rows||[]).forEach(function(r){ const key=(r.grade||'')||'__all__'; if (groups[key] && String(r.section||'').trim()) groups[key].sections[String(r.section).trim()]=1; });
+  Object.keys(groups).forEach(function(k){ const secs=Object.keys(groups[k].sections); groups[k].section = secs.length===1 ? secs[0] : ''; });
   const allExisting = (await DB.listSubmissions({ school: State.user.school })).filter(function(s){
     return s.form_type==='groupPlan' && s.created_by===State.user.id;
   });
@@ -9085,9 +9124,9 @@ async function runExamAutoSort(){
   for (const key in groups){
     const g = groups[key];
     // Match by grade + empty section (grade-level plan)
-    const alreadySubmitted = submitted.find(function(s){ return (s.payload.grade||'')===(g.grade) && !(s.payload.section||''); });
-    if (alreadySubmitted){ skipped.push(g.grade||'غير محدد'); continue; }
-    let sub = existing.find(function(s){ return (s.payload.grade||'')===(g.grade) && !(s.payload.section||''); });
+    const alreadySubmitted = submitted.find(function(s){ return (s.payload.grade||'')===(g.grade) && (s.payload.section||'')===g.section; });
+    if (alreadySubmitted){ skipped.push((g.grade||'غير محدد')+(g.section?' شعبة '+g.section:'')); continue; }
+    let sub = existing.find(function(s){ return (s.payload.grade||'')===(g.grade) && (s.payload.section||'')===g.section; });
     let created = false;
     let addedHere = 0;
     if (sub){
@@ -9095,19 +9134,19 @@ async function runExamAutoSort(){
       g.students.forEach(function(r){
         const found = payload.students.find(function(s){ return (s.name||'').trim()===r.name.trim(); });
         if (found){ found.examScore = r.score; }
-        else { const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; payload.students.push(row); addedHere++; }
+        else { const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; row.section = r.section||''; payload.students.push(row); addedHere++; }
       });
       await DB.updateSubmission(sub.id, { payload: payload });
       sub = Object.assign({}, sub, { payload: payload });
     } else {
       const payload = blankData('groupPlan');
-      payload.grade = g.grade; payload.section = '';
-      payload.students = g.students.map(function(r){ const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; return row; });
+      payload.grade = g.grade; payload.section = g.section; if (ExamAnalysisUI.subject) payload.subject = ExamAnalysisUI.subject;
+      payload.students = g.students.map(function(r){ const row = blankStudentRow(); row.name = r.name; row.examScore = r.score; row.section = r.section||''; return row; });
       sub = await DB.createSubmission({ form_type:'groupPlan', school: State.user.school, created_by: State.user.id, created_by_name: State.user.full_name, community_id: State.user.community_id || null, payload: payload, status:'draft' });
       created = true; addedHere = g.students.length;
     }
     totalAdded += addedHere;
-    plans.push({ id: sub.id, grade: g.grade, count: g.students.length, created: created });
+    plans.push({ id: sub.id, grade: g.grade, section: g.section, count: g.students.length, created: created });
   }
   if (skipped.length){ toast('توجد خطة علاجية مرسلة بالفعل للفصول: '+skipped.join('، ')+'. تم تخطيها.'); }
   if (!plans.length){ render(); bindExamAnalysis(); return; }
@@ -9186,6 +9225,7 @@ function bindExamAnalysis(){
       let dataRows = rawRows;
       if (isExamImportHeaderRow((rawRows[0][0]||'').toString())) dataRows = rawRows.slice(1);
       ExamAnalysisUI.rows = parseExamRows(dataRows);
+      ExamAnalysisUI.savedId = null;
       ExamAnalysisUI.resultModal = null;
       if (!ExamAnalysisUI.rows.length){ toast('لا توجد بيانات صالحة في الملف.'); return; }
       saveExamDraft();
@@ -9203,8 +9243,9 @@ function bindExamAnalysis(){
   if (printBtn) printBtn.addEventListener('click', function(){ exportFormToPdf('تحليل_الاختبار.pdf'); });
   const clearAnalysisBtn = document.querySelector('[data-action="clearExamAnalysis"]');
   if (clearAnalysisBtn) clearAnalysisBtn.addEventListener('click', function(){
-    if (!confirm('هل تريد مسح التحليل الحالي؟ سيتم حذفه نهائياً.')) return;
-    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false };
+    if (!confirm('هل تريد مسح التحليل من الشاشة؟ التحليلات المحفوظة تبقى في قائمة التحليلات المحفوظة حتى تحذفها.')) return;
+    clearTimeout(_examSyncTimer);
+    ExamAnalysisUI = { rows:null, resultModal:null, maxScore:40, customPassScore:null, filterGrade:'', filterSection:'', failOnly:false, sortDir:'', subject:'', term:'', pasteModalOpen:false, dismissedSaved:true };
     clearExamDraft();
     render(); bindExamAnalysis();
   });
@@ -9220,7 +9261,7 @@ function bindExamAnalysis(){
     el.addEventListener('click', function(){
       const entry = loadExamSaved().find(function(e){ return e.id===el.getAttribute('data-id'); });
       if (!entry){ toast('التحليل غير موجود.'); return; }
-      ExamAnalysisUI.rows=entry.rows; ExamAnalysisUI.maxScore=entry.maxScore||40;
+      ExamAnalysisUI.rows=entry.rows; ExamAnalysisUI.maxScore=entry.maxScore||40; ExamAnalysisUI.savedId=entry.id;
       ExamAnalysisUI.subject=entry.subject||''; ExamAnalysisUI.term=entry.term||'';
       ExamAnalysisUI.filterGrade=''; ExamAnalysisUI.filterSection=''; ExamAnalysisUI.failOnly=false; ExamAnalysisUI.sortDir=''; ExamAnalysisUI.resultModal=null;
       saveExamDraft();
@@ -9233,6 +9274,7 @@ function bindExamAnalysis(){
       const id = el.getAttribute('data-id');
       try{
         await remoteFetch('exam_analyses?id=eq.'+encodeURIComponent(id), { method:'DELETE' });
+        if (ExamAnalysisUI.savedId===id){ clearTimeout(_examSyncTimer); ExamAnalysisUI.savedId=null; ExamAnalysisUI.dismissedSaved=true; saveExamDraft(); }
         await refreshExamSaved();
         render(); bindExamAnalysis();
       }catch(e){ toast(arabicError(e)); }
@@ -9274,6 +9316,7 @@ function bindExamAnalysis(){
     ExamAnalysisUI.rows = parsed;
     ExamAnalysisUI.resultModal = null;
     ExamAnalysisUI.pasteModalOpen = false;
+    ExamAnalysisUI.savedId = null;
     saveExamDraft();
     render(); bindExamAnalysis();
   });
@@ -9626,7 +9669,29 @@ async function screenAdminSettings(){
     ');',
     'alter table supervisory_visits enable row level security;',
     'drop policy if exists "supervisory_visits_all" on supervisory_visits;',
-    "create policy \"supervisory_visits_all\" on supervisory_visits for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );"
+    "create policy \"supervisory_visits_all\" on supervisory_visits for all using ( school = my_school() or my_role() in ('admin','super_admin') ) with check ( school = my_school() or my_role() in ('admin','super_admin') );",
+    '',
+    '-- 13) جدول تحليلات الاختبارات (حفظ دائم لتحليل المعلم/المنسق)',
+    'create table if not exists exam_analyses (',
+    '  id uuid primary key default gen_random_uuid(),',
+    '  user_id uuid references profiles(id) on delete cascade,',
+    '  school text,',
+    "  subject text default '',",
+    "  term text default '',",
+    '  max_score int default 40,',
+    "  rows jsonb default '[]'::jsonb,",
+    '  saved_at timestamptz default now()',
+    ');',
+    "alter table exam_analyses add column if not exists user_id uuid references profiles(id) on delete cascade;",
+    "alter table exam_analyses add column if not exists school text;",
+    "alter table exam_analyses add column if not exists subject text default '';",
+    "alter table exam_analyses add column if not exists term text default '';",
+    "alter table exam_analyses add column if not exists max_score int default 40;",
+    "alter table exam_analyses add column if not exists rows jsonb default '[]'::jsonb;",
+    "alter table exam_analyses add column if not exists saved_at timestamptz default now();",
+    'alter table exam_analyses enable row level security;',
+    'drop policy if exists "exam_analyses_own" on exam_analyses;',
+    "create policy \"exam_analyses_own\" on exam_analyses for all using ( user_id = auth.uid() or my_role() in ('admin','super_admin') ) with check ( user_id = auth.uid() );"
   ].join('\n');
   return (
     '<div class="program-card">' +
@@ -17220,7 +17285,7 @@ async function screenEditor(){
       statusStrip(EditorState.status) +
       returnBox +
       '<div class="form-sheet">' +
-        formLogoHeaderHtml(esc(def.title))+'<div class="sheet-header"><div class="titles"><div class="sub">رافد للتحصيل الدراسي — '+esc(EditorState.school)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
+        formLogoHeaderHtml(esc(formFullTitle(def, EditorState.data)))+'<div class="sheet-header"><div class="titles"><div class="sub">رافد للتحصيل الدراسي — '+esc(EditorState.school)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
         body +
         sigBlock +
         '<div class="footer-note">يُحفظ هذا النموذج إلكترونيًا ويُحال إلى مدير المدرسة للاعتماد النهائي.</div>' +
@@ -17358,9 +17423,12 @@ function renderGroupPlan(d, ro, students){
     '<div class="field-grid cols-3">' +
       inputField('المدرسة','school',d.school,{readonly:ro}) +
       _selField('الصف','grade',d.grade,GP_GRADE_OPTS,ro) +
-      inputField('المادة','subject',d.subject,{readonly:ro,placeholder:'اكتب اسم المادة'}) +
+      inputField('الشعبة','section',d.section||'',{readonly:ro,placeholder:'جميع الشعب'}) +
     '</div>' +
-    inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+    '<div class="field-grid cols-2">' +
+      inputField('المادة','subject',d.subject,{readonly:ro,placeholder:'اكتب اسم المادة'}) +
+      inputField('التاريخ','date',d.date,{type:'date',readonly:ro}) +
+    '</div>' +
     '<div class="block-title"><span class="dot"></span> الطلاب المستهدَفون بالخطة</div>' +
     batchCard +
     cards +
@@ -18515,7 +18583,7 @@ async function screenView(id){
         '</span></div>' +
       statusStrip(s.status) +
       '<div class="form-sheet">' + stamp +
-        formLogoHeaderHtml(esc(def.title))+'<div class="sheet-header"><div class="titles"><div class="sub">رافد للتحصيل الدراسي — '+esc(s.school)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
+        formLogoHeaderHtml(esc(formFullTitle(def, s.payload)))+'<div class="sheet-header"><div class="titles"><div class="sub">رافد للتحصيل الدراسي — '+esc(s.school)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
         body +
         '<div class="sig-footer">' +
           '<div><div class="who">توقيع المُعد: '+esc(s.created_by_name)+'</div>'+buildSignaturePad('v_prep', s.preparer_signature, true)+'</div>' +
@@ -18604,7 +18672,7 @@ async function screenReview(id){
       '<button class="btn btn-gold btn-sm" data-action="exportPdf" data-filename="'+esc(def.title)+'">تصدير PDF</button></div>' +
     '<div class="layout-2col">' +
       '<div class="form-sheet">' +
-        formLogoHeaderHtml(esc(def.title))+'<div class="sheet-header"><div class="titles"><div class="sub">إعداد: '+esc(s.created_by_name)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
+        formLogoHeaderHtml(esc(formFullTitle(def, s.payload)))+'<div class="sheet-header"><div class="titles"><div class="sub">إعداد: '+esc(s.created_by_name)+'</div></div><div class="form-no">نموذج رقم ('+def.no+')</div></div>' +
         body +
         '<div class="sig-footer"><div><div class="who">توقيع المُعد</div>'+buildSignaturePad('rv_prep', s.preparer_signature, true)+'</div></div>' +
       '</div>' +
