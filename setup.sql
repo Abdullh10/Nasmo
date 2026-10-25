@@ -352,3 +352,29 @@ create policy "visit_schedules_all" on visit_schedules
 -- );
 --
 -- ============================================================
+
+-- =========================================================
+-- تحليلات الاختبارات (حفظ دائم لتحليل المعلم/المنسق)
+-- =========================================================
+create table if not exists exam_analyses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) on delete cascade,
+  school text,
+  subject text default '',
+  term text default '',
+  max_score int default 40,
+  rows jsonb default '[]'::jsonb,
+  saved_at timestamptz default now()
+);
+alter table exam_analyses add column if not exists user_id uuid references profiles(id) on delete cascade;
+alter table exam_analyses add column if not exists school text;
+alter table exam_analyses add column if not exists subject text default '';
+alter table exam_analyses add column if not exists term text default '';
+alter table exam_analyses add column if not exists max_score int default 40;
+alter table exam_analyses add column if not exists rows jsonb default '[]'::jsonb;
+alter table exam_analyses add column if not exists saved_at timestamptz default now();
+alter table exam_analyses enable row level security;
+drop policy if exists "exam_analyses_own" on exam_analyses;
+create policy "exam_analyses_own" on exam_analyses for all
+  using ( user_id = auth.uid() or my_role() in ('admin','super_admin') )
+  with check ( user_id = auth.uid() );
