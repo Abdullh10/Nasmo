@@ -10316,7 +10316,7 @@ async function screenCounselorCases(){
       var sf = CounselorUI.obsSortField || 'created_at';
       var dir = CounselorUI.obsSortDir === 'asc' ? 1 : -1;
       if (sf === 'student_name') return dir * (a.student_name||'').localeCompare(b.student_name||'','ar');
-      if (sf === 'severity'){ var so = {info:2,follow_up:1,urgent:0}; return dir*((so[a.severity||'info']||2)-(so[b.severity||'info']||2)); }
+      if (sf === 'severity'){ var so = {urgent:0,follow_up:1,info:2}; var ra = (a.severity in so) ? so[a.severity] : 2, rb = (b.severity in so) ? so[b.severity] : 2; return dir*(ra-rb) || (new Date(b.created_at||0) - new Date(a.created_at||0)); }
       if (sf === 'teacher_name') return dir * (a.teacher_name||'').localeCompare(b.teacher_name||'','ar');
       return dir * (new Date(a.created_at) - new Date(b.created_at));
     });
