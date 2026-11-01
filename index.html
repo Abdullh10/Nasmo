@@ -2381,8 +2381,18 @@ const DB = {
   },
   async getSiteSettings(){
     if (isRemote()){
-      const rows = await remoteFetch('site_settings?id=eq.global');
-      return (rows && rows[0]) || {};
+      /* الإعدادات عامة القراءة: تُجلب بالمفتاح العام دون جلسة المستخدم، حتى لا تفشل شاشة الدخول بسبب جلسة منتهية */
+      const ctl = new AbortController(); const t = setTimeout(function(){ ctl.abort(); }, 10000);
+      try{
+        const res = await fetch(CONFIG.SUPABASE_URL + '/rest/v1/site_settings?id=eq.global', {
+          headers:{ apikey:CONFIG.SUPABASE_ANON_KEY, Authorization:'Bearer '+CONFIG.SUPABASE_ANON_KEY }, signal:ctl.signal
+        });
+        if (!res.ok) throw new Error('site_settings '+res.status);
+        const rows = await res.json();
+        const row = (rows && rows[0]) || {};
+        try{ localStorage.setItem('nasmo_site_settings_cache', JSON.stringify(row)); }catch(e){}
+        return row;
+      } finally { clearTimeout(t); }
     }
     return JSON.parse(localStorage.getItem(LS_SITE_SETTINGS) || '{}');
   },
@@ -4100,7 +4110,7 @@ async function render(){
     const _shell = app.querySelector('.shell');
     if (_shell) _shell.style.opacity = '0.5';
     switch(State.screen){
-      case 'login': { const sp = document.getElementById('init-spinner'); if (sp) sp.remove(); app.innerHTML = screenLogin(); bindLogin(); break; }
+      case 'login': { const sp = document.getElementById('init-spinner'); if (sp) sp.remove(); app.innerHTML = screenLogin(); bindLogin(); _ensureLoginSchools(); break; }
       case 'dashboard': html = await screenDashboard(); if (token !== _renderToken) return; renderShell(app, html); bindDashboard(); break;
       case 'picker': renderShell(app, screenPicker()); bindPicker(); break;
       case 'editor': html = await screenEditor(); if (token !== _renderToken) return; renderShell(app, html); bindEditor(); break;
@@ -4737,6 +4747,23 @@ function bindTopNav(){
 }
 
 /* ----- شاشة الدخول ----- */
+/* إن ظهرت شاشة الدخول دون قائمة المدارس (فشل الجلب أو بطء الشبكة) نعيد المحاولة ونُحدّث الشاشة مع الإبقاء على ما كتبه المستخدم */
+let _loginSchoolsRetry = 0;
+function _ensureLoginSchools(){
+  if ((SiteSettings.schools||[]).length || _loginSchoolsRetry >= 3) return;
+  _loginSchoolsRetry++;
+  setTimeout(function(){
+    DB.getSiteSettings().then(function(row){
+      if (!row || !(row.schools||[]).length){ _ensureLoginSchools(); return; }
+      SiteSettings = Object.assign({}, SiteSettings, row);
+      if (State.screen !== 'login' || !document.getElementById('loginUser')) return;
+      const u = document.getElementById('loginUser').value, pw = document.getElementById('loginPass').value;
+      render();
+      const nu = document.getElementById('loginUser'), np = document.getElementById('loginPass');
+      if (nu) nu.value = u; if (np) np.value = pw;
+    }).catch(function(){ _ensureLoginSchools(); });
+  }, _loginSchoolsRetry === 1 ? 300 : 2500);
+}
 function screenLogin(){
   return (
     '<button class="theme-toggle-btn" title="تبديل الوضع الداكن/الفاتح" data-action="toggleTheme">'+(getTheme()==='dark'?SUN_SVG:MOON_SVG)+'</button>' +
@@ -19488,11 +19515,13 @@ function bindGlobalAction(el){
   injectViewFab();
   loadAuth();
   /* جلب الإعدادات أولاً لتجنب render مزدوج وضمان صحة العنوان من أول لحظة */
+  /* آخر نسخة محفوظة من الإعدادات أولاً (تظهر قائمة المدارس فوراً حتى مع بطء الشبكة) ثم التحديث من الخادم */
+  try{ const _c = JSON.parse(localStorage.getItem('nasmo_site_settings_cache') || 'null'); if (_c) SiteSettings = Object.assign({}, SiteSettings, _c); }catch(e){}
   try {
     const s = await DB.getSiteSettings();
     SiteSettings = Object.assign({}, SiteSettings, s);
-    document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
   } catch(e) {}
+  document.title = SiteSettings.program_title + ' ' + SiteSettings.program_subtitle;
   const u = loadUserSession();
   if (u){
     State.user = u;
